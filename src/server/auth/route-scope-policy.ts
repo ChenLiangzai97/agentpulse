@@ -126,6 +126,11 @@ export const INTENTIONALLY_MANAGE_ONLY: ReadonlySet<string> = new Set([
 	// prompting are not owner-checked either, and in team mode only an admin
 	// can turn the Labs flag on (D-3).
 	"/ai/sessions/:sessionId/summary",
+	// AGEN-70 — analysis reports are derived from prompts and tool data across
+	// sessions, so like the session summary the reads stay manage-only, never
+	// observe. The POSTs are manage by method.
+	"/ai/analysis/runs",
+	"/ai/analysis/runs/:id",
 ]);
 
 /**

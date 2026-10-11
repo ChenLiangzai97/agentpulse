@@ -3,6 +3,7 @@ dist/
 data/
 .env
 .env.local
+.env.test
 *.db
 *.db-journal
 *.db-wal

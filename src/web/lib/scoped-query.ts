@@ -23,6 +23,8 @@ export interface SessionFilters {
 	/** The dashboard's Active, Completed or Archived tab, listed by the server. */
 	tab?: "active" | "completed" | "archived";
 	q?: string;
+	/** AGEN-70: only sessions marked for analysis participation. */
+	analysis?: "selected";
 	limit?: number;
 	offset?: number;
 }

@@ -26,6 +26,11 @@ interface UiPrefs {
 	 * workspaces. The toggle lives on the dashboard and is per-browser.
 	 */
 	showScratch: boolean;
+	/**
+	 * AGEN-70: list only sessions marked for analysis participation. Default
+	 * off; only meaningful with the analysisReports Labs flag on.
+	 */
+	analysisOnly: boolean;
 
 	/**
 	 * Width (px) of the thread sidebar on the /ask page. Persisted so a
@@ -46,6 +51,7 @@ function clampAskSidebarWidth(width: unknown): number {
 const DEFAULTS: UiPrefs = {
 	projectColors: true,
 	showScratch: false,
+	analysisOnly: false,
 	askSidebarWidth: ASK_SIDEBAR_DEFAULT_WIDTH,
 };
 
@@ -76,6 +82,7 @@ function save(prefs: UiPrefs): void {
 interface UiPrefsStore extends UiPrefs {
 	setProjectColors: (enabled: boolean) => void;
 	setShowScratch: (enabled: boolean) => void;
+	setAnalysisOnly: (enabled: boolean) => void;
 	setAskSidebarWidth: (width: number) => void;
 }
 
@@ -88,6 +95,10 @@ export const useUiPrefsStore = create<UiPrefsStore>((set, get) => ({
 	setShowScratch(enabled) {
 		set({ showScratch: enabled });
 		save({ ...get(), showScratch: enabled });
+	},
+	setAnalysisOnly(enabled) {
+		set({ analysisOnly: enabled });
+		save({ ...get(), analysisOnly: enabled });
 	},
 	setAskSidebarWidth(width) {
 		const clamped = clampAskSidebarWidth(width);

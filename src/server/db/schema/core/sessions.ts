@@ -73,6 +73,13 @@ export const sessionsSqlite = sqliteTable(
 		 * session's real host is managed_sessions.host_name, not this.
 		 */
 		reportedHost: text("reported_host"),
+		/**
+		 * Analysis participation (AGEN-70): persistent per-session consent for the
+		 * session's recorded content to enter analysis reports. Independent of
+		 * archive/pin/watcher; default off; ingest never sets it.
+		 */
+		analysisSelected: integer("analysis_selected", { mode: "boolean" }).notNull().default(false),
+		analysisSelectedAt: text("analysis_selected_at"),
 	},
 	(t) => ({
 		agentTypeLastActivity: index(AGENT_TYPE_LAST_ACTIVITY_INDEX).on(t.agentType, t.lastActivityAt),
@@ -120,6 +127,8 @@ export const sessionsPg = pgTable(
 		lastAgentTurnCompletedAt: pgText("last_agent_turn_completed_at"),
 		lastUserAcknowledgedAt: pgText("last_user_acknowledged_at"),
 		reportedHost: pgText("reported_host"),
+		analysisSelected: boolean("analysis_selected").notNull().default(false),
+		analysisSelectedAt: pgText("analysis_selected_at"),
 	},
 	(t) => ({
 		agentTypeLastActivity: pgIndex(AGENT_TYPE_LAST_ACTIVITY_INDEX).on(

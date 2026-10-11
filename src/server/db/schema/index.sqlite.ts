@@ -46,6 +46,7 @@ export { aiActionRequestsSqlite as aiActionRequests } from "./ai/ai-action-reque
 export { aiPendingProjectDraftsSqlite as aiPendingProjectDrafts } from "./ai/ai-pending-project-drafts.js";
 export { aiQaCacheSqlite as aiQaCache } from "./ai/ai-qa-cache.js";
 export { aiSessionSummariesSqlite as aiSessionSummaries } from "./ai/ai-session-summaries.js";
+export { aiAnalysisRunsSqlite as aiAnalysisRuns } from "./ai/ai-analysis-runs.js";
 // SQLite-only: no pgTable for eventEmbeddings (Decision 3 / pgvector is a follow-up).
 export { eventEmbeddingsSqlite as eventEmbeddings } from "./ai/event-embeddings.js";
 

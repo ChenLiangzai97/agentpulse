@@ -14,8 +14,13 @@ import {
 } from "../../shared/session-state.js";
 import type { Session } from "../../shared/types.js";
 import { ConnectMachineCard } from "../components/ConnectMachineCard.js";
-import { DashboardViewControls, ScratchToggle } from "../components/DashboardViewControls.js";
+import {
+	AnalysisOnlyToggle,
+	DashboardViewControls,
+	ScratchToggle,
+} from "../components/DashboardViewControls.js";
 import { FirstRunWelcome } from "../components/FirstRunWelcome.js";
+import { useLabsStore } from "../stores/labs-store.js";
 import { OwnerSelect } from "../components/OwnerSelect.js";
 import { ScopeSwitch } from "../components/ScopeSwitch.js";
 import { SelectedSessionActions } from "../components/SelectedSessionActions.js";
@@ -135,6 +140,9 @@ export function DashboardPage() {
 	const ui = useOwnershipUi();
 	const showScratch = useUiPrefsStore((s) => s.showScratch);
 	const setShowScratch = useUiPrefsStore((s) => s.setShowScratch);
+	const analysisOnly = useUiPrefsStore((s) => s.analysisOnly);
+	const setAnalysisOnly = useUiPrefsStore((s) => s.setAnalysisOnly);
+	const analysisReportsEnabled = useLabsStore((s) => s.isEnabled("analysisReports"));
 
 	// ONE description of what the page shows: whose sessions, and whether scratch
 	// workspaces are in. Every request below is built from it with scopedQuery().
@@ -142,10 +150,20 @@ export function DashboardPage() {
 	const { host, resolved: hostResolved, choose: chooseHost, storedChoiceDropped } = useHostScope();
 	const scopeResolved = ownerResolved && hostResolved;
 	const scope = useMemo<DashboardScope | null>(
-		() => (scopeResolved ? { owner, excludeScratch: !showScratch, host } : null),
-		[scopeResolved, owner, showScratch, host],
+		() => ({
+			owner,
+			excludeScratch: !showScratch,
+			analysisOnly: analysisReportsEnabled && analysisOnly,
+			host,
+		}),
+		[scopeResolved, owner, showScratch, analysisOnly, analysisReportsEnabled, host],
 	);
-	const scopeForLists = scope ?? { owner: OWNER_ALL, excludeScratch: !showScratch, host };
+	const scopeForLists = scope ?? {
+		owner: OWNER_ALL,
+		excludeScratch: !showScratch,
+		analysisOnly: analysisReportsEnabled && analysisOnly,
+		host,
+	};
 	const viewKindNow: ViewKind = viewKind(ui.showScope, owner);
 	// Phone-width compaction (four cards in a row, a collapsed Live Sessions panel, a
 	// short mark-all label) is for team mode; solo keeps its layout exactly.
@@ -1115,6 +1133,9 @@ export function DashboardPage() {
 									onChange={setShowScratch}
 									scratchHidden={stats?.scratchHidden ?? 0}
 								/>
+							)}
+							{analysisReportsEnabled && (
+								<AnalysisOnlyToggle analysisOnly={analysisOnly} onChange={setAnalysisOnly} />
 							)}
 						</div>
 					</div>

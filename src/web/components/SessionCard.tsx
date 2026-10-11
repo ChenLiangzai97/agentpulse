@@ -47,6 +47,7 @@ interface SessionCardProps {
 
 export function SessionCard({ session, intelligence, ownerChip }: SessionCardProps) {
 	const intelligenceEnabled = useLabsStore((s) => s.isEnabled("intelligenceBadges"));
+	const analysisEnabled = useLabsStore((s) => s.isEnabled("analysisReports"));
 	const navigate = useNavigate();
 	const removeSession = useSessionStore((s) => s.removeSession);
 	const updateSession = useSessionStore((s) => s.updateSession);
@@ -186,6 +187,25 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 			updateSession({ ...session, isPinned: pinned });
 		} catch (err) {
 			toast.error(describeApiError(err, `Couldn't ${pinned ? "pin" : "unpin"} the session.`));
+		}
+	}
+
+	// AGEN-70: persistent per-session consent for analysis reports. Off by
+	// default; un-selecting never rewrites past reports.
+	async function handleAnalysisSelected(e: React.MouseEvent) {
+		e.stopPropagation();
+		const selected = !session.analysisSelected;
+		try {
+			await api.updateSessionAnalysisSelected(session.sessionId, selected);
+			updateSession({
+				...session,
+				analysisSelected: selected,
+				analysisSelectedAt: selected ? new Date().toISOString() : null,
+			});
+		} catch (err) {
+			toast.error(
+				describeApiError(err, `Couldn't ${selected ? "include in" : "exclude from"} analysis.`),
+			);
 		}
 	}
 
@@ -440,6 +460,36 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 								</svg>
 							</button>
 						)}
+						{analysisEnabled && access.canPin && (
+							<button
+								type="button"
+								onClick={handleAnalysisSelected}
+								title={
+									session.analysisSelected
+										? "Exclude from analysis reports"
+										: "Include in analysis reports"
+								}
+								className={`rounded min-w-[44px] min-h-[44px] flex items-center justify-center transition-colors ${
+									session.analysisSelected
+										? "text-cyan-300 bg-cyan-500/10"
+										: "text-muted-foreground hover:text-cyan-300 hover:bg-cyan-500/10"
+								}`}
+							>
+								<svg
+									className="w-3 h-3"
+									fill={session.analysisSelected ? "currentColor" : "none"}
+									viewBox="0 0 24 24"
+									stroke="currentColor"
+								>
+									<path
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										strokeWidth={2}
+										d="M9 17v-6h13M9 9V3h13v12M4.5 8.5a2.5 2.5 0 105 0 2.5 2.5 0 10-5 0M4.5 15.5a2.5 2.5 0 105 0 2.5 2.5 0 10-5 0"
+									/>
+								</svg>
+							</button>
+						)}
 						{isManageable && access.canArchive && !session.isArchived && (
 							<button
 								type="button"
@@ -515,6 +565,36 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 										strokeLinejoin="round"
 										strokeWidth={2}
 										d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+									/>
+								</svg>
+							</button>
+						)}
+						{analysisEnabled && access.canPin && (
+							<button
+								type="button"
+								onClick={handleAnalysisSelected}
+								title={
+									session.analysisSelected
+										? "Exclude from analysis reports"
+										: "Include in analysis reports"
+								}
+								className={`rounded p-1 transition-colors ${
+									session.analysisSelected
+										? "text-cyan-300 bg-cyan-500/10"
+										: "text-muted-foreground hover:text-cyan-300 hover:bg-cyan-500/10"
+								}`}
+							>
+								<svg
+									className="w-3 h-3"
+									fill={session.analysisSelected ? "currentColor" : "none"}
+									viewBox="0 0 24 24"
+									stroke="currentColor"
+								>
+									<path
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										strokeWidth={2}
+										d="M9 17v-6h13M9 9V3h13v12M4.5 8.5a2.5 2.5 0 105 0 2.5 2.5 0 10-5 0M4.5 15.5a2.5 2.5 0 105 0 2.5 2.5 0 10-5 0"
 									/>
 								</svg>
 							</button>

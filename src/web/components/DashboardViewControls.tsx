@@ -137,3 +137,27 @@ export function ScratchToggle({
 		</label>
 	);
 }
+
+/** AGEN-70: "only sessions marked Include in analysis", for report scoping. */
+export function AnalysisOnlyToggle({
+	analysisOnly,
+	onChange,
+}: {
+	analysisOnly: boolean;
+	onChange: (enabled: boolean) => void;
+}) {
+	return (
+		<label
+			className="inline-flex min-h-[44px] cursor-pointer select-none items-center gap-2 text-xs text-hint md:min-h-0"
+			title="When on, only sessions marked 'Include in analysis' (the cyan toggle on a session card) are counted and listed."
+		>
+			<input
+				type="checkbox"
+				checked={analysisOnly}
+				onChange={(e) => onChange(e.target.checked)}
+				className="h-3.5 w-3.5 rounded border-input bg-background text-primary focus:ring-1 focus:ring-ring"
+			/>
+			Analysis only
+		</label>
+	);
+}

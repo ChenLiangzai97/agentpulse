@@ -130,6 +130,8 @@ export const assertCanRenameSession = assertSessionOwnerOrAdmin;
 export const assertCanPinSession = assertSessionOwnerOrAdmin;
 /** Notes and the stored CLAUDE.md (which feeds the owner's AI watcher context). */
 export const assertCanEditSessionNotes = assertSessionOwnerOrAdmin;
+/** Analysis participation consent (AGEN-70): the owner's call, like pin/archive. */
+export const assertCanAnalysisSelectSession = assertSessionOwnerOrAdmin;
 
 async function assertKeyOwnerOrAdmin(actor: Actor, keyId: string): Promise<void> {
 	if ((await modeOf(actor)) === "solo") return;

@@ -36,6 +36,11 @@ import {
 	type SessionSummaryView,
 	type SummaryRefusalCode,
 } from "../../shared/session-summary-view.js";
+import type {
+	AnalysisPreview,
+	AnalysisRefusalBody,
+	AnalysisRunView,
+} from "../../shared/analysis-report.js";
 
 export type {
 	SessionSummaryRefusalBody,
@@ -288,6 +293,7 @@ function sessionsQueryString(params: SessionFilters & ScopeQuery): string {
 	if (params.tab) query.set("tab", params.tab);
 	if (params.q) query.set("q", params.q);
 	if (params.excludeScratch) query.set("excludeScratch", "true");
+	if (params.analysis) query.set("analysis", params.analysis);
 	if (params.owner) query.set("owner", params.owner);
 	if (params.host) query.set("host", params.host);
 	if (params.limit) query.set("limit", String(params.limit));
@@ -386,6 +392,15 @@ export const api = {
 				...(ownOnly ? { owner: OWNER_ME } : {}),
 			})}`,
 		),
+
+	/**
+	 * AGEN-70: the analysis page's candidate list — every session marked for
+	 * analysis participation, newest first. Deliberately not the dashboard's
+	 * scope (report scope is picked session by session), like the two named
+	 * exceptions documented on ScopedQuery.
+	 */
+	getAnalysisCandidateSessions: (limit = 200) =>
+		request<SessionsResponse>(`/sessions${sessionsQueryString({ analysis: "selected", limit })}`),
 
 	getSession: (sessionId: string) =>
 		request<{ session: Session; events: SessionEvent[]; controlActions?: ControlAction[] }>(
@@ -1082,6 +1097,33 @@ export const api = {
 	getDigest: (params?: { fresh?: boolean }) =>
 		request<Digest>(`/ai/digest${params?.fresh ? "?fresh=1" : ""}`),
 	refreshDigest: () => request<Digest>("/ai/digest/refresh", { method: "POST" }),
+
+	// AGEN-70: analysis participation toggle + cross-session work reports.
+	updateSessionAnalysisSelected: (sessionId: string, selected: boolean) =>
+		request<{ ok: true; selected: boolean }>(`/sessions/${sessionId}/analysis`, {
+			method: "PUT",
+			body: JSON.stringify({ selected }),
+		}),
+
+	previewAnalysis: (body: { sessionIds: string[]; from?: string | null; to?: string | null }) =>
+		request<AnalysisPreview | AnalysisRefusalBody>("/ai/analysis/preview", {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
+
+	createAnalysisRun: (body: { sessionIds: string[]; from?: string | null; to?: string | null }) =>
+		request<AnalysisRunView | AnalysisRefusalBody>("/ai/analysis/runs", {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
+
+	getAnalysisRuns: (limit = 30) =>
+		request<{ runs: AnalysisRunView[] }>(`/ai/analysis/runs?limit=${limit}`),
+
+	getAnalysisRun: (id: string) => request<AnalysisRunView>(`/ai/analysis/runs/${id}`),
+
+	cancelAnalysisRun: (id: string) =>
+		request<{ ok: true }>(`/ai/analysis/runs/${id}/cancel`, { method: "POST" }),
 
 	getLaunchRecommendation: (body: {
 		template: Record<string, unknown>;

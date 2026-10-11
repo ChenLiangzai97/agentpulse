@@ -40,6 +40,7 @@ import { hookRateLimit } from "../middleware/hook-rate-limit.js";
 import { logAdminAction } from "../services/audit-log.js";
 import {
 	NotOwnerError,
+	assertCanAnalysisSelectSession,
 	assertCanArchiveSession,
 	assertCanDeleteSession,
 	assertCanEditSessionNotes,
@@ -414,6 +415,18 @@ sessionsRouter.get("/sessions", async (c) => {
 	// server-side — see excludeScratch in session-tracker.ts.
 	const excludeScratch = c.req.query("excludeScratch") === "true";
 
+	// AGEN-70: "only sessions marked for analysis participation". Validated
+	// like `operational`: an unrecognized value 400s instead of silently
+	// matching zero rows.
+	const analysisParam = c.req.query("analysis");
+	if (analysisParam !== undefined && analysisParam !== "selected") {
+		return c.json(
+			{ error: "invalid_analysis", value: echoed(analysisParam), allowed: ["selected"] },
+			400,
+		);
+	}
+	const analysisSelected = analysisParam === "selected";
+
 	// AGEN: whose sessions — one scope for the rows, the total and (via the
 	// stats route) the counts. See ownerScopeFromQuery.
 	const ownerResult = ownerScopeFromQuery(c);
@@ -443,7 +456,19 @@ sessionsRouter.get("/sessions", async (c) => {
 			return c.json({ sessions: [], ownerScope, hostFilter });
 		}
 		const rows = await getSessionSummaries(
-			{ status, tab, agentType, projectId, q, excludeScratch, owner, host, limit, offset },
+			{
+				status,
+				tab,
+				agentType,
+				projectId,
+				q,
+				excludeScratch,
+				analysisSelected,
+				owner,
+				host,
+				limit,
+				offset,
+			},
 			fields as SessionListField[],
 		);
 		return c.json({ sessions: rows, ownerScope, hostFilter });
@@ -462,6 +487,7 @@ sessionsRouter.get("/sessions", async (c) => {
 			operational,
 			q,
 			excludeScratch,
+			analysisSelected,
 			owner,
 			host,
 			limit,
@@ -474,6 +500,14 @@ sessionsRouter.get("/sessions", async (c) => {
 // GET /api/v1/sessions/stats - Dashboard stats
 sessionsRouter.get("/sessions/stats", async (c) => {
 	const excludeScratch = c.req.query("excludeScratch") === "true";
+	const analysisParam = c.req.query("analysis");
+	if (analysisParam !== undefined && analysisParam !== "selected") {
+		return c.json(
+			{ error: "invalid_analysis", value: echoed(analysisParam), allowed: ["selected"] },
+			400,
+		);
+	}
+	const analysisSelected = analysisParam === "selected";
 	const ownerResult = ownerScopeFromQuery(c);
 	if ("refusal" in ownerResult) return ownerResult.refusal;
 	const owner = ownerResult.scope;
@@ -499,7 +533,7 @@ sessionsRouter.get("/sessions/stats", async (c) => {
 					: emptyStats();
 		return c.json({ ownerScope, hostFilter, ...empty });
 	}
-	const options = { excludeScratch, owner, host };
+	const options = { excludeScratch, analysisSelected, owner, host };
 	return orBusy(c, async () => {
 		if (groupBy === "owner") {
 			return c.json({ ownerScope, hostFilter, ...(await getStatsByOwner(options)) });
@@ -809,6 +843,30 @@ sessionsRouter.put("/sessions/:sessionId/pin", async (c) => {
 	await broadcastSession(sessionId);
 
 	return c.json({ ok: true });
+});
+
+// PUT /api/v1/sessions/:sessionId/analysis - Toggle analysis participation
+// (AGEN-70). The persistent per-session consent that gates analysis-report
+// generation. Independent of pin/archive/watcher; default off; un-selecting
+// stops future runs from including the session but never rewrites history.
+sessionsRouter.put("/sessions/:sessionId/analysis", async (c) => {
+	const sessionId = c.req.param("sessionId");
+	const body = await readJsonObject(c);
+	if (!body || typeof body.selected !== "boolean") return invalidBody(c);
+	const { selected } = body;
+	const refusal = await refuseUnlessOwnerOrAdmin(c, sessionId, assertCanAnalysisSelectSession);
+	if (refusal) return refusal;
+
+	await getDb()
+		.update(sessions)
+		.set({
+			analysisSelected: selected,
+			analysisSelectedAt: selected ? new Date().toISOString() : null,
+		})
+		.where(eq(sessions.sessionId, sessionId));
+	await broadcastSession(sessionId);
+
+	return c.json({ ok: true, selected });
 });
 
 // PATCH /api/v1/sessions/:sessionId/owner - { ownerUserId | null }. An admin (or an

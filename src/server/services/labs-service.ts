@@ -99,6 +99,13 @@ export const LABS_REGISTRY: readonly LabsFlagDefinition[] = [
 			"Summary tab on each session: what it set out to do, what changed, what was checked, what's left. Nothing is sent to your AI provider until you ask for a summary.",
 		defaultEnabled: false,
 	},
+	{
+		key: "analysisReports",
+		label: "Analysis reports",
+		description:
+			"Select sessions for analysis, then generate cross-session, cross-machine work reports at /analysis. Only sessions you marked 'include in analysis' ever reach the model; every report carries its input coverage.",
+		defaultEnabled: false,
+	},
 ] as const;
 
 // Compile-time assertion: every shared LabsFlag must have a registry

@@ -39,6 +39,7 @@ export { aiActionRequestsPg as aiActionRequests } from "../src/server/db/schema/
 export { aiPendingProjectDraftsPg as aiPendingProjectDrafts } from "../src/server/db/schema/ai/ai-pending-project-drafts";
 export { aiQaCachePg as aiQaCache } from "../src/server/db/schema/ai/ai-qa-cache";
 export { aiSessionSummariesPg as aiSessionSummaries } from "../src/server/db/schema/ai/ai-session-summaries";
+export { aiAnalysisRunsPg as aiAnalysisRuns } from "../src/server/db/schema/ai/ai-analysis-runs";
 // eventEmbeddings intentionally omitted — SQLite-only (Decision 3).
 
 // ask-projects/

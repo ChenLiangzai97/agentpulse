@@ -433,6 +433,12 @@ type SessionListFilters = {
 	 */
 	excludeScratch?: boolean;
 	/**
+	 * AGEN-70: only sessions the user marked for analysis participation.
+	 * Opt-in like excludeScratch: omitted leaves every existing caller's
+	 * query shape unchanged.
+	 */
+	analysisSelected?: boolean;
+	/**
 	 * Whose sessions (AGEN): one scope shared by the plain list, the
 	 * operational candidate scan and every stats query, so rows, totals and
 	 * counts describe the same set. Omitted = everyone.
@@ -519,6 +525,7 @@ function sharedFilterConditions(
 	if (filters?.projectId) conditions.push(eq(sessions.projectId, filters.projectId));
 	const notScratch = filters?.excludeScratch ? notScratchCondition(scratchProjectIds) : undefined;
 	if (notScratch) conditions.push(notScratch);
+	if (filters?.analysisSelected) conditions.push(eq(sessions.analysisSelected, true));
 	const search = searchCondition(filters?.q);
 	if (search) conditions.push(search);
 	const owner = ownerScopeCondition(filters?.owner);
@@ -978,6 +985,7 @@ function filtersKey(filters: SessionListFilters | undefined): string {
 		filters?.projectId ?? null,
 		filters?.q?.trim() || null,
 		filters?.excludeScratch === true,
+		filters?.analysisSelected === true,
 		owner ? [owner.kind, owner.kind === "user" ? owner.userId : null] : null,
 		filters?.host
 			? [filters.host.kind, filters.host.kind === "host" ? filters.host.host : null]
@@ -1292,6 +1300,7 @@ export async function getSession(sessionId: string) {
 // Get dashboard stats
 export function getStats(options?: {
 	excludeScratch?: boolean;
+	analysisSelected?: boolean;
 	owner?: OwnerScope;
 	host?: HostScope;
 }): Promise<StatsResult> {
@@ -1302,6 +1311,7 @@ const statsInFlight = createInFlight<StatsResult>();
 
 async function computeStats(options?: {
 	excludeScratch?: boolean;
+	analysisSelected?: boolean;
 	owner?: OwnerScope;
 	host?: HostScope;
 }) {
@@ -1310,6 +1320,7 @@ async function computeStats(options?: {
 	// concurrent caller asking only for the scan (the operational list) joins it.
 	const filters: SessionListFilters = {
 		excludeScratch: options?.excludeScratch,
+		analysisSelected: options?.analysisSelected,
 		owner: options?.owner,
 		host: options?.host,
 	};
@@ -1608,6 +1619,7 @@ function ownerGroupKey(owner: { ownerUserId: string | null; hasKey: boolean }): 
  */
 export function getStatsByOwner(options?: {
 	excludeScratch?: boolean;
+	analysisSelected?: boolean;
 	owner?: OwnerScope;
 	host?: HostScope;
 }): Promise<OwnerStatsBody> {
@@ -1620,11 +1632,13 @@ const statsByOwnerInFlight = createInFlight<OwnerStatsBody>();
 
 async function computeStatsByOwner(options?: {
 	excludeScratch?: boolean;
+	analysisSelected?: boolean;
 	owner?: OwnerScope;
 	host?: HostScope;
 }): Promise<OwnerStatsBody> {
 	const filters: SessionListFilters = {
 		excludeScratch: options?.excludeScratch,
+		analysisSelected: options?.analysisSelected,
 		owner: options?.owner,
 		host: options?.host,
 	};
@@ -1701,6 +1715,7 @@ type HostStatsBody = Omit<HostStatsResponse, "ownerScope" | "hostFilter">;
  */
 export function getStatsByHost(options?: {
 	excludeScratch?: boolean;
+	analysisSelected?: boolean;
 	owner?: OwnerScope;
 	host?: HostScope;
 }): Promise<HostStatsBody> {
@@ -1739,11 +1754,13 @@ function byMachineName(a: HostStatsGroup, b: HostStatsGroup): number {
 
 async function computeStatsByHost(options?: {
 	excludeScratch?: boolean;
+	analysisSelected?: boolean;
 	owner?: OwnerScope;
 	host?: HostScope;
 }): Promise<HostStatsBody> {
 	const filters: SessionListFilters = {
 		excludeScratch: options?.excludeScratch,
+		analysisSelected: options?.analysisSelected,
 		owner: options?.owner,
 		host: options?.host,
 	};

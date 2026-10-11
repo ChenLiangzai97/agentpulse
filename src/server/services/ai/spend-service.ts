@@ -264,7 +264,7 @@ export async function topUpReservation(
  */
 export async function settleReservedSpend(
 	reservation: SpendReservation,
-	{ sessionId, actualCents }: { sessionId: string; actualCents: number },
+	{ sessionId, actualCents }: { sessionId: string | null; actualCents: number },
 ): Promise<void> {
 	const state = stateOf(reservation);
 	assertCents(actualCents, "actualCents");
@@ -275,7 +275,7 @@ export async function settleReservedSpend(
 			await adjustDay(state.date, actualCents - state.cents);
 			state.dayMoved = true;
 		}
-		if (actualCents > 0 && !state.sessionCredited) {
+		if (actualCents > 0 && sessionId !== null && !state.sessionCredited) {
 			await getDb()
 				.update(sessions)
 				.set({ aiSpendCents: sql`${sessions.aiSpendCents} + ${actualCents}` })

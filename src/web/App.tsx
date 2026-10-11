@@ -49,6 +49,9 @@ const InboxPage = lazy(() =>
 const DigestPage = lazy(() =>
 	import("./pages/DigestPage.js").then((module) => ({ default: module.DigestPage })),
 );
+const AnalysisPage = lazy(() =>
+	import("./pages/AnalysisPage.js").then((module) => ({ default: module.AnalysisPage })),
+);
 const AskPage = lazy(() =>
 	import("./pages/AskPage.js").then((module) => ({ default: module.AskPage })),
 );
@@ -209,6 +212,7 @@ export function App() {
 						<Route path="/launches/:launchId" element={<LaunchDetailPage />} />
 						<Route path="/inbox" element={<InboxPage />} />
 						<Route path="/digest" element={<DigestPage />} />
+						<Route path="/analysis" element={<AnalysisPage />} />
 						<Route path="/ask" element={<AskPage />} />
 						<Route path="/search" element={<SearchPage />} />
 						<Route path="/hosts" element={<HostsPage />} />

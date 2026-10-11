@@ -37,6 +37,7 @@ export { aiActionRequestsSqlite as aiActionRequests } from "../src/server/db/sch
 export { aiPendingProjectDraftsSqlite as aiPendingProjectDrafts } from "../src/server/db/schema/ai/ai-pending-project-drafts";
 export { aiQaCacheSqlite as aiQaCache } from "../src/server/db/schema/ai/ai-qa-cache";
 export { aiSessionSummariesSqlite as aiSessionSummaries } from "../src/server/db/schema/ai/ai-session-summaries";
+export { aiAnalysisRunsSqlite as aiAnalysisRuns } from "../src/server/db/schema/ai/ai-analysis-runs";
 // eventEmbeddings is SQLite-only (Decision 3 / no pgTable equivalent).
 export { eventEmbeddingsSqlite as eventEmbeddings } from "../src/server/db/schema/ai/event-embeddings";
 

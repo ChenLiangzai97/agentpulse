@@ -57,6 +57,12 @@ const navItems: NavItem[] = [
 		labsFlag: "digest",
 	},
 	{
+		to: "/analysis",
+		label: "Analysis",
+		icon: "M9 17v-6h13M9 9V3h13v12M4.5 8.5a2.5 2.5 0 105 0 2.5 2.5 0 10-5 0M4.5 15.5a2.5 2.5 0 105 0 2.5 2.5 0 10-5 0",
+		labsFlag: "analysisReports",
+	},
+	{
 		to: "/ask",
 		label: "Ask",
 		icon: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z",

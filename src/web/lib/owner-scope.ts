@@ -15,6 +15,8 @@ export const OWNER_SERVICE = "service";
 export interface DashboardScope {
 	owner: OwnerParam;
 	excludeScratch: boolean;
+	/** AGEN-70: only sessions marked for analysis participation. */
+	analysisOnly?: boolean;
 	/** Which machine's sessions (see host-scope.ts); absent or empty is every machine. */
 	host?: string;
 }
@@ -22,6 +24,7 @@ export interface DashboardScope {
 export interface ScopeQuery {
 	owner?: string;
 	excludeScratch?: boolean;
+	analysis?: "selected";
 	host?: string;
 }
 
@@ -56,6 +59,7 @@ export function scopeQuery(scope: DashboardScope): ScopeQuery {
 	const query: ScopeQuery = {};
 	if (scope.owner !== OWNER_ALL) query.owner = scope.owner;
 	if (scope.excludeScratch) query.excludeScratch = true;
+	if (scope.analysisOnly) query.analysis = "selected";
 	if (scope.host) query.host = scope.host;
 	return query;
 }

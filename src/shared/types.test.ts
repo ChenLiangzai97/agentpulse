@@ -200,11 +200,12 @@ describe("shared kind allowlists", () => {
 			"telegramChannel",
 			"askAssistant",
 			"sessionSummary",
+			"analysisReports",
 		];
 		for (const flag of expected) {
 			expect(KNOWN_LABS_FLAGS.includes(flag)).toBe(true);
 		}
-		expect(KNOWN_LABS_FLAGS.length).toBe(11);
+		expect(KNOWN_LABS_FLAGS.length).toBe(12);
 		expect(KNOWN_LABS_FLAGS.includes("bogusFlag" as LabsFlag)).toBe(false);
 	});
 

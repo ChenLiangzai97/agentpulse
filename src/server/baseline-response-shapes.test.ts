@@ -370,6 +370,8 @@ describe("sessions and api-keys endpoints for a manage caller — baseline shape
 		expect(renameRes.status).toBe(200);
 
 		const sessionShape = {
+			analysisSelected: false,
+			analysisSelectedAt: null,
 			agentType: "claude_code",
 			aiSpendCents: 0,
 			claudeMdChecksum: null,

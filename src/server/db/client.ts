@@ -1142,6 +1142,42 @@ async function runLegacySqliteInit(sqlite: Database): Promise<void> {
 		// unauthenticated). Mirrors the drizzle migrations for installs on the
 		// legacy init path.
 		"ALTER TABLE sessions ADD COLUMN reported_host TEXT",
+		// AGEN-70: per-session analysis participation consent. Mirrors migration
+		// 0012 for installs on the legacy init path.
+		"ALTER TABLE sessions ADD COLUMN analysis_selected INTEGER NOT NULL DEFAULT 0",
+		"ALTER TABLE sessions ADD COLUMN analysis_selected_at TEXT",
+		// AGEN-70: one row per analysis-report run over a frozen selection of
+		// sessions. Deliberately no FK to sessions — frozen scope must survive
+		// session deletion. Column order matches the Drizzle schema and
+		// migration 0012; ai-analysis-runs.test.ts pins it.
+		`CREATE TABLE IF NOT EXISTS ai_analysis_runs (
+			id TEXT PRIMARY KEY NOT NULL,
+			status TEXT NOT NULL DEFAULT 'queued',
+			requested_by TEXT NOT NULL,
+			time_from TEXT,
+			time_to TEXT,
+			scope_sessions TEXT NOT NULL,
+			lease_owner TEXT,
+			lease_expires_at TEXT,
+			attempt_count INTEGER NOT NULL DEFAULT 0,
+			last_error_code TEXT,
+			started_at TEXT,
+			completed_at TEXT,
+			prompt_version TEXT,
+			provider_kind TEXT,
+			provider_model TEXT,
+			input_tokens INTEGER NOT NULL DEFAULT 0,
+			output_tokens INTEGER NOT NULL DEFAULT 0,
+			cost_cents INTEGER NOT NULL DEFAULT 0,
+			excluded_session_ids TEXT,
+			coverage TEXT,
+			report TEXT,
+			provenance TEXT,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		"CREATE INDEX IF NOT EXISTS idx_ai_analysis_runs_status_lease ON ai_analysis_runs(status, lease_expires_at)",
+		"CREATE INDEX IF NOT EXISTS idx_ai_analysis_runs_created ON ai_analysis_runs(created_at)",
 	];
 
 	// Vector search opt-in. The embeddings table only materializes when

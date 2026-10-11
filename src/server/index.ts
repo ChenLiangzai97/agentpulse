@@ -6,6 +6,11 @@ import { handleTelegramUpdate } from "./routes/channels.js";
 import { markDbReady } from "./routes/health.js";
 import { getInFlightCount } from "./routes/ingest-counters.js";
 import { handleServerRequest } from "./server-fetch.js";
+import {
+	kickAnalysisWorker,
+	recoverInterruptedAnalysisRuns,
+	stopAnalysisWorker,
+} from "./services/ai/analysis/runs-service.js";
 import { embedEvent, startBackfillIfNeeded } from "./services/ai/embeddings/embedding-service.js";
 import { validateAiStartupConfig } from "./services/ai/feature.js";
 import { maybeStartWatcherRunner } from "./services/ai/runner.js";
@@ -69,6 +74,7 @@ async function gracefulExit(reason: string, code = 0): Promise<never> {
 	// A summary generation still running is marked interrupted and its spend settled now,
 	// rather than left "generating" until its lease lapses (bounded to 2 s inside).
 	await releaseOwnSummaryClaims().catch(() => {});
+	await stopAnalysisWorker().catch(() => {});
 	const start = Date.now();
 	while (getInFlightCount() > 0 && Date.now() - start < MAX_DRAIN_MS) {
 		await new Promise((r) => setTimeout(r, 100));
@@ -178,6 +184,19 @@ try {
 await recoverInterruptedSummaries().catch((err) => {
 	console.error("[boot] summary recovery failed:", err instanceof Error ? err.name : "unknown");
 });
+// An analysis run the previous process left "running" is failed as interrupted
+// (single-replica SQLite; on Postgres the lease reclaim covers it), and queued
+// runs from before the restart start executing again.
+await recoverInterruptedAnalysisRuns()
+	.catch((err) => {
+		console.error(
+			"[boot] analysis run recovery failed:",
+			err instanceof Error ? err.name : "unknown",
+		);
+	})
+	.finally(() => {
+		kickAnalysisWorker();
+	});
 // The default key is minted before the warning looks for unlisted admin service keys.
 const defaultKey = await ensureDefaultKeyThenWarn();
 await warnAboutRiskySubjectSourceAdmins();

@@ -582,11 +582,14 @@ describe("display only: the reported host decides nothing", () => {
 			"db/schema/core/sessions.ts",
 			"services/event-dedup.ts",
 			"db/client.ts",
-			// The effective machine for the dashboard's filter and grouping: the one read site.
-			"services/effective-machine.ts",
-			// The one cleaner of a supervisor's host name, applied where it is written.
-			"services/machine-name.ts",
-		]);
+		// The effective machine for the dashboard's filter and grouping: the one read site.
+		"services/effective-machine.ts",
+		// The one cleaner of a supervisor's host name, applied where it is written.
+		"services/machine-name.ts",
+		// AGEN-70: the analysis run's frozen scope and coverage carry the host for
+		// display ("which machine contributed what") — never for access or routing.
+		"services/ai/analysis/runs-service.ts",
+	]);
 
 		// Positive control: the matcher does flag a reader.
 		expect(MENTION.test("if (session.reportedHost === x) allow()")).toBe(true);

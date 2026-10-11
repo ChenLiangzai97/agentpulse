@@ -156,6 +156,7 @@ export const KNOWN_LABS_FLAGS = [
 	"telegramChannel",
 	"askAssistant",
 	"sessionSummary",
+	"analysisReports",
 ] as const;
 export type LabsFlag = (typeof KNOWN_LABS_FLAGS)[number];
 export type LabsFlags = Record<LabsFlag, boolean>;
@@ -446,6 +447,15 @@ export interface Session {
 	metadata: Record<string, unknown>;
 	projectId: string | null;
 	isArchived: boolean;
+	/**
+	 * Analysis participation (AGEN-70): the user's persistent, per-session
+	 * consent for this session's recorded content to enter analysis-report
+	 * generation. Independent of archive/pin/watcher state. Default false; new
+	 * sessions are never auto-selected. Optional: an older server won't send it.
+	 */
+	analysisSelected?: boolean;
+	/** When analysis participation was last toggled on (ISO-8601 Z), null when off/never. */
+	analysisSelectedAt?: string | null;
 	/**
 	 * Acknowledgement model. `lastAgentTurnCompletedAt` is set on every Stop;
 	 * `lastUserAcknowledgedAt` on every UserPromptSubmit and UserAcknowledge.
