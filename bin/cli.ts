@@ -67,7 +67,7 @@ function printHelp() {
     npx agentpulse --help       Show this help
 
   Not running from a checkout? The MCP server also ships as a standalone
-  package — \`npx agentpulse-mcp serve\` / \`npx agentpulse-mcp install\` work
+  package — \`npx @craze0/agentpulse-mcp serve\` / \`npx @craze0/agentpulse-mcp install\` work
   without cloning this repo. See packages/agentpulse-mcp/README.md.
 
   mcp install flags:

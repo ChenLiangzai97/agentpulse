@@ -1,15 +1,20 @@
 #!/usr/bin/env bun
 /**
- * Architecture guard: nothing tracked refers to the `@agentpulse` npm scope.
+ * Architecture guard: nothing tracked tells anyone to install the MCP package
+ * under a name we don't own.
  *
- * That scope belongs to an unrelated project. The MCP server package is
- * published as the unscoped `agentpulse-mcp`; a doc, an install command or a
- * config emitter that names the scoped form tells users to run code another
- * party controls. The only place the scoped name may still appear is the
- * history in CHANGELOG.md (every section after `[Unreleased]`), which records
- * what earlier notes said.
+ * The `@agentpulse` npm scope belongs to an unrelated project, and the
+ * unscoped `agentpulse-mcp` is refused by npm as too similar to the existing
+ * `agent-pulse-mcp`, so whoever is allowed to publish it later isn't us. The
+ * package is published as `@craze0/agentpulse-mcp`. A doc, an install command
+ * or a config emitter that names the scope, or runs the unscoped name as a
+ * package (`npx agentpulse-mcp`, `agentpulse-mcp@<version>`), tells users to run
+ * code another party controls. The installed command is still `agentpulse-mcp`;
+ * only package specs are checked. The one exemption is the history in
+ * CHANGELOG.md (every section after `[Unreleased]`), which records what earlier
+ * notes said.
  *
- * The literal is assembled in code so this file does not trip its own scan.
+ * This file and its test are not scanned: they spell out the names they look for.
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -18,7 +23,10 @@ import { join } from "node:path";
 const ROOT = new URL("..", import.meta.url).pathname;
 export const FOREIGN_SCOPE = `${"@"}agentpulse/`;
 const MCP_PACKAGE_JSON = "packages/agentpulse-mcp/package.json";
-const EXPECTED_PACKAGE_NAME = "agentpulse-mcp";
+export const EXPECTED_PACKAGE_NAME = "@craze0/agentpulse-mcp";
+/** The unscoped name used as a package spec: run by npx/bunx, or pinned to a version. */
+export const UNSCOPED_PACKAGE_SPEC =
+	/(?:\b(?:npx|bunx)(?:\s+-y)?\s+agentpulse-mcp\b)|(?:(?<![\w@/.-])agentpulse-mcp@)/;
 
 export interface ScannedFile {
 	path: string;
@@ -31,14 +39,21 @@ export function scannableText(path: string, text: string): string {
 	return text.split(/^## \[(?!Unreleased\])/m)[0] ?? "";
 }
 
-/** `path:line` for each line that names the scope. */
+/** This guard's own files spell out what they look for. */
+const SELF = new Set([
+	"scripts/check-no-foreign-npm-scope.ts",
+	"scripts/check-no-foreign-npm-scope.test.ts",
+]);
+
+/** `path:line` for each line that names the scope or runs the unscoped name as a package. */
 export function findScopeViolations(files: ScannedFile[]): string[] {
 	const out: string[] = [];
 	for (const { path, text } of files) {
+		if (SELF.has(path)) continue;
 		scannableText(path, text)
 			.split("\n")
 			.forEach((line, i) => {
-				if (line.includes(FOREIGN_SCOPE))
+				if (line.includes(FOREIGN_SCOPE) || UNSCOPED_PACKAGE_SPEC.test(line))
 					out.push(`${path}:${i + 1}: ${line.trim().slice(0, 140)}`);
 			});
 	}
@@ -78,12 +93,12 @@ function main(): void {
 	}
 	if (violations.length > 0) {
 		console.error(
-			`FAIL: the ${FOREIGN_SCOPE} npm scope is not ours; the MCP package is "${EXPECTED_PACKAGE_NAME}":`,
+			`FAIL: neither the ${FOREIGN_SCOPE} scope nor the unscoped name is ours; the MCP package is "${EXPECTED_PACKAGE_NAME}":`,
 		);
 		for (const v of violations) console.error(`  ${v}`);
 		process.exit(1);
 	}
-	console.log(`OK: no tracked file names the foreign npm scope (${files.length} files scanned)`);
+	console.log(`OK: no tracked file names a package we don't own (${files.length} files scanned)`);
 }
 
 if (import.meta.main) main();

@@ -7,7 +7,7 @@ describe("check-no-foreign-npm-scope", () => {
 	test("a plain file naming the scoped package is reported with its line", () => {
 		const hits = findScopeViolations([
 			{ path: "README.md", text: `intro\nnpx ${OLD_NAME} serve\n` },
-			{ path: "docs/clean.md", text: "npx agentpulse-mcp serve\n" },
+			{ path: "docs/clean.md", text: "npx @craze0/agentpulse-mcp serve\n" },
 		]);
 		expect(hits).toHaveLength(1);
 		expect(hits[0]).toStartWith("README.md:2:");
@@ -36,5 +36,18 @@ describe("check-no-foreign-npm-scope", () => {
 	test("the exemption is for CHANGELOG.md only", () => {
 		const text = `## [0.8.0]\n${OLD_NAME}\n`;
 		expect(findScopeViolations([{ path: "docs/CHANGELOG.md", text }])).toHaveLength(1);
+	});
+
+	test("the unscoped name run or pinned as a package is reported; the command name is not", () => {
+		const hit = (text: string) => findScopeViolations([{ path: "doc.md", text }]).length;
+		expect(hit("npx agentpulse-mcp serve")).toBe(1);
+		expect(hit("npx -y agentpulse-mcp@0.2.0 serve")).toBe(1);
+		expect(hit("bunx agentpulse-mcp serve")).toBe(1);
+		expect(hit('args: ["-y", "agentpulse-mcp@0.2.0", "serve"]')).toBe(1);
+		expect(hit("npx -y @craze0/agentpulse-mcp@0.2.0 serve")).toBe(0);
+		expect(hit('args = ["-y", "@craze0/agentpulse-mcp@0.2.0", "serve"]')).toBe(0);
+		expect(hit("agentpulse-mcp install --mint my-agent")).toBe(0);
+		expect(hit("packages/agentpulse-mcp/package.json")).toBe(0);
+		expect(hit("agentpulse-mcp-0.2.0.tgz")).toBe(0);
 	});
 });
