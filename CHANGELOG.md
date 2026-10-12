@@ -17,8 +17,9 @@ section with a `⚠ breaking` prefix so they're easy to spot.
   never published and is not ours: that scope belongs to an unrelated project,
   so nothing should be installed from it. The unscoped `agentpulse-mcp` can't be
   used either: npm refuses it as too similar to the existing `agent-pulse-mcp`.
-  Nothing was ever published under any of these names, so there are no installs
-  to migrate. The older notes below are left as written.
+  Nothing was ever published under the other two names, so there are no installs
+  to migrate. 0.2.0 is the first published version (with npm provenance). The
+  older notes below are left as written.
 
 ## [0.8.0] — 2026-10-05
 
