@@ -7,6 +7,19 @@ section with a `⚠ breaking` prefix so they're easy to spot.
 
 ## [Unreleased]
 
+### Changed
+
+- **The MCP server package is published to npm as `@craze0/agentpulse-mcp`**
+  (the maintainer's own npm scope). `agentpulse mcp install` and the package
+  README now print `npx -y @craze0/agentpulse-mcp@<version> serve` (still pinned
+  to an exact version). The installed command is still `agentpulse-mcp`. The
+  scoped name in earlier release notes, under the `@agentpulse` npm scope, was
+  never published and is not ours: that scope belongs to an unrelated project,
+  so nothing should be installed from it. The unscoped `agentpulse-mcp` can't be
+  used either: npm refuses it as too similar to the existing `agent-pulse-mcp`.
+  Nothing was ever published under any of these names, so there are no installs
+  to migrate. The older notes below are left as written.
+
 ## [0.8.0] — 2026-10-05
 
 ### Added

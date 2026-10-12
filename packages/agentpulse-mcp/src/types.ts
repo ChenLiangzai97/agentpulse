@@ -10,7 +10,7 @@
  * view) and must either stay backward-compatible or bump MIN_SERVER_VERSION.
  *
  * This is a deliberate one-way vendor, not a shared package (D3 option A
- * over option B — a shared @agentpulse/types package is revisited only if a
+ * over option B — a shared types package is revisited only if a
  * third consumer of these wire types appears). The closure below is the
  * transitive dependency set of every type this module's client (client.ts)
  * and its tools/test files reference — not just the ~20 directly imported
