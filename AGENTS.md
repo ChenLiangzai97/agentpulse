@@ -67,7 +67,7 @@ src/
   supervisor/     Local supervisor process (launch/control plane)
 packages/
   agentpulse-mcp/ Standalone MCP server package (publishes to npm as
-                  @agentpulse/mcp; not yet published — run from a checkout via
+                  agentpulse-mcp; not yet published — run from a checkout via
                   `agentpulse mcp serve`/`install` until it is)
 deploy/k8s/       Kubernetes manifests (namespace, deployment, service,
                   ingressroute, middleware, networkpolicy, backup PVC, etc.)
