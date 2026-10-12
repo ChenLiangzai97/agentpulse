@@ -85,6 +85,18 @@ export function clearEmbeddingFixtures(): void {
 	const sqlite = getSqlite();
 	sqlite.exec("DELETE FROM event_embeddings");
 	sqlite.exec("DELETE FROM events");
+	clearOrphanedSearchRows(sqlite);
+}
+
+/**
+ * The events delete trigger only removes the search row of an event whose type is
+ * indexed. A fixture that rewrites event types (or replaces rows) leaves search rows
+ * no delete reaches; with `events` empty the next ids restart at 1 (the table has no
+ * AUTOINCREMENT) and the first indexed insert in any later file hits that rowid.
+ * Emptying `events` therefore empties the search table with it.
+ */
+function clearOrphanedSearchRows(sqlite: ReturnType<typeof getSqlite>): void {
+	sqlite.exec("DELETE FROM search_events_fts");
 }
 
 /** Convenience: `count` events with ids `startId..startId+count-1`, one session per `perSession` events. */
@@ -165,4 +177,5 @@ export function resetEmbeddingWorld(): void {
 	const sqlite = getSqlite();
 	sqlite.exec("DELETE FROM event_embeddings");
 	sqlite.exec("DELETE FROM events");
+	clearOrphanedSearchRows(sqlite);
 }

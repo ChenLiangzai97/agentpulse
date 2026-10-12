@@ -754,6 +754,9 @@ describe("how often it decrypts and scans", () => {
 	});
 });
 
+/** Seeding 41,000 rows took about 4.5 s on a shared CI runner; the test's own limit is 120 s, so a hang still fails it. */
+const LARGE_FIXTURE_GENERATION_DEADLINE_MS = 90_000;
+
 describe("the evidence read", () => {
 	test("TC-5.32 one generation over 41,000 events issues at most 12 own-turn jobs and 16 loader statements", async () => {
 		await H.seedSession(SID);
@@ -767,7 +770,9 @@ describe("the evidence read", () => {
 		script(ok([ids[0]]));
 		const turns = spyOn(ownTurn, "runInOwnTurn");
 		try {
-			const { statements } = await H.captureStatements(() => H.runGeneration(SID));
+			const { statements } = await H.captureStatements(() =>
+				H.runGeneration(SID, H.SOLO, LARGE_FIXTURE_GENERATION_DEADLINE_MS),
+			);
 			// The request's own too-little-activity probe is one job and one statement; the rest is the loader.
 			expect(turns.mock.calls.length - 1).toBeLessThanOrEqual(12);
 			const readsEvents = statements.filter((s) => /\bfrom\s+events\b/i.test(s.text));

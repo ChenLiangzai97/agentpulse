@@ -23,6 +23,7 @@ import {
 	sessions,
 	settings,
 } from "../db/schema/index.js";
+import { executeRows } from "../db/sql-helpers.js";
 import { _resetDrainStateForTest } from "../drain-state.js";
 import { invalidateAiFlagsCache } from "../services/ai/feature.js";
 import type { ProviderKind } from "../services/ai/llm/types.js";
@@ -404,6 +405,23 @@ export async function resetWorld(stub: LlmStubServer | null): Promise<void> {
 	stub?.reset();
 }
 
+const STRAGGLER_WAIT_MS = 30_000;
+
+/** Waits for the promises to settle, but never longer than `ms`: a straggler is reported by the guard, not waited on forever. */
+async function settleWithin(promises: Promise<unknown>[], ms: number): Promise<void> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		await Promise.race([
+			Promise.allSettled(promises),
+			new Promise<void>((resolve) => {
+				timer = setTimeout(resolve, ms);
+			}),
+		]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 /**
  * The `afterEach` of every summary test (P5-28): reports what the test left behind, then resets.
  * A generation still running, or a request the stub had no script for, is a failure of the
@@ -415,6 +433,8 @@ export async function afterEachGuard(stub: LlmStubServer | null): Promise<void> 
 	const running = _summaryGenerationCountForTest();
 	const unscripted = stub?.unscripted.map((r) => `${r.shape} ${r.path}`) ?? [];
 	stub?.releaseGates();
+	if (running > 0) await settleWithin(startedGenerations, STRAGGLER_WAIT_MS);
+	startedGenerations.length = 0;
 	await resetWorld(stub);
 	const problems: string[] = [];
 	if (running > 0) problems.push(`${running} generation(s) still running`);
@@ -452,11 +472,16 @@ export const asTeamMember = (subject: string): SummaryRequestCaller => ({
 	actor: { userId: subject, label: "user", role: "member", mode: "team" },
 });
 
-export function request(
+/** Every generation this test started, so the guard can wait for one that outlived its test. */
+const startedGenerations: Promise<void>[] = [];
+
+export async function request(
 	sessionId: string,
 	caller: SummaryRequestCaller = SOLO,
 ): Promise<SummaryRequestResult> {
-	return requestSummaryGeneration(sessionId, caller);
+	const result = await requestSummaryGeneration(sessionId, caller);
+	if (result.kind === "started") startedGenerations.push(result.done);
+	return result;
 }
 
 /** Requests a generation, requires it to have started, and returns its `done` (wrapped: a bare promise would be flattened by `await`). */
@@ -469,16 +494,43 @@ export async function startGeneration(
 	return { done: result.done };
 }
 
-/** Requests a generation and waits for it to end (every test settles what it starts, C-5). */
+export const GENERATION_DEADLINE_MS = 20_000;
+
+/** What the database is doing right now, for a deadline message: a hang names its wait instead of just its length. */
+async function activeStatements(): Promise<string> {
+	if (config.dialect !== "postgres") return "";
+	try {
+		const rows = await executeRows<{ state: string; wait: string | null; query: string }>(
+			getDb(),
+			sql`SELECT state, concat_ws(':', wait_event_type, wait_event) AS wait, left(query, 160) AS query
+				FROM pg_stat_activity
+				WHERE datname = current_database() AND pid <> pg_backend_pid() AND state <> 'idle'`,
+		);
+		return ` [database activity: ${JSON.stringify(rows)}]`;
+	} catch {
+		return "";
+	}
+}
+
+/**
+ * Requests a generation and waits for it to end (every test settles what it starts, C-5).
+ * `deadlineMs` is for a test whose fixture is large enough that the default is not a
+ * hang detector on a slow shared runner.
+ */
 export async function runGeneration(
 	sessionId: string,
 	caller: SummaryRequestCaller = SOLO,
+	deadlineMs = GENERATION_DEADLINE_MS,
 ): Promise<void> {
-	await withDeadline(
-		(await startGeneration(sessionId, caller)).done,
-		20_000,
-		`generation of ${sessionId}`,
-	);
+	const { done } = await startGeneration(sessionId, caller);
+	try {
+		await withDeadline(done, deadlineMs, `generation of ${sessionId}`);
+	} catch (error) {
+		if (error instanceof Error && error.message.includes("not settled")) {
+			error.message += await activeStatements();
+		}
+		throw error;
+	}
 }
 
 export function refusalOf(result: SummaryRequestResult): string | null {
