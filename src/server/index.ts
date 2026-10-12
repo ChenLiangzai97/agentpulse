@@ -26,6 +26,7 @@ import { assertBootable, warnAboutRiskySubjectSourceAdmins } from "./services/in
 import { ensureBootstrapAdmin } from "./services/local-auth-bootstrap.js";
 import { reapExpiredSessions } from "./services/local-auth-service.js";
 import { sessionBus } from "./services/notifier.js";
+import { startOpenCodeObserver } from "./services/opencode-observer.js";
 import { loadEager as loadProjectsEager } from "./services/projects/cache.js";
 import {
 	listProjects,
@@ -251,6 +252,15 @@ initWsBroadcaster(sessionBus, { annotate: stampMachine });
 startTelemetry();
 startTranscriptSync();
 void maybeStartWatcherRunner();
+
+// AGEN-71: tail OpenCode's local database (if any) and replay its sessions
+// through this server's own ingest. No-op without ~/.local/share/opencode/
+// opencode.db; AGENTPULSE_OPENCODE_OBSERVER=off disables. When auth is on,
+// give the observer an ingest-capable key via AGENTPULSE_OBSERVER_KEY.
+startOpenCodeObserver(
+	`http://127.0.0.1:${config.port}`,
+	process.env.AGENTPULSE_OBSERVER_KEY ?? null,
+);
 
 // Vector search: kick off any backfill that's pending and wire ingest
 // → fire-and-forget embed. Both no-op when AGENTPULSE_VECTOR_SEARCH is

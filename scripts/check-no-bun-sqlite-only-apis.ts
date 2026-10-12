@@ -51,6 +51,11 @@ const ALLOWLISTED_SUFFIXES = [
 	// `config.dialect === "sqlite"` check at the only call site
 	// (runRetentionPass) — never reached on the Postgres backend.
 	"src/server/services/retention-service.ts",
+	// AGEN-71: the OpenCode observer reads OpenCode's OWN sqlite database
+	// (a foreign schema, read-only, never AgentPulse's db) — raw bun:sqlite
+	// prepared statements are the whole point; there is no Drizzle schema
+	// for it and getDb() is never touched.
+	"src/server/services/opencode-observer.ts",
 	// Phase 0 carry-over (fully resolved in Phase 1): the 5 files that used
 	// sync transaction callbacks are now ported to withTransaction() and
 	// removed from this allowlist. Their remaining tx.* sync calls inside

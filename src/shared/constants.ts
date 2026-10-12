@@ -23,7 +23,7 @@ export const SEMANTIC_STATUSES = [
 // search backend's sessionStatus filter (clarity-slice-h-archive-status-removal).
 export const SESSION_STATUSES = ["active", "idle", "completed", "failed", "archived"] as const;
 
-export const AGENT_TYPES = ["claude_code", "codex_cli", "copilot_cli"] as const;
+export const AGENT_TYPES = ["claude_code", "codex_cli", "copilot_cli", "opencode"] as const;
 
 // Agent types AgentPulse can actively start a process for. Everything in
 // AGENT_TYPES that isn't here is observed-only (D5): it can post hook
@@ -99,6 +99,19 @@ export const AGENT_METADATA: Record<AgentType, AgentMetadata> = {
 		instructionsFile: "AGENTS.md",
 		observeOnlyHint: "Observed only — AgentPulse can't launch or steer Copilot sessions.",
 		hasNameSource: false,
+	},
+	// AGEN-71: OpenCode is observed-only like Copilot — but observed by the
+	// server-side opencode-observer tailing ~/.local/share/opencode/opencode.db,
+	// not by CLI hooks (there is nothing to install; the Setup page has no
+	// tab for it). Session titles arrive through the native-name pull.
+	opencode: {
+		label: "OpenCode",
+		shortLabel: "OpenCode",
+		badgeClass: "bg-cyan-500/8 text-cyan-400/90 border-cyan-500/15",
+		dotClass: "bg-cyan-400/70",
+		instructionsFile: "AGENTS.md",
+		observeOnlyHint: "Observed only — the server tails OpenCode's local database.",
+		hasNameSource: true,
 	},
 };
 

@@ -21,6 +21,8 @@
 export const DELIVERY_ID_HEADER = "X-AgentPulse-Delivery-Id";
 export const ORIGIN_HEADER = "X-AgentPulse-Origin";
 export const ORIGIN_CODEX_OBSERVER = "codex-observer";
+/** AGEN-71: the server-side OpenCode observer stamps this like the codex one. */
+export const ORIGIN_OPENCODE_OBSERVER = "opencode-observer";
 export const CODEX_NATIVE_MARKER_DIR = ".agentpulse/codex-native";
 
 /**

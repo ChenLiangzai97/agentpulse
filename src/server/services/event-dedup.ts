@@ -3,7 +3,7 @@ import {
 	getEventSourcePriority,
 	normalizeComparableContent,
 } from "../../shared/event-authority.js";
-import { ORIGIN_CODEX_OBSERVER } from "../../shared/hook-headers.js";
+import { ORIGIN_CODEX_OBSERVER, ORIGIN_OPENCODE_OBSERVER } from "../../shared/hook-headers.js";
 import type { NormalizedEvent } from "./event-normalizer.js";
 import { parseDbTimestamp } from "./util/db-time.js";
 import { sha256Hex } from "./util/hash.js";
@@ -13,12 +13,12 @@ export type DropReason = "deliveryRetry" | "toolUseRetry" | "contentWindow" | "a
 /** Identity inputs for a hook delivery (Decision 2). `keyId` is the calling
  * API key's id (`authUser.id`; "anonymous" under DISABLE_AUTH). `deliveryId`
  * is the parsed `X-AgentPulse-Delivery-Id` header, or null when absent/
- * malformed. `origin` distinguishes the codex-observer's own posts from
- * everything else (native hooks, Claude Code, a pre-upgrade observer). */
+ * malformed. `origin` distinguishes an observer's own posts (codex, opencode)
+ * from everything else (native hooks, Claude Code, a pre-upgrade observer). */
 export interface HookDeliveryContext {
 	keyId: string;
 	deliveryId: string | null;
-	origin: "native" | "codex-observer";
+	origin: "native" | "codex-observer" | "opencode-observer";
 	/**
 	 * F140 (D21): true only when this delivery is the server-built oversize
 	 * stub (set exclusively by ingest.ts's handleOversizeHookDelivery,
@@ -239,10 +239,13 @@ export function parseDeliveryId(header: string | null | undefined): string | nul
 }
 
 /** Case-insensitive `X-AgentPulse-Origin` header parse. Anything else is "native". */
-export function parseOrigin(header: string | null | undefined): "codex-observer" | "native" {
-	return header?.toLowerCase() === ORIGIN_CODEX_OBSERVER.toLowerCase()
-		? "codex-observer"
-		: "native";
+export function parseOrigin(
+	header: string | null | undefined,
+): "codex-observer" | "opencode-observer" | "native" {
+	const value = header?.toLowerCase();
+	if (value === ORIGIN_CODEX_OBSERVER) return "codex-observer";
+	if (value === ORIGIN_OPENCODE_OBSERVER) return "opencode-observer";
+	return "native";
 }
 
 const TOOL_KEY_CATEGORIES = new Set(["tool_event", "permission_event"]);

@@ -35,10 +35,11 @@
 // ─── Literal unions (self-contained; mirror src/shared/constants.ts's
 //     `as const` tuples and src/shared/types.ts's inline unions) ─────────
 
-export type AgentType = "claude_code" | "codex_cli" | "copilot_cli";
+export type AgentType = "claude_code" | "codex_cli" | "copilot_cli" | "opencode";
 // Agent types AgentPulse can launch a process for — a subset of AgentType
-// (D5, mirrors src/shared/types.ts's LaunchableAgentType). "copilot_cli" is
-// observe-only (F23): it's in AgentType, deliberately not here.
+// (D5, mirrors src/shared/types.ts's LaunchableAgentType). "copilot_cli" and
+// "opencode" are observe-only (F23/AGEN-71): they're in AgentType,
+// deliberately not here.
 export type LaunchableAgentType = "claude_code" | "codex_cli";
 export type ApprovalPolicy = "default" | "suggest" | "auto" | "manual" | "untrusted" | "on-failure";
 export type SandboxMode = "default" | "workspace-write" | "read-only" | "danger-full-access";
@@ -211,6 +212,10 @@ export interface Session {
 	metadata: Record<string, unknown>;
 	projectId: string | null;
 	isArchived: boolean;
+	// AGEN-70: analysis participation (see src/shared/types.ts — optional so an
+	// older server's DTO still parses).
+	analysisSelected?: boolean;
+	analysisSelectedAt?: string | null;
 	// Acknowledgement model (WAITING vs IDLE): when the agent last finished a
 	// turn (Stop) and when the user last acknowledged a result. Optional for
 	// backward-compat with a server predating the columns; a current server

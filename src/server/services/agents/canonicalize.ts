@@ -178,6 +178,10 @@ export const HOOK_PAYLOAD_CANONICALIZERS: Record<AgentType, Canonicalizer> = {
 	claude_code: identity,
 	codex_cli: identity,
 	copilot_cli: copilotCanonicalizer,
+	// AGEN-71: the opencode observer posts already-canonical payloads
+	// (PascalCase hook_event_name, Claude/Codex field names) — identity,
+	// same as the codex observer's native deliveries.
+	opencode: identity,
 };
 
 /**
