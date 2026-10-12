@@ -110,12 +110,15 @@ const EXPECTED: Record<string, { reply: string; included: string[]; transcript?:
 	},
 };
 
+// File level, not inside describeSqliteOnly: on Postgres that describe registers no hooks, but the
+// mock.module above has already run, so the restore must not depend on it.
+afterAll(() => {
+	mock.module(REGISTRY_PATH, () => realRegistry);
+});
+
 describeSqliteOnly("what an Ask turn answers today", () => {
 	beforeAll(setupAskFixture);
-	afterAll(() => {
-		mock.module(REGISTRY_PATH, () => realRegistry);
-		teardownAskFixture();
-	});
+	afterAll(teardownAskFixture);
 	beforeEach(resetAskWorld);
 
 	for (const c of HANDLED_CASES) {
