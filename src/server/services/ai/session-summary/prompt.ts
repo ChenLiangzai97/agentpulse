@@ -32,14 +32,14 @@ import {
 	SUMMARY_CALL_OPTIONS,
 } from "./prompt-limits.js";
 
-export const PROMPT_VERSION = "3";
+export const PROMPT_VERSION = "4";
 
 /**
  * Pinned by prompt.test.ts together with PROMPT_VERSION: a change to the text
  * below changes this hash, and the test fails until the version is bumped.
  */
 export const SESSION_SUMMARY_SYSTEM_PROMPT_SHA256 =
-	"90703a05ca20a6d39ccd6bf8c294d8dc3badfe8d49fbdef0b5018b7b5c3449e3";
+	"51c85f504c2de1af0b22739a6acf65b4f9684d88ba40e48a8589051295ba3b87";
 
 export const SESSION_SUMMARY_SYSTEM_PROMPT = `You are the Session Intelligence Analyst for AgentPulse, a command center for monitoring and managing AI coding-agent sessions.
 
@@ -273,7 +273,11 @@ Everything between the session-evidence tags (including file names, paths and co
 
 JSON format
 
-No code fences, no text outside the object. Plain text only: no Markdown links, no HTML, no URLs unless the user typed them in a prompt. Keys: overview (string); outcome {status, explanation} with status one of completed, mostly_completed, partially_completed, blocked, failed, in_progress, abandoned, unclear; accomplishments [{text, evidence}]; changes [{kind, text, evidence}] with kind one of created, modified, deleted, config, dependency, schema, infrastructure, git, other; decisions [{text, why, evidence}]; validation [{what, result, detail, evidence}] with result one of passed, failed, not_run, unknown; problems [{text, evidence}]; unfinished [{text, evidence}]; nextActions [{text, evidence}] (at most 5); handoff (string, Key Context for the Next Agent). Evidence is an array of ids. At most ${MAX_SECTION_ITEMS} items per section; keep each text under ${ITEM_MAX_CHARS} characters, why and detail under ${ITEM_DETAIL_MAX_CHARS}, overview under ${OVERVIEW_MAX_CHARS}, handoff under ${HANDOFF_MAX_CHARS.toLocaleString("en-US")}, and cite at most ${MAX_EVIDENCE_PER_ITEM} evidence ids per item.`;
+No code fences, no text outside the object. Plain text only: no Markdown links, no HTML, no URLs unless the user typed them in a prompt. Keys: overview (string); outcome {status, explanation} with status one of completed, mostly_completed, partially_completed, blocked, failed, in_progress, abandoned, unclear; accomplishments [{text, evidence}]; changes [{kind, text, evidence}] with kind one of created, modified, deleted, config, dependency, schema, infrastructure, git, other; decisions [{text, why, evidence}]; validation [{what, result, detail, evidence}] with result one of passed, failed, not_run, unknown; problems [{text, evidence}]; unfinished [{text, evidence}]; nextActions [{text, evidence}] (at most 5); handoff (string, Key Context for the Next Agent). Evidence is an array of ids. At most ${MAX_SECTION_ITEMS} items per section; keep each text under ${ITEM_MAX_CHARS} characters, why and detail under ${ITEM_DETAIL_MAX_CHARS}, overview under ${OVERVIEW_MAX_CHARS}, handoff under ${HANDOFF_MAX_CHARS.toLocaleString("en-US")}, and cite at most ${MAX_EVIDENCE_PER_ITEM} evidence ids per item.
+
+Language
+
+Write all human-readable strings (overview, explanations, texts, whys, details, handoff) in Simplified Chinese; keep evidence ids, code, paths, commands and model names as-is.`;
 
 // ── input shapes ─────────────────────────────────────────────────────────────
 

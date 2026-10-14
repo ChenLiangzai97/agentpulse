@@ -3,11 +3,13 @@ import type { Project, ProjectInput } from "../../shared/types.js";
 import { CleanupWorkareaModal } from "../components/CleanupWorkareaModal.js";
 import { ProjectCard } from "../components/projects/ProjectCard.js";
 import { ProjectForm } from "../components/projects/ProjectForm.js";
+import { useT } from "../i18n/i18n.js";
 import { api } from "../lib/api.js";
 
 type Panel = "none" | "create" | "edit";
 
 export function ProjectsPage() {
+	const t = useT();
 	const [projects, setProjects] = useState<Project[]>([]);
 	const [sessionCounts, setSessionCounts] = useState<Record<string, number>>({});
 	const [loading, setLoading] = useState(true);
@@ -106,7 +108,7 @@ export function ProjectsPage() {
 			<div className="mx-auto max-w-5xl">
 				<div className="flex items-center justify-between mb-6">
 					<div>
-						<h1 className="text-xl font-semibold text-foreground">Projects</h1>
+						<h1 className="text-xl font-semibold text-foreground">{t("projects.title")}</h1>
 						<p className="text-sm text-muted-foreground mt-0.5">
 							Group sessions by working directory.
 						</p>
@@ -125,7 +127,7 @@ export function ProjectsPage() {
 						>
 							<path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
 						</svg>
-						New project
+						{t("projects.newProject")}
 					</button>
 				</div>
 
@@ -143,7 +145,7 @@ export function ProjectsPage() {
 							</div>
 						) : projects.length === 0 ? (
 							<div className="rounded-lg border border-border bg-card p-10 text-center">
-								<p className="text-muted-foreground text-sm">No projects yet.</p>
+								<p className="text-muted-foreground text-sm">{t("projects.noneYet")}</p>
 								<p className="text-muted-foreground text-xs mt-1">
 									Create a project to group sessions by working directory.
 								</p>
@@ -152,7 +154,7 @@ export function ProjectsPage() {
 									onClick={openCreate}
 									className="mt-4 rounded border border-primary/40 px-4 py-2 text-sm text-primary hover:bg-primary/10 transition-colors"
 								>
-									Create your first project
+									{t("projects.createFirst")}
 								</button>
 							</div>
 						) : (
@@ -221,13 +223,13 @@ export function ProjectsPage() {
 			{deleteTarget && (
 				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
 					<div className="rounded-lg border border-border bg-card p-6 w-full max-w-sm mx-4 shadow-xl">
-						<h3 className="text-sm font-semibold text-foreground mb-2">Delete project</h3>
+						<h3 className="text-sm font-semibold text-foreground mb-2">
+							{t("projects.deleteProject")}
+						</h3>
 						<p className="text-sm text-muted-foreground mb-1">
 							Delete <span className="text-foreground font-medium">{deleteTarget.name}</span>?
 						</p>
-						<p className="text-xs text-muted-foreground mb-5">
-							Sessions will no longer be linked to this project, but they will not be deleted.
-						</p>
+						<p className="text-xs text-muted-foreground mb-5">{t("projects.deleteHint")}</p>
 						<div className="flex gap-2">
 							<button
 								type="button"

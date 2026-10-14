@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useOwnershipUi } from "../../hooks/useOwnershipUi.js";
-import { useT } from "../../i18n/i18n.js";
+import { t } from "../../i18n/i18n.js";
 import {
 	SESSION_SUMMARY_FLAG,
 	labsPointer,
@@ -37,7 +37,6 @@ async function turnOn() {
  * flag is on, or when AI isn't built into this server.
  */
 export function SummaryLabsPointer() {
-	const t = useT();
 	const flags = useLabsStore((s) => s.flags) as Readonly<Record<string, boolean>> | null;
 	const aiBuild = useAiStatusStore(selectAiBuild);
 	const { adminSettingsLocked } = useOwnershipUi();

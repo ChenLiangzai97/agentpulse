@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useT } from "../../i18n/i18n.js";
 import type { TelegramBotInfo, TelegramWebhookInfo } from "../../lib/api.js";
 
 interface CredentialsState {
@@ -36,6 +37,7 @@ export function BotHeader({
 	polling: CredentialsState["polling"];
 	onSetupWebhook: () => void;
 }) {
+	const t = useT();
 	const webhookStatus = (() => {
 		if (!bot.webhookSecretConfigured) return { tone: "warn", text: "secret missing" };
 		if (!webhook) return { tone: "warn", text: "checking…" };
@@ -114,8 +116,8 @@ export function BotHeader({
 			</div>
 			{deliveryMode === "webhook" && !bot.webhookSecretConfigured && (
 				<div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-2 text-[11px] text-amber-200">
-					No webhook secret is set. Click <em>Rotate webhook secret</em> in the status bar above to
-					generate a strong one — Telegram uses it to verify every callback.
+					No webhook secret is set. Click <em>{t("telegram.rotateSecret")}</em> in the status bar
+					above to generate a strong one — Telegram uses it to verify every callback.
 				</div>
 			)}
 		</div>
@@ -136,6 +138,7 @@ export function BotCredentialsStatus({
 	onClear: () => void;
 	onSwitchMode: (mode: "webhook" | "polling") => Promise<{ ok: boolean }>;
 }) {
+	const t = useT();
 	const [rotating, setRotating] = useState(false);
 	const [switching, setSwitching] = useState(false);
 	if (!creds) return null;
@@ -170,7 +173,7 @@ export function BotCredentialsStatus({
 		<div className="rounded-md border border-border bg-background/40 p-3 text-xs space-y-2">
 			<div className="flex items-center justify-between gap-3 flex-wrap">
 				<div>
-					<div className="text-foreground font-medium">Bot credentials</div>
+					<div className="text-foreground font-medium">{t("telegram.botCredentials")}</div>
 					<div className="text-[11px] text-muted-foreground mt-0.5">
 						Token {creds.botTokenHint ?? "—"} · {sourceLabel} · delivery:{" "}
 						<span className="text-foreground">{creds.deliveryMode}</span>
@@ -205,7 +208,7 @@ export function BotCredentialsStatus({
 						onClick={onClear}
 						className="text-[11px] px-2 py-1 rounded border border-border text-red-300 hover:bg-red-500/10"
 					>
-						Remove
+						{t("telegram.remove")}
 					</button>
 				</div>
 			</div>

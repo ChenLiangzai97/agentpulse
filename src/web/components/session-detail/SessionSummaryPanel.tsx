@@ -5,7 +5,7 @@ import type { StoredSessionSummary } from "../../../shared/session-summary.js";
 import { useHeadingFocus } from "../../hooks/useHeadingFocus.js";
 import type { SummaryAnnouncement, UseSessionSummary } from "../../hooks/useSessionSummary.js";
 import { useCopyActions, useGenerateClick } from "../../hooks/useSummaryActions.js";
-import { useT } from "../../i18n/i18n.js";
+import { t, useT } from "../../i18n/i18n.js";
 import type { AiStatusResponse } from "../../lib/api.js";
 import {
 	type ActionState,
@@ -159,7 +159,6 @@ type BodyProps = SessionSummaryPanelProps & {
 };
 
 function PanelBody(props: BodyProps & { copy: (kind: CopyKind) => void; copied: CopyKind | null }) {
-	const t = useT();
 	const { model } = props;
 	switch (model.content.kind) {
 		case "loading":

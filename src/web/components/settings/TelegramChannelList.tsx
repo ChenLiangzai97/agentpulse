@@ -1,3 +1,4 @@
+import { useT } from "../../i18n/i18n.js";
 import type { ChannelStats, NotificationChannelRecord } from "../../lib/api.js";
 import { formatTimeAgo } from "../../lib/utils.js";
 
@@ -18,11 +19,11 @@ export function ChannelList({
 	onDelete: (id: string) => void;
 	onAskToggle: (id: string, askEnabled: boolean) => void;
 }) {
+	const t = useT();
 	if (channels.length === 0) {
 		return (
 			<div className="rounded-md border border-dashed border-border px-4 py-3 text-xs text-muted-foreground">
-				No channels yet. Create one above and link it via Telegram to receive HITL requests on your
-				phone.
+				{t("telegram.noChannels")}
 			</div>
 		);
 	}
@@ -54,7 +55,7 @@ export function ChannelList({
 										onClick={() => onTest(ch.id)}
 										className="text-[11px] px-2 py-1 rounded border border-border text-foreground hover:bg-muted"
 									>
-										Test
+										{t("telegram.test")}
 									</button>
 								)}
 								<button

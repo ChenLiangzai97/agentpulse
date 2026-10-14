@@ -400,7 +400,6 @@ function HitlCard({
 	onResolved: () => void;
 	onError: (err: string) => void;
 }) {
-	const t = useT();
 	const [submitting, setSubmitting] = useState(false);
 	const [customOpen, setCustomOpen] = useState(false);
 	const [customPrompt, setCustomPrompt] = useState(proposal.nextPrompt ?? "");

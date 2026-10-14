@@ -738,7 +738,7 @@ export function DashboardPage() {
 				})
 			: null;
 	const titles = tileTitles(viewKindNow);
-	const listHeadingText = `${statusFilter && filter === "active" ? STATUS_CARD_LABEL[statusFilter] : filter.charAt(0).toUpperCase() + filter.slice(1)} sessions`;
+	const listHeadingText = `${statusFilter && filter === "active" ? t(STATUS_CARD_LABEL_KEY[statusFilter]) : filter.charAt(0).toUpperCase() + filter.slice(1)} sessions`;
 	const viewEveryone = () => chooseOwner(OWNER_ALL);
 	// "Show all of <name>" narrows to that person; focus follows to the Owner select, where the change is.
 	const showAllOf = (ownerId: string) => {
@@ -889,7 +889,7 @@ export function DashboardPage() {
 							<StatCard
 								compact={teamLayout}
 								key={status}
-								label={STATUS_CARD_LABEL[status]}
+								label={t(STATUS_CARD_LABEL_KEY[status])}
 								value={displayCount(stats ? counts[status] : null)}
 								title={stateHelp(viewKindNow, status)}
 								tone={STATUS_CARD_TONE[status]}
@@ -1243,7 +1243,7 @@ export function DashboardPage() {
 							<div className="mb-3 flex items-center gap-2">
 								<span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
 									{statusChipText({
-										label: STATUS_CARD_LABEL[statusFilter],
+										label: t(STATUS_CARD_LABEL_KEY[statusFilter]),
 										listTotal: operationalList.total,
 										cardCount: counts[statusFilter],
 										search: debouncedSearch,
@@ -1252,7 +1252,7 @@ export function DashboardPage() {
 										type="button"
 										onClick={clearStatusFilter}
 										className="ml-1 min-h-[44px] md:min-h-0 inline-flex items-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-										aria-label={`Clear the ${STATUS_CARD_LABEL[statusFilter]} filter`}
+										aria-label={`Clear the ${t(STATUS_CARD_LABEL_KEY[statusFilter])} filter`}
 									>
 										Clear
 									</button>
@@ -1421,11 +1421,11 @@ export function DashboardPage() {
 	);
 }
 
-const STATUS_CARD_LABEL: Record<ActiveOperationalStatus, string> = {
-	waiting: "Waiting",
-	working: "Working",
-	idle: "Idle",
-	error: "Error",
+const STATUS_CARD_LABEL_KEY: Record<ActiveOperationalStatus, string> = {
+	waiting: "status.waiting",
+	working: "status.working",
+	idle: "status.idle",
+	error: "status.error",
 };
 
 /** ERROR strongest, WAITING attention, WORKING active, IDLE neutral (see StatusBadge). */
@@ -1528,7 +1528,9 @@ function StatusHelpPopover({
 					<dl className="space-y-2">
 						{ACTIVE_OPERATIONAL_STATUSES.map((status) => (
 							<div key={status}>
-								<dt className="font-semibold text-foreground">{STATUS_CARD_LABEL[status]}</dt>
+								<dt className="font-semibold text-foreground">
+									{t(STATUS_CARD_LABEL_KEY[status])}
+								</dt>
 								<dd className="text-muted-foreground">{stateHelp(kind, status)}</dd>
 							</div>
 						))}

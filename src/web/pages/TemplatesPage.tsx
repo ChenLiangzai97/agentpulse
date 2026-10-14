@@ -30,10 +30,12 @@ import {
 } from "../components/templates/utils.js";
 import { useHostLabel } from "../hooks/useHostLabel.js";
 import { useNoteUnknownOwners } from "../hooks/useNoteUnknownOwners.js";
+import { useT } from "../i18n/i18n.js";
 import { describeApiError } from "../lib/api-errors.js";
 import { api } from "../lib/api.js";
 
 export function TemplatesPage() {
+	const t = useT();
 	const hostLabel = useHostLabel();
 	const navigate = useNavigate();
 	const [templates, setTemplates] = useState<SessionTemplate[]>([]);
@@ -424,7 +426,9 @@ export function TemplatesPage() {
 			<div className="max-w-7xl space-y-6">
 				<div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
 					<div>
-						<h1 className="text-xl md:text-2xl font-bold text-foreground">Session Templates</h1>
+						<h1 className="text-xl md:text-2xl font-bold text-foreground">
+							{t("templates.title")}
+						</h1>
 						<p className="text-sm text-muted-foreground mt-1 max-w-2xl">
 							Define reusable Claude Code and Codex session setups. Launch requests are executed
 							automatically when a connected supervisor can claim them. Copilot CLI is observed only
@@ -436,7 +440,7 @@ export function TemplatesPage() {
 							onClick={() => resetEditor()}
 							className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
 						>
-							New Template
+							{t("templates.newTemplate")}
 						</button>
 						<span className="text-xs text-muted-foreground">
 							{routingPolicy === "manual_target"
@@ -453,7 +457,7 @@ export function TemplatesPage() {
 				<div className="grid gap-3 md:grid-cols-3">
 					<div className="rounded-lg border border-border bg-card px-4 py-3">
 						<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-							Connected Hosts
+							{t("templates.connectedHosts")}
 						</div>
 						<div className="mt-1 text-2xl font-semibold text-foreground">{connectedHostsCount}</div>
 						<div className="mt-1 text-xs text-muted-foreground">
@@ -462,7 +466,7 @@ export function TemplatesPage() {
 					</div>
 					<div className="rounded-lg border border-border bg-card px-4 py-3">
 						<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-							Compatible Hosts
+							{t("templates.compatibleHosts")}
 						</div>
 						<div className="mt-1 text-2xl font-semibold text-foreground">
 							{compatibleHostsCount}
@@ -473,7 +477,7 @@ export function TemplatesPage() {
 					</div>
 					<div className="rounded-lg border border-border bg-card px-4 py-3">
 						<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-							Recent Launches
+							{t("templates.recentLaunches")}
 						</div>
 						<div className="mt-1 text-2xl font-semibold text-foreground">
 							{recentLaunches.length}

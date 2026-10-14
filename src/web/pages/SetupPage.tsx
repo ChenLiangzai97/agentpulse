@@ -6,6 +6,7 @@ import type { ApiKeyInfo } from "../../shared/types.js";
 import { ExcludeDirectoriesCard } from "../components/ExcludeDirectoriesCard.js";
 import { useCopyFeedback } from "../hooks/useCopyFeedback.js";
 import { useOwnershipUi } from "../hooks/useOwnershipUi.js";
+import { useT } from "../i18n/i18n.js";
 import { describeApiError, keyCreationErrorMessage } from "../lib/api-errors.js";
 import { api } from "../lib/api.js";
 import {
@@ -42,6 +43,7 @@ const CONFIG_FILE: Record<SetupAgentType, string> = {
 };
 
 export function SetupPage() {
+	const t = useT();
 	const { copy } = useCopyFeedback();
 	const [apiKey, setApiKey] = useState("");
 	const serverUrl = window.location.origin;
@@ -292,10 +294,8 @@ export function SetupPage() {
 
 	return (
 		<div className="p-3 md:p-6 max-w-3xl">
-			<h1 className="text-xl md:text-2xl font-bold text-foreground mb-2">Setup</h1>
-			<p className="text-sm text-muted-foreground mb-6">
-				Configure your AI agents to report their activity to AgentPulse.
-			</p>
+			<h1 className="text-xl md:text-2xl font-bold text-foreground mb-2">{t("setup.title")}</h1>
+			<p className="text-sm text-muted-foreground mb-6">{t("setup.subtitle")}</p>
 
 			{/* Step 1: API Key */}
 			<div className="border border-border bg-card rounded-lg p-5 mb-4">
@@ -303,7 +303,7 @@ export function SetupPage() {
 					<span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
 						{stepApiKey}
 					</span>
-					API Key
+					{t("setup.stepApiKey")}
 				</h2>
 
 				{disableAuth ? (
@@ -477,7 +477,7 @@ export function SetupPage() {
 					<span className="w-6 h-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
 						{stepAgentType}
 					</span>
-					Agent Type
+					{t("setup.stepAgentType")}
 				</h2>
 				<div role="radiogroup" aria-label="Agent Type" className="flex flex-col sm:flex-row gap-2">
 					{AGENT_TOGGLE.map((agent) => (
@@ -597,8 +597,8 @@ export function SetupPage() {
 				</h2>
 				<p className="text-xs text-muted-foreground">
 					For orchestration and managed sessions, create host enrollment tokens on the{" "}
-					<span className="font-mono text-foreground">Hosts</span> page. That issues a one-time
-					token a machine can exchange for a persistent scoped supervisor credential. Use{" "}
+					<span className="font-mono text-foreground">{t("hosts.title")}</span> page. That issues a
+					one-time token a machine can exchange for a persistent scoped supervisor credential. Use{" "}
 					<span className="font-mono text-foreground">Rotate</span> to re-enroll a host and replace
 					its credential, or <span className="font-mono text-foreground">Revoke</span> to cut off
 					future supervisor access.

@@ -5,6 +5,7 @@ import { AskProjectPicker } from "../components/AskProjectPicker.js";
 import { AskWorkspaceCloner } from "../components/AskWorkspaceCloner.js";
 import { AskWorkspaceScaffolder } from "../components/AskWorkspaceScaffolder.js";
 import { MarkdownContent } from "../components/MarkdownContent.js";
+import { useT } from "../i18n/i18n.js";
 import { plainErrorMessage } from "../lib/api-errors.js";
 import {
 	type AskMessage,
@@ -30,6 +31,7 @@ import {
  */
 
 export function AskPage() {
+	const t = useT();
 	const [searchParams, setSearchParams] = useSearchParams();
 	const activeThreadId = searchParams.get("thread");
 	const [threads, setThreads] = useState<AskThread[]>([]);
@@ -302,7 +304,7 @@ export function AskPage() {
 						onClick={handleNewThread}
 						className="w-full rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
 					>
-						New conversation
+						{t("ask.newConversation")}
 					</button>
 				</div>
 				<div className="flex-1 overflow-y-auto">
@@ -373,7 +375,7 @@ export function AskPage() {
 			<div className="flex-1 flex flex-col min-w-0">
 				<div className="px-4 py-3 border-b border-border flex items-center justify-between">
 					<div>
-						<h1 className="text-sm font-semibold text-foreground">Ask</h1>
+						<h1 className="text-sm font-semibold text-foreground">{t("ask.title")}</h1>
 						<p className="text-[11px] text-muted-foreground">
 							Chat about your running sessions. Uses the default LLM provider configured in Settings
 							→ AI.

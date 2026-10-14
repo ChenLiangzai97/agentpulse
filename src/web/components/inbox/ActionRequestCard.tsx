@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { ActionInboxItem } from "../../../shared/types.js";
+import { useT } from "../../i18n/i18n.js";
 import { plainErrorMessage } from "../../lib/api-errors.js";
 import type { ActionRequestDecision } from "../../lib/api.js";
 import { formatTimeAgo } from "../../lib/utils.js";
@@ -319,6 +320,7 @@ export function ActionRequestCard({
 	item: ActionInboxItem;
 	onDecide: (id: string, decision: ActionRequestDecision) => Promise<void>;
 }) {
+	const t = useT();
 	const [busy, setBusy] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
 	const spec = cardSpecFor(item);
@@ -364,7 +366,7 @@ export function ActionRequestCard({
 					onClick={() => handleDecide("declined")}
 					className="text-xs px-3 py-1 rounded border border-border hover:bg-muted disabled:opacity-50"
 				>
-					Decline
+					{t("inbox.decline")}
 				</button>
 				<span className="text-[10px] text-muted-foreground ml-auto">
 					{formatTimeAgo(item.createdAt)}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import brandIcon from "../assets/agentpulse-icon.svg";
+import { useT } from "../i18n/i18n.js";
 import { loginNotice } from "../lib/auth-session.js";
 import { useUserStore } from "../stores/user-store.js";
 
@@ -10,6 +11,7 @@ import { useUserStore } from "../stores/user-store.js";
  * success we hand off to the next page via navigate("/").
  */
 export function LoginPage() {
+	const t = useT();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const user = useUserStore((s) => s.user);
@@ -87,7 +89,7 @@ export function LoginPage() {
 					className="rounded-lg border border-border bg-card p-5 space-y-3"
 				>
 					<label className="block space-y-1 text-xs">
-						<span className="text-muted-foreground">Username</span>
+						<span className="text-muted-foreground">{t("team.username")}</span>
 						<input
 							value={username}
 							onChange={(e) => setUsername(e.target.value)}
@@ -100,7 +102,7 @@ export function LoginPage() {
 						/>
 					</label>
 					<label className="block space-y-1 text-xs">
-						<span className="text-muted-foreground">Password</span>
+						<span className="text-muted-foreground">{t("login.password")}</span>
 						<input
 							type="password"
 							value={password}
@@ -111,12 +113,12 @@ export function LoginPage() {
 							required
 						/>
 						{mode === "signup" && (
-							<span className="text-[10px] text-muted-foreground">At least 12 characters.</span>
+							<span className="text-[10px] text-muted-foreground">{t("login.atLeast12")}</span>
 						)}
 					</label>
 					{mode === "signup" && (
 						<label className="block space-y-1 text-xs">
-							<span className="text-muted-foreground">Confirm password</span>
+							<span className="text-muted-foreground">{t("login.confirmPassword")}</span>
 							<input
 								type="password"
 								value={confirmPassword}
