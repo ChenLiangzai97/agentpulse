@@ -6,6 +6,7 @@ import type { en } from "./en.js";
 
 export const zhCN: typeof en = {
 	common: {
+		machine: "机器",
 		loading: "加载中…",
 		refresh: "刷新",
 		cancel: "取消",
@@ -346,6 +347,10 @@ export const zhCN: typeof en = {
 		none: "还没有总结。",
 	},
 	tabs: {
+		overview: "总览",
+		activity: "活动",
+		launch: "启动",
+		ai: "AI",
 		sections: "会话分区",
 	},
 	account: {
@@ -485,5 +490,32 @@ export const zhCN: typeof en = {
 		loadFailed: "工作区设置加载失败。",
 		loadingSettings: "正在加载工作区设置…",
 		title: "工作区",
+	},
+	badge: {
+		new: "新",
+		newA11y: "新总结已生成",
+		summarizing: "总结中",
+		summarizingA11y: "正在生成总结",
+	},
+	summaryFail: {
+		aiInactive: "完成前 AI 被暂停或关闭。",
+		askAdminProvider: "请管理员检查供应商。",
+		busy: "服务器出了点问题,请重试。",
+		checkSettings: "请在设置中检查。",
+		providerAuth: "供应商拒绝了该 API 密钥。",
+		keyUnreadable: "无法读取供应商的 API 密钥。",
+		generic: "出了点问题,请重试。",
+		interrupted: "服务器中途重启了,请重试。",
+		keyUnreadableAdmin: "请管理员在 AI 设置中重新录入。",
+		keyUnreadableSelf: "需要由管理员在 AI 设置中重新录入。",
+		parseFailed: "模型的回答不可用。请重试;换一个模型可能更好。",
+		providerError: "供应商返回错误。请重试;若持续出现,请检查供应商状态。",
+		rateLimit: "供应商限流中,请稍后重试。",
+		refused: "模型拒绝为此会话生成总结,换一个模型可能更好。",
+		sessionGone: "该会话已不存在。",
+		spendCapPrefix: "首次回答不可用,且重试会超出今日 AI 预算。未保存任何内容;首次调用仍已计费。",
+		spendCapReset: "预算将在{when}重置。",
+		timeout: "供应商响应超时,请重试。",
+		truncated: "模型输出长度不足。请重试;换一个输出上限更高的默认模型可能更好。",
 	},
 };

@@ -10,6 +10,7 @@
  */
 export const en = {
 	common: {
+		machine: "Machine",
 		loading: "Loading…",
 		refresh: "Refresh",
 		cancel: "Cancel",
@@ -354,6 +355,10 @@ export const en = {
 		none: "No summary yet.",
 	},
 	tabs: {
+		overview: "Overview",
+		activity: "Activity",
+		launch: "Launch",
+		ai: "AI",
 		sections: "Session sections",
 	},
 	account: {
@@ -495,5 +500,35 @@ export const en = {
 		loadFailed: "Failed to load workspace settings.",
 		loadingSettings: "Loading workspace settings…",
 		title: "Workspaces",
+	},
+	badge: {
+		new: "New",
+		newA11y: "new summary ready",
+		summarizing: "Summarizing",
+		summarizingA11y: "summarizing now",
+	},
+	summaryFail: {
+		aiInactive: "AI was paused or turned off before this finished.",
+		askAdminProvider: "Ask an admin to check the provider.",
+		busy: "Something went wrong on the server. Try again.",
+		checkSettings: "Check it in Settings.",
+		providerAuth: "The provider rejected the API key.",
+		keyUnreadable: "The provider's API key can't be read.",
+		generic: "Something went wrong. Try again.",
+		interrupted: "The server restarted mid-way. Try again.",
+		keyUnreadableAdmin: "Ask an admin to enter it again in AI settings.",
+		keyUnreadableSelf: "An admin needs to enter it again in AI settings.",
+		parseFailed: "The model's answer wasn't usable. Try again; a different model may do better.",
+		providerError:
+			"The provider returned an error. Try again; if it keeps happening, check the provider's status.",
+		rateLimit: "The provider is rate-limiting. Try again shortly.",
+		refused: "The model declined to summarize this session. A different model may do better.",
+		sessionGone: "This session no longer exists.",
+		spendCapPrefix:
+			"The first answer wasn't usable, and a retry would have gone over today's AI budget. Nothing was saved; the first call was still charged.",
+		spendCapReset: "The budget resets {when}.",
+		timeout: "The provider took too long to answer. Try again.",
+		truncated:
+			"The model ran out of room before finishing its answer. Try again; a different default model may do better.",
 	},
 };
