@@ -9,6 +9,7 @@ import type {
 import type { Session } from "../../shared/types.js";
 import { LabsBadge } from "../components/LabsBadge.js";
 import { SkeletonCard } from "../components/SkeletonCard.js";
+import { useT } from "../i18n/i18n.js";
 import { plainErrorMessage } from "../lib/api-errors.js";
 import { api } from "../lib/api.js";
 import { formatTimeAgo } from "../lib/utils.js";
@@ -134,7 +135,13 @@ function ReportBody({ run }: { run: AnalysisRunView }) {
 							<div className="flex items-start justify-between gap-2">
 								<span>{item.summary}</span>
 								<Chip
-									tone={item.outcome === "passed" ? "ok" : item.outcome === "failed" ? "danger" : "default"}
+									tone={
+										item.outcome === "passed"
+											? "ok"
+											: item.outcome === "failed"
+												? "danger"
+												: "default"
+									}
 								>
 									{item.outcome}
 								</Chip>
@@ -182,6 +189,7 @@ function ReportBody({ run }: { run: AnalysisRunView }) {
 }
 
 function CoverageBlock({ run }: { run: AnalysisRunView }) {
+	const t = useT();
 	const coverage = run.coverage;
 	if (!coverage) return null;
 	const excluded = coverage.sessions.filter((s) => !s.included);
@@ -191,14 +199,20 @@ function CoverageBlock({ run }: { run: AnalysisRunView }) {
 				<span>
 					Input coverage — {coverage.sessions.filter((s) => s.included).length} of{" "}
 					{coverage.sessions.length} sessions, {coverage.hosts.length} machine(s)
-					{coverage.coveredFrom ? `, ${coverage.coveredFrom.slice(0, 10)} .. ${coverage.coveredTo?.slice(0, 10)}` : ""}
+					{coverage.coveredFrom
+						? `, ${coverage.coveredFrom.slice(0, 10)} .. ${coverage.coveredTo?.slice(0, 10)}`
+						: ""}
 				</span>
 				<span className="transition-transform group-open:rotate-90 text-[10px]">›</span>
 			</summary>
 			<div className="px-4 pb-3 space-y-2 text-xs">
 				<div className="flex flex-wrap gap-2">
 					{coverage.hosts.map((h) => (
-						<Chip key={h.host} tone="info" title={`Last covered activity: ${h.lastActivityAt ?? "n/a"}`}>
+						<Chip
+							key={h.host}
+							tone="info"
+							title={`Last covered activity: ${h.lastActivityAt ?? "n/a"}`}
+						>
 							{h.host}: {h.sessions}
 						</Chip>
 					))}
@@ -212,11 +226,11 @@ function CoverageBlock({ run }: { run: AnalysisRunView }) {
 				<table className="w-full text-left">
 					<thead className="text-muted-foreground">
 						<tr>
-							<th className="pr-2 font-normal">Session</th>
-							<th className="pr-2 font-normal">Machine</th>
-							<th className="pr-2 font-normal">Events read</th>
-							<th className="pr-2 font-normal">Covered</th>
-							<th className="font-normal">State</th>
+							<th className="pr-2 font-normal">{t("analysis.session")}</th>
+							<th className="pr-2 font-normal">{t("analysis.machine")}</th>
+							<th className="pr-2 font-normal">{t("analysis.eventsRead")}</th>
+							<th className="pr-2 font-normal">{t("analysis.covered")}</th>
+							<th className="font-normal">{t("analysis.state")}</th>
 						</tr>
 					</thead>
 					<tbody className="font-mono text-[10px]">
@@ -232,11 +246,13 @@ function CoverageBlock({ run }: { run: AnalysisRunView }) {
 									{s.included ? `${s.eventsRead} (as ${s.eventsRepresented} lines)` : "—"}
 								</td>
 								<td className="pr-2 py-0.5">
-									{s.firstEventAt ? `${s.firstEventAt.slice(0, 10)} .. ${s.lastEventAt?.slice(0, 10)}` : "—"}
+									{s.firstEventAt
+										? `${s.firstEventAt.slice(0, 10)} .. ${s.lastEventAt?.slice(0, 10)}`
+										: "—"}
 								</td>
 								<td className="py-0.5">
 									{s.included ? (
-										<Chip tone="ok">included</Chip>
+										<Chip tone="ok">{t("analysis.included")}</Chip>
 									) : (
 										<Chip tone="warn">{s.exclusion}</Chip>
 									)}
@@ -319,6 +335,7 @@ function RunRow({
  * every report carries its input coverage.
  */
 export function AnalysisPage() {
+	const t = useT();
 	const [candidates, setCandidates] = useState<Session[]>([]);
 	const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 	const [from, setFrom] = useState("");
@@ -431,7 +448,7 @@ export function AnalysisPage() {
 				}
 				return;
 			}
-			toast.success("Analysis report queued.");
+			toast.success(t("analysis.queuedToast"));
 			setSelectedIds(new Set());
 			setPreview(null);
 			await loadRuns();
@@ -474,13 +491,10 @@ export function AnalysisPage() {
 			<header className="flex items-center justify-between gap-2">
 				<div>
 					<div className="flex items-center gap-2">
-						<h1 className="text-xl font-semibold">Analysis reports</h1>
+						<h1 className="text-xl font-semibold">{t("analysis.title")}</h1>
 						<LabsBadge />
 					</div>
-					<p className="text-xs text-muted-foreground">
-						Work reports across the sessions you marked “Include in analysis”, machines included.
-						Only selected sessions ever reach the model.
-					</p>
+					<p className="text-xs text-muted-foreground">{t("analysis.subtitle")}</p>
 				</div>
 				<button
 					type="button"
@@ -501,14 +515,11 @@ export function AnalysisPage() {
 			)}
 
 			<section className="rounded-lg border border-border bg-card p-4 space-y-3">
-				<h2 className="text-sm font-semibold">New report</h2>
+				<h2 className="text-sm font-semibold">{t("analysis.newReport")}</h2>
 				{loading ? (
 					<SkeletonCard />
 				) : candidates.length === 0 ? (
-					<p className="text-xs text-muted-foreground">
-						No sessions are marked for analysis yet. Use the cyan “Include in analysis” toggle on a
-						session card (or Session detail) — nothing is analyzed until you opt each session in.
-					</p>
+					<p className="text-xs text-muted-foreground">{t("analysis.noCandidates")}</p>
 				) : (
 					<>
 						<div className="max-h-56 overflow-y-auto rounded border border-border divide-y divide-border/50">
@@ -534,7 +545,7 @@ export function AnalysisPage() {
 						</div>
 						<div className="flex flex-wrap items-center gap-2 text-xs">
 							<label className="flex items-center gap-1">
-								<span className="text-muted-foreground">From</span>
+								<span className="text-muted-foreground">{t("analysis.from")}</span>
 								<input
 									type="datetime-local"
 									value={from}
@@ -546,7 +557,7 @@ export function AnalysisPage() {
 								/>
 							</label>
 							<label className="flex items-center gap-1">
-								<span className="text-muted-foreground">To</span>
+								<span className="text-muted-foreground">{t("analysis.to")}</span>
 								<input
 									type="datetime-local"
 									value={to}
@@ -600,15 +611,12 @@ export function AnalysisPage() {
 								</div>
 								{preview.unselectedSessionIds.length > 0 && (
 									<p className="text-amber-300">
-										{preview.unselectedSessionIds.length} picked session(s) are not marked
-										“Include in analysis” and will be refused at generation.
+										{preview.unselectedSessionIds.length} picked session(s) are not marked “Include
+										in analysis” and will be refused at generation.
 									</p>
 								)}
 								{preview.sessions.some((s) => s.eventsInRange === 0) && (
-									<p className="text-amber-300">
-										Some sessions have no recorded events in the chosen window; they will be
-										excluded with a note rather than reported as idle.
-									</p>
+									<p className="text-amber-300">{t("analysis.noEventsWarn")}</p>
 								)}
 							</div>
 						)}
@@ -617,9 +625,9 @@ export function AnalysisPage() {
 			</section>
 
 			<section className="space-y-2">
-				<h2 className="text-sm font-semibold">Recent reports</h2>
+				<h2 className="text-sm font-semibold">{t("analysis.recentReports")}</h2>
 				{runs.length === 0 ? (
-					<p className="text-xs text-muted-foreground">No reports yet.</p>
+					<p className="text-xs text-muted-foreground">{t("analysis.noReports")}</p>
 				) : (
 					<ul className="space-y-2">
 						{runs.map((run) => (

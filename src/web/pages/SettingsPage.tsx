@@ -14,6 +14,7 @@ import { TelegramChannelPanel } from "../components/settings/TelegramChannelPane
 import { WorkspacesPanel } from "../components/settings/WorkspacesPanel.js";
 import { useOwnershipUi } from "../hooks/useOwnershipUi.js";
 import { useSettingsPanelToReveal } from "../hooks/useSettingsPanelToReveal.js";
+import { useT } from "../i18n/i18n.js";
 import { describeApiError } from "../lib/api-errors.js";
 import { type ApiKeyRow, api } from "../lib/api.js";
 import { BROWSER_WS_PATH } from "../lib/paths.js";
@@ -46,6 +47,9 @@ export function SettingsPage() {
 	const telegramEnabled = useLabsStore((s) => s.isEnabled("telegramChannel"));
 	const ui = useOwnershipUi();
 	const isLocalAccount = useUserStore((s) => s.user?.source === "local");
+	const t = useT();
+	const locale = useUiPrefsStore((s) => s.locale ?? "zh-CN");
+	const setLocale = useUiPrefsStore((s) => s.setLocale);
 	const location = useLocation();
 	const panelToOpen = useSettingsPanelToReveal(location.search);
 	const [apiKeys, setApiKeys] = useState<ApiKeyRow[]>([]);
@@ -518,6 +522,23 @@ export function SettingsPage() {
 		),
 		account: (
 			<>
+				<section
+					className="border border-border bg-card rounded-lg p-5 mb-6"
+					aria-labelledby="settings-language-heading"
+				>
+					<h2 id="settings-language-heading" className="text-sm font-semibold mb-1">
+						{t("settings.languageTitle")}
+					</h2>
+					<p className="text-xs text-hint mb-3">{t("settings.languageDescription")}</p>
+					<select
+						value={locale}
+						onChange={(e) => setLocale(e.target.value as "zh-CN" | "en")}
+						className="rounded border border-border bg-background px-2 py-1.5 text-sm"
+					>
+						<option value="zh-CN">{t("settings.languageZh")}</option>
+						<option value="en">{t("settings.languageEn")}</option>
+					</select>
+				</section>
 				{isLocalAccount && (
 					<section
 						id={panelAnchorId("account")}

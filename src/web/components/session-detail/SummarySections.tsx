@@ -6,6 +6,7 @@ import {
 	type StoredSessionSummary,
 	type SummaryChangeKind,
 } from "../../../shared/session-summary.js";
+import { useT } from "../../i18n/i18n.js";
 import { evidenceHref } from "../../lib/event-deep-link.js";
 import {
 	type ClockOptions,
@@ -63,6 +64,7 @@ export function SummarySections({
 	clock,
 	contextAction,
 }: SectionsProps) {
+	const t = useT();
 	const { summary } = stored;
 	const claims = claimOnlyCopy(agentType);
 	const claimHome = summary.accomplishments.some((a) => a.unverified)
@@ -82,11 +84,15 @@ export function SummarySections({
 		.map(([title]) => title as string);
 	return (
 		<div className="space-y-5">
-			<PlainSection title="Overview">
+			<PlainSection title={t("sections.overview")}>
 				<p className={cn("text-base text-foreground", WRAP)}>{summary.overview}</p>
 			</PlainSection>
 			<OutcomeSection stored={stored} />
-			<Section k="accomplishments" title="Accomplishments" count={summary.accomplishments.length}>
+			<Section
+				k="accomplishments"
+				title={t("sections.accomplishments")}
+				count={summary.accomplishments.length}
+			>
 				{ctx.claimHome === "accomplishments" && <ClaimLine claims={claims} />}
 				<Items
 					k="accomplishments"
@@ -103,7 +109,7 @@ export function SummarySections({
 				/>
 			</Section>
 			<ChangesSection ctx={ctx} />
-			<Section k="decisions" title="Decisions & Assumptions" count={summary.decisions.length}>
+			<Section k="decisions" title={t("sections.decisions")} count={summary.decisions.length}>
 				<Items
 					k="decisions"
 					items={summary.decisions}
@@ -113,7 +119,7 @@ export function SummarySections({
 						<>
 							<span>{d.text}</span>
 							<span className="mt-0.5 block text-xs text-muted-foreground">
-								<span>Why: </span>
+								<span>{t("sections.why")} </span>
 								{d.why}
 							</span>
 							{links}
@@ -122,7 +128,7 @@ export function SummarySections({
 				/>
 			</Section>
 			<ValidationSection ctx={ctx} />
-			<Section k="problems" title="Problems & Risks" count={summary.problems.length}>
+			<Section k="problems" title={t("sections.problems")} count={summary.problems.length}>
 				<Items
 					k="problems"
 					items={summary.problems}
@@ -137,11 +143,11 @@ export function SummarySections({
 				/>
 			</Section>
 			{summary.unfinished.length === 0 && (
-				<PlainSection title="Unfinished Work">
+				<PlainSection title={t("sections.unfinished")}>
 					<p className={cn("text-sm text-muted-foreground", WRAP)}>{NO_UNFINISHED_WORK}</p>
 				</PlainSection>
 			)}
-			<Section k="unfinished" title="Unfinished Work" count={summary.unfinished.length}>
+			<Section k="unfinished" title={t("sections.unfinished")} count={summary.unfinished.length}>
 				<Items
 					k="unfinished"
 					items={summary.unfinished}
@@ -155,7 +161,7 @@ export function SummarySections({
 					)}
 				/>
 			</Section>
-			<Section k="nextActions" title="Recommended Next Actions" count={summary.nextActions.length}>
+			<Section k="nextActions" title={t("sections.nextActions")} count={summary.nextActions.length}>
 				<Items
 					k="nextActions"
 					ordered
@@ -317,13 +323,14 @@ function jumpToValidation(event: { preventDefault: () => void }) {
  * sentence.
  */
 function OutcomeSection({ stored }: { stored: StoredSessionSummary }) {
+	const t = useT();
 	const { outcome, validation } = stored.summary;
 	const chip = outcomeChip(outcome.status);
 	const notes = outcomeNotes(stored);
 	const validationFailed =
 		validation.some((v) => v.result === "failed") || notes.includes(VALIDATION_FAILED_NOTE);
 	return (
-		<PlainSection title="Outcome">
+		<PlainSection title={t("sections.outcome")}>
 			<p>
 				<span
 					data-outcome={outcome.status}
@@ -428,6 +435,7 @@ const KIND_LABELS: Record<SummaryChangeKind, string> = {
 };
 
 function ChangesSection({ ctx }: { ctx: Ctx }) {
+	const t = useT();
 	const { changes } = ctx.stored.summary;
 	const expanded = useSummaryViewStore((s) => s.expanded.changes === true);
 	const setExpanded = useSummaryViewStore((s) => s.setExpanded);
@@ -441,7 +449,7 @@ function ChangesSection({ ctx }: { ctx: Ctx }) {
 	);
 	const shown = expanded ? ordered : ordered.slice(0, VISIBLE_ITEMS);
 	return (
-		<Section k="changes" title="Changes" count={changes.length}>
+		<Section k="changes" title={t("sections.changes")} count={changes.length}>
 			{ctx.claimHome === "changes" && <ClaimLine claims={ctx.claims} />}
 			{SUMMARY_CHANGE_KINDS.map((kind) => {
 				const group = shown.filter((x) => x.c.kind === kind);
@@ -474,11 +482,12 @@ const RESULT_TONE: Record<SessionSummary["validation"][number]["result"], string
 };
 
 function ValidationSection({ ctx }: { ctx: Ctx }) {
+	const t = useT();
 	const { validation } = ctx.stored.summary;
 	if (validation.length === 0) {
 		return (
 			<section id={VALIDATION_ANCHOR} className="space-y-1">
-				<h3 className={HEADING}>Validation</h3>
+				<h3 className={HEADING}>{t("panels.validation")}</h3>
 				<p className="text-xs text-muted-foreground">{NO_VALIDATION_RECORDED}</p>
 			</section>
 		);
@@ -488,7 +497,7 @@ function ValidationSection({ ctx }: { ctx: Ctx }) {
 		<Section
 			k="validation"
 			id={VALIDATION_ANCHOR}
-			title="Validation"
+			title={t("sections.validation")}
 			count={validation.length}
 			tally={parts.map((part, i) => (
 				<span key={part.result}>
@@ -523,12 +532,13 @@ function ValidationSection({ ctx }: { ctx: Ctx }) {
 }
 
 function KeyContextSection({ handoff, action }: { handoff: string; action?: ReactNode }) {
+	const t = useT();
 	const closed = useSummaryViewStore((s) => s.closed.handoff === true);
 	const setOpen = useSummaryViewStore((s) => s.setOpen);
 	return (
 		<details open={!closed} onToggle={(e) => setOpen("handoff", e.currentTarget.open)}>
 			<summary className={SUMMARY_ROW}>
-				<h3 className={cn(HEADING, "inline")}>Key Context for the Next Agent</h3>
+				<h3 className={cn(HEADING, "inline")}>{t("sections.handoff")}</h3>
 			</summary>
 			<p className={cn("mt-1.5 whitespace-pre-wrap break-words text-sm text-foreground", WRAP)}>
 				{handoff}

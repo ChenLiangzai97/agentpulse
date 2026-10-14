@@ -30,17 +30,17 @@ import type {
 	WatcherPolicy,
 } from "../../shared/types.js";
 
+import type {
+	AnalysisPreview,
+	AnalysisRefusalBody,
+	AnalysisRunView,
+} from "../../shared/analysis-report.js";
 import {
 	SUMMARY_REFUSAL_CODES,
 	type SessionSummaryStartBody,
 	type SessionSummaryView,
 	type SummaryRefusalCode,
 } from "../../shared/session-summary-view.js";
-import type {
-	AnalysisPreview,
-	AnalysisRefusalBody,
-	AnalysisRunView,
-} from "../../shared/analysis-report.js";
 
 export type {
 	SessionSummaryRefusalBody,

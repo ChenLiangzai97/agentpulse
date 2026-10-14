@@ -1,6 +1,7 @@
 import { type FormEvent, useId, useState } from "react";
 import { toast } from "sonner";
 import type { SupervisorRecord } from "../../shared/types.js";
+import { useT } from "../i18n/i18n.js";
 import { describeApiError } from "../lib/api-errors.js";
 import { api } from "../lib/api.js";
 import type { PersonOption } from "../lib/people.js";
@@ -20,6 +21,7 @@ export function HostOwnerDialog({
 	onClose: () => void;
 	onChanged: () => void;
 }) {
+	const t = useT();
 	const headingId = useId();
 	const selectId = useId();
 	const [owner, setOwner] = useState(host.ownerUserId ?? "");
@@ -56,7 +58,7 @@ export function HostOwnerDialog({
 					</h2>
 					<div className="space-y-1">
 						<label htmlFor={selectId} className="block text-sm text-foreground">
-							Owner
+							{t("hostOwner.owner")}
 						</label>
 						<select
 							id={selectId}
@@ -65,7 +67,7 @@ export function HostOwnerDialog({
 							onChange={(e) => setOwner(e.target.value)}
 							className={FIELD_CONTROL}
 						>
-							<option value="">Unassigned</option>
+							<option value="">{t("hostOwner.unassigned")}</option>
 							{people.map((person) => (
 								<option key={person.id} value={person.id}>
 									{person.label}

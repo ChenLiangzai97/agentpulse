@@ -1,6 +1,7 @@
 import { ChevronDown } from "lucide-react";
 import type { Ref } from "react";
 import { useId, useState } from "react";
+import { useT } from "../i18n/i18n.js";
 import type { HostParam } from "../lib/host-scope.js";
 import { cn } from "../lib/utils.js";
 import { GROUP_BY_LABEL, type GroupBy } from "../pages/dashboard-groups.js";
@@ -45,6 +46,7 @@ export function DashboardViewControls({
 	/** How many sessions the scratch exclusion leaves out of every number (the server's count). */
 	scratchHidden: number;
 }) {
+	const t = useT();
 	const [open, setOpen] = useState(false);
 	const panelId = useId();
 	const groupId = useId();
@@ -84,7 +86,7 @@ export function DashboardViewControls({
 				)}
 				<div className="flex items-center gap-2">
 					<label htmlFor={groupId} className={LABEL_CLASS}>
-						Group by
+						{t("view.groupBy")}
 					</label>
 					<select
 						id={groupId}
@@ -119,6 +121,7 @@ export function ScratchToggle({
 	onChange: (show: boolean) => void;
 	scratchHidden: number;
 }) {
+	const t = useT();
 	return (
 		<label
 			className="inline-flex min-h-[44px] cursor-pointer select-none items-center gap-2 text-xs text-hint md:min-h-0"
@@ -146,10 +149,11 @@ export function AnalysisOnlyToggle({
 	analysisOnly: boolean;
 	onChange: (enabled: boolean) => void;
 }) {
+	const t = useT();
 	return (
 		<label
 			className="inline-flex min-h-[44px] cursor-pointer select-none items-center gap-2 text-xs text-hint md:min-h-0"
-			title="When on, only sessions marked 'Include in analysis' (the cyan toggle on a session card) are counted and listed."
+			title={t("view.analysisOnlyTitle")}
 		>
 			<input
 				type="checkbox"
@@ -157,7 +161,7 @@ export function AnalysisOnlyToggle({
 				onChange={(e) => onChange(e.target.checked)}
 				className="h-3.5 w-3.5 rounded border-input bg-background text-primary focus:ring-1 focus:ring-ring"
 			/>
-			Analysis only
+			{t("view.analysisOnly")}
 		</label>
 	);
 }

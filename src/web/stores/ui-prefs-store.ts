@@ -31,6 +31,11 @@ interface UiPrefs {
 	 * off; only meaningful with the analysisReports Labs flag on.
 	 */
 	analysisOnly: boolean;
+	/**
+	 * AGEN-72: interface locale. Defaults to Simplified Chinese on this fork;
+	 * persisted per-browser like the other prefs.
+	 */
+	locale?: "zh-CN" | "en";
 
 	/**
 	 * Width (px) of the thread sidebar on the /ask page. Persisted so a
@@ -52,11 +57,17 @@ const DEFAULTS: UiPrefs = {
 	projectColors: true,
 	showScratch: false,
 	analysisOnly: false,
+	locale: "zh-CN",
 	askSidebarWidth: ASK_SIDEBAR_DEFAULT_WIDTH,
 };
 
 function load(): UiPrefs {
-	if (typeof localStorage === "undefined") return DEFAULTS;
+	if (typeof localStorage === "undefined") {
+		// Non-browser contexts (bun test's renderer has no localStorage): keep
+		// English so the suite's copy assertions stay stable; browsers below
+		// get the zh-CN default from DEFAULTS.
+		return { ...DEFAULTS, locale: "en" };
+	}
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (!raw) return DEFAULTS;
@@ -83,6 +94,7 @@ interface UiPrefsStore extends UiPrefs {
 	setProjectColors: (enabled: boolean) => void;
 	setShowScratch: (enabled: boolean) => void;
 	setAnalysisOnly: (enabled: boolean) => void;
+	setLocale: (locale: "zh-CN" | "en") => void;
 	setAskSidebarWidth: (width: number) => void;
 }
 
@@ -99,6 +111,10 @@ export const useUiPrefsStore = create<UiPrefsStore>((set, get) => ({
 	setAnalysisOnly(enabled) {
 		set({ analysisOnly: enabled });
 		save({ ...get(), analysisOnly: enabled });
+	},
+	setLocale(locale) {
+		set({ locale });
+		save({ ...get(), locale });
 	},
 	setAskSidebarWidth(width) {
 		const clamped = clampAskSidebarWidth(width);

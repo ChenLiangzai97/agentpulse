@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { AGENT_METADATA } from "../../../shared/constants.js";
 import type { AgentType, LaunchRequest, Session } from "../../../shared/types.js";
 import { useOwnershipUi } from "../../hooks/useOwnershipUi.js";
+import { useT } from "../../i18n/i18n.js";
 import { describeApiError } from "../../lib/api-errors.js";
 import { api } from "../../lib/api.js";
 import { MarkdownContent } from "../MarkdownContent.js";
@@ -15,6 +16,7 @@ export function NotesPanel({
 	initialNotes,
 	readOnlyReason,
 }: { sessionId: string; initialNotes: string; readOnlyReason?: string | null }) {
+	const t = useT();
 	const [notes, setNotes] = useState(initialNotes);
 	const [saving, setSaving] = useState(false);
 	const [lastSaved, setLastSaved] = useState<string | null>(null);
@@ -49,19 +51,25 @@ export function NotesPanel({
 			<div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
 				<div className="flex items-center gap-2">
 					<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-						Notes
+						{t("panels.notes")}
 					</span>
 					{readOnlyReason ? (
 						<span className="text-[10px] text-hint">{readOnlyReason}</span>
 					) : (
-						showTeamCopy && <span className="text-[10px] text-hint">Visible to everyone</span>
+						showTeamCopy && (
+							<span className="text-[10px] text-hint">{t("panels.visibleToEveryone")}</span>
+						)
 					)}
 					{showModeToggle && (
 						<div className="flex items-center rounded-md border border-border p-0.5">
-							<ModeButton active={mode === "edit"} label="Edit" onClick={() => setMode("edit")} />
+							<ModeButton
+								active={mode === "edit"}
+								label={t("panels.edit")}
+								onClick={() => setMode("edit")}
+							/>
 							<ModeButton
 								active={mode === "preview"}
-								label="Preview"
+								label={t("panels.preview")}
 								onClick={() => setMode("preview")}
 							/>
 						</div>
@@ -103,7 +111,7 @@ export function NotesPanel({
 						setNotes(e.target.value);
 						scheduleAutosave(e.target.value);
 					}}
-					placeholder="Write notes about this session..."
+					placeholder={t("panels.notesPlaceholder")}
 					className="flex-1 w-full resize-none bg-transparent p-3 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
 				/>
 			) : (
@@ -111,7 +119,7 @@ export function NotesPanel({
 					{notes.trim() ? (
 						<MarkdownContent content={notes} />
 					) : (
-						<div className="text-sm text-muted-foreground">No notes yet.</div>
+						<div className="text-sm text-muted-foreground">{t("panels.noNotes")}</div>
 					)}
 				</div>
 			)}
@@ -128,6 +136,7 @@ export function ClaudeMdPanel({
 	onPathChanged?: (path: string) => void;
 	readOnlyReason?: string | null;
 }) {
+	const t = useT();
 	const [content, setContent] = useState("");
 	const [filePath, setFilePath] = useState("");
 	const [loading, setLoading] = useState(true);
@@ -209,10 +218,14 @@ export function ClaudeMdPanel({
 						{(content.length / 1024).toFixed(1)}KB
 					</span>
 					<div className="flex items-center rounded-md border border-border p-0.5">
-						<ModeButton active={mode === "edit"} label="Edit" onClick={() => setMode("edit")} />
+						<ModeButton
+							active={mode === "edit"}
+							label={t("panels.edit")}
+							onClick={() => setMode("edit")}
+						/>
 						<ModeButton
 							active={mode === "preview"}
-							label="Preview"
+							label={t("panels.preview")}
 							onClick={() => setMode("preview")}
 						/>
 					</div>
@@ -252,7 +265,7 @@ export function ClaudeMdPanel({
 					readOnly={!!readOnlyReason}
 					onChange={(e) => setContent(e.target.value)}
 					className="flex-1 w-full resize-none bg-transparent p-3 text-xs font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm leading-relaxed"
-					placeholder="No CLAUDE.md found"
+					placeholder={t("panels.noClaudeMd")}
 				/>
 			) : (
 				<div ref={previewRef} className="flex-1 overflow-y-auto p-3">
@@ -281,6 +294,7 @@ export function SummaryField({
 	/** A control that changes this field (a "Change owner" button), shown under the value. */
 	action?: ReactNode;
 }) {
+	const t = useT();
 	if (!value) return null;
 	return (
 		<div className="rounded-md border border-border bg-background/60 p-3">
@@ -294,6 +308,7 @@ export function SummaryField({
 }
 
 export function EmbeddedLaunchPanel({ launchId }: { launchId: string }) {
+	const t = useT();
 	const [launch, setLaunch] = useState<LaunchRequest | null>(null);
 	const [loading, setLoading] = useState(true);
 
@@ -317,9 +332,12 @@ export function EmbeddedLaunchPanel({ launchId }: { launchId: string }) {
 		};
 	}, [launchId]);
 
-	if (loading) return <div className="p-4 text-sm text-muted-foreground">Loading launch…</div>;
+	if (loading)
+		return <div className="p-4 text-sm text-muted-foreground">{t("panels.loadingLaunch")}</div>;
 	if (!launch)
-		return <div className="p-4 text-sm text-muted-foreground">Linked launch not found.</div>;
+		return (
+			<div className="p-4 text-sm text-muted-foreground">{t("panels.linkedLaunchNotFound")}</div>
+		);
 
 	const modeLabel =
 		launch.requestedLaunchMode === "headless"
@@ -339,7 +357,7 @@ export function EmbeddedLaunchPanel({ launchId }: { launchId: string }) {
 		<div className="space-y-4 p-3 md:p-6">
 			<div className="flex flex-wrap items-start justify-between gap-3">
 				<div>
-					<div className="text-sm font-semibold text-foreground">Launch</div>
+					<div className="text-sm font-semibold text-foreground">{t("panels.launch")}</div>
 					<div className="mt-1 text-xs text-muted-foreground">
 						{launch.status} · {modeLabel}
 					</div>
@@ -348,15 +366,19 @@ export function EmbeddedLaunchPanel({ launchId }: { launchId: string }) {
 					to={`/launches/${launch.id}`}
 					className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-accent transition-colors"
 				>
-					Open full launch detail
+					{t("panels.openLaunchDetail")}
 				</Link>
 			</div>
 
 			<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-				<SummaryField label="Created" value={launch.createdAt} />
-				<SummaryField label="Host" value={launch.resolvedSupervisorId} mono />
-				<SummaryField label="PID" value={launch.pid != null ? String(launch.pid) : null} mono />
-				<SummaryField label="Validation" value={launch.validationSummary} />
+				<SummaryField label={t("panels.created")} value={launch.createdAt} />
+				<SummaryField label={t("field.host")} value={launch.resolvedSupervisorId} mono />
+				<SummaryField
+					label={t("panels.pid")}
+					value={launch.pid != null ? String(launch.pid) : null}
+					mono
+				/>
+				<SummaryField label={t("panels.validation")} value={launch.validationSummary} />
 			</div>
 
 			{launch.error ? (
@@ -368,7 +390,7 @@ export function EmbeddedLaunchPanel({ launchId }: { launchId: string }) {
 			{output ? (
 				<div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
 					<div className="rounded-lg border border-border bg-card p-4">
-						<div className="text-sm font-semibold text-foreground">Visible output</div>
+						<div className="text-sm font-semibold text-foreground">{t("panels.visibleOutput")}</div>
 						<pre className="mt-3 min-h-40 overflow-x-auto rounded-md bg-background/60 p-3 text-xs text-foreground whitespace-pre-wrap break-words">
 							{output.assistantPreview?.trim() || "Waiting for visible output…"}
 						</pre>
@@ -379,7 +401,9 @@ export function EmbeddedLaunchPanel({ launchId }: { launchId: string }) {
 						) : null}
 					</div>
 					<div className="rounded-lg border border-border bg-card p-4">
-						<div className="text-sm font-semibold text-foreground">Recent activity</div>
+						<div className="text-sm font-semibold text-foreground">
+							{t("panels.recentActivity")}
+						</div>
 						<div className="mt-3 space-y-2">
 							{output.activity?.length ? (
 								output.activity.map((entry, index) => (
@@ -396,7 +420,7 @@ export function EmbeddedLaunchPanel({ launchId }: { launchId: string }) {
 									</div>
 								))
 							) : (
-								<div className="text-sm text-muted-foreground">No activity yet.</div>
+								<div className="text-sm text-muted-foreground">{t("panels.noActivity")}</div>
 							)}
 						</div>
 					</div>

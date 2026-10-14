@@ -5,6 +5,7 @@ import type { StoredSessionSummary } from "../../../shared/session-summary.js";
 import { useHeadingFocus } from "../../hooks/useHeadingFocus.js";
 import type { SummaryAnnouncement, UseSessionSummary } from "../../hooks/useSessionSummary.js";
 import { useCopyActions, useGenerateClick } from "../../hooks/useSummaryActions.js";
+import { useT } from "../../i18n/i18n.js";
 import type { AiStatusResponse } from "../../lib/api.js";
 import {
 	type ActionState,
@@ -158,6 +159,7 @@ type BodyProps = SessionSummaryPanelProps & {
 };
 
 function PanelBody(props: BodyProps & { copy: (kind: CopyKind) => void; copied: CopyKind | null }) {
+	const t = useT();
 	const { model } = props;
 	switch (model.content.kind) {
 		case "loading":
@@ -165,7 +167,7 @@ function PanelBody(props: BodyProps & { copy: (kind: CopyKind) => void; copied: 
 		case "load_failed":
 			return (
 				<div className="flex flex-wrap items-center gap-3">
-					<p className="text-sm text-foreground">Couldn't load the summary.</p>
+					<p className="text-sm text-foreground">{t("summaryPanel.loadFailed")}</p>
 					<button type="button" onClick={props.retry} className={OUTLINED}>
 						Retry
 					</button>
@@ -192,11 +194,12 @@ function Skeleton() {
 // ── no summary yet ──────────────────────────────────────────────────────────
 
 function EmptyBody(props: BodyProps) {
+	const t = useT();
 	const { model } = props;
 	return (
 		<div className="space-y-3">
 			{model.action.kind !== "generating" && (
-				<p className="text-sm text-muted-foreground">No summary yet.</p>
+				<p className="text-sm text-muted-foreground">{t("summaryPanel.none")}</p>
 			)}
 			<GeneratingStatus {...props} />
 			<LostContact {...props} />
@@ -341,11 +344,12 @@ function LastAttempt({ notice }: { notice: SummaryViewModel["notice"] }) {
 }
 
 function LostContact(props: BodyProps) {
+	const t = useT();
 	if (!props.lostContact || props.model.action.kind === "generating") return null;
 	return (
 		<div className="flex flex-wrap items-center gap-3">
 			<output className="text-xs text-red-800 dark:text-red-300">
-				Lost contact with the server.
+				{t("summaryPanel.lostContact")}
 			</output>
 			<button type="button" onClick={props.retry} className={OUTLINED}>
 				Retry
@@ -357,13 +361,14 @@ function LostContact(props: BodyProps) {
 // ── the one action ──────────────────────────────────────────────────────────
 
 function GeneratingStatus(props: BodyProps) {
+	const t = useT();
 	const { action } = props.model;
 	if (action.kind !== "generating") return null;
 	if (props.lostContact) {
 		return (
 			<div className="flex flex-wrap items-center gap-3">
 				<output className="text-xs text-red-800 dark:text-red-300">
-					Lost contact with the server. The summary may still be finishing.
+					{t("summaryPanel.lostContactFinishing")}
 				</output>
 				<button type="button" onClick={props.retry} className={OUTLINED}>
 					Retry

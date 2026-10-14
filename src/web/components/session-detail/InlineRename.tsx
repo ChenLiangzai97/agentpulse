@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { AgentType } from "../../../shared/types.js";
+import { useT } from "../../i18n/i18n.js";
 import { describeApiError } from "../../lib/api-errors.js";
 import { api } from "../../lib/api.js";
 import {
@@ -42,6 +43,7 @@ export function InlineRename({
 	/** Why renaming isn't allowed for this viewer (team mode, someone else's session), or null when it is. */
 	renameBlockedReason?: string | null;
 }) {
+	const t = useT();
 	const [editing, setEditing] = useState(false);
 	const [value, setValue] = useState(currentName);
 	const [resetState, setResetState] = useState<ResetButtonState>("idle");
@@ -170,7 +172,7 @@ export function InlineRename({
 			)}
 			{resetState === "error" && (
 				<span role="alert" className="text-[10px] text-red-600 dark:text-red-400">
-					Couldn't reset the name — try again
+					{t("inlineRename.resetFailed")}
 				</span>
 			)}
 			<span className="sr-only" aria-live="polite">
