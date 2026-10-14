@@ -470,7 +470,7 @@ export function SettingsPage() {
 		workspaces: (
 			<>
 				<section className="border border-border bg-card rounded-lg p-5 mb-6">
-					<h2 className="text-sm font-semibold mb-1">Workspaces</h2>
+					<h2 className="text-sm font-semibold mb-1">{t("workspaces.title")}</h2>
 					<p className="text-xs text-muted-foreground mb-4">
 						Where AgentPulse creates fresh directories when you say "new" in Ask. Settings here
 						apply to scratch workspaces only — your existing project paths are unaffected.

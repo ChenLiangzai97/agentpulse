@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AGENT_METADATA, AGENT_TYPES } from "../../shared/constants.js";
 import type { AgentType } from "../../shared/types.js";
+import { useT } from "../i18n/i18n.js";
 import { plainErrorMessage } from "../lib/api-errors.js";
 import { api } from "../lib/api.js";
 import { evidenceHref } from "../lib/event-deep-link.js";
@@ -20,6 +21,7 @@ import { useUsersStore } from "../stores/users-store.js";
 type Hit = Awaited<ReturnType<typeof api.search>>["hits"][number];
 
 export function SearchPage() {
+	const t = useT();
 	const [params, setParams] = useSearchParams();
 	const q = params.get("q") ?? "";
 	const agentType = params.get("agentType") ?? "";
@@ -102,7 +104,7 @@ export function SearchPage() {
 
 	return (
 		<div className="p-4 md:p-6 max-w-5xl mx-auto">
-			<h1 className="text-xl md:text-2xl font-bold text-foreground">Search</h1>
+			<h1 className="text-xl md:text-2xl font-bold text-foreground">{t("search.title")}</h1>
 			<p className="text-xs text-muted-foreground mt-1 mb-4">
 				Full-text search across session metadata and every meaningful event (user prompts, assistant
 				messages, AI reports, HITL proposals). Ranked by relevance.
@@ -114,7 +116,7 @@ export function SearchPage() {
 						type="search"
 						value={draft}
 						onChange={(e) => setDraft(e.target.value)}
-						placeholder="Search sessions and events… (e.g. 'auth refactor', 'passed tests')"
+						placeholder={t("search.placeholder")}
 						className="w-full rounded-md border border-input bg-background px-3 py-2 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
 						// biome-ignore lint/a11y/noAutofocus: search page is the primary action — auto-focusing the input matches user expectation
 						autoFocus
@@ -128,7 +130,7 @@ export function SearchPage() {
 					disabled={!draft.trim()}
 					className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
 				>
-					Search
+					{t("search.title")}
 				</button>
 			</form>
 
@@ -158,7 +160,7 @@ export function SearchPage() {
 					]}
 				/>
 				<FilterSelect
-					label="Event type"
+					label={t("search.eventType")}
 					value={eventType}
 					onChange={(v) => updateFilter("eventType", v)}
 					options={[
@@ -174,7 +176,7 @@ export function SearchPage() {
 					]}
 				/>
 				<FilterSelect
-					label="Kind"
+					label={t("search.kind")}
 					value={kinds}
 					onChange={(v) => updateFilter("kinds", v)}
 					options={[
@@ -191,7 +193,7 @@ export function SearchPage() {
 				</div>
 			)}
 
-			{loading && <div className="text-xs text-muted-foreground mb-3">Searching…</div>}
+			{loading && <div className="text-xs text-muted-foreground mb-3">{t("search.searching")}</div>}
 
 			{!loading && q && (
 				<div className="text-[11px] text-muted-foreground mb-2">
@@ -210,7 +212,7 @@ export function SearchPage() {
 
 			{!loading && q && hits.length === 0 && (
 				<div className="rounded-md border border-dashed border-border px-4 py-6 text-xs text-muted-foreground text-center">
-					No matches. Try broader terms, or remove filters.
+					{t("search.noMatches")}
 				</div>
 			)}
 		</div>

@@ -1,4 +1,4 @@
-import { useT } from "../../i18n/i18n.js";
+import { t } from "../../i18n/i18n.js";
 import { type WorkspaceTabId, tabBadgeAccessibleName } from "../../lib/session-summary-core.js";
 import { WorkspaceTabButton } from "./SharedControls.js";
 
@@ -21,7 +21,6 @@ export function workspaceTabButtonId(tab: WorkspaceTabId): string {
 
 /** Overview · Summary · Activity · Notes · instructions · Launch · AI; Summary only when the feature is available. */
 export function WorkspaceTabBar(props: WorkspaceTabBarProps) {
-	const t = useT();
 	const { active, onSelect } = props;
 	const tab = (
 		id: WorkspaceTabId,

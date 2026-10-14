@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { t } from "../../i18n/i18n.js";
 import { plainErrorMessage } from "../../lib/api-errors.js";
 import { api } from "../../lib/api.js";
 
@@ -99,11 +100,11 @@ export function WorkspacesPanel() {
 	}, []);
 
 	if (loading) {
-		return <div className="text-sm text-muted-foreground">Loading workspace settings…</div>;
+		return <div className="text-sm text-muted-foreground">{t("workspaces.loadingSettings")}</div>;
 	}
 
 	if (!draftWorkspace || !draftGitClone || !saved) {
-		return <div className="text-sm text-red-400">Failed to load workspace settings.</div>;
+		return <div className="text-sm text-red-400">{t("workspaces.loadFailed")}</div>;
 	}
 
 	const depthParsed = parseDepthInput(draftGitClone.defaultDepthInput);
@@ -209,7 +210,7 @@ export function WorkspacesPanel() {
 						htmlFor="workspace-default-root"
 						className="text-sm font-semibold text-foreground block mb-1"
 					>
-						Default workspace root
+						{t("workspaces.defaultRoot")}
 					</label>
 					<p className="text-xs text-muted-foreground mb-2">
 						AgentPulse creates new scratch workspaces under this path. The supervisor expands
@@ -270,7 +271,7 @@ export function WorkspacesPanel() {
 							htmlFor="workspace-git-init"
 							className="text-sm font-semibold text-foreground block mb-1"
 						>
-							Run git init on new workspaces
+							{t("workspaces.gitInit")}
 						</label>
 						<p className="text-xs text-muted-foreground">
 							When enabled, AgentPulse runs <code className="font-mono">git init</code> in each new
@@ -304,7 +305,9 @@ export function WorkspacesPanel() {
 					tabIndex={-1}
 					className="border-t border-border pt-4 space-y-4 focus:outline-none"
 				>
-					<h3 className="text-sm font-semibold text-foreground">Git clone defaults</h3>
+					<h3 className="text-sm font-semibold text-foreground">
+						{t("workspaces.gitCloneDefaults")}
+					</h3>
 					<p className="text-xs text-muted-foreground">
 						Applied when AgentPulse runs <code className="font-mono">git clone</code> on your behalf
 						for AI-initiated launches.
@@ -316,7 +319,8 @@ export function WorkspacesPanel() {
 								htmlFor="git-clone-allow-ssh"
 								className="text-sm font-medium text-foreground block mb-1"
 							>
-								Allow SSH URLs (<code className="font-mono">git@…</code>)
+								{t("workspaces.allowSsh")}
+								<code className="font-mono">git@…</code>)
 							</label>
 							<p className="text-xs text-muted-foreground">
 								Permit <code className="font-mono">ssh://</code> and{" "}
@@ -363,7 +367,7 @@ export function WorkspacesPanel() {
 								htmlFor="git-clone-allow-local"
 								className="text-sm font-medium text-foreground block mb-1"
 							>
-								Allow local <code className="font-mono">file://</code> URLs
+								{t("workspaces.allowLocal")} <code className="font-mono">file://</code> URLs
 							</label>
 							<p className="text-xs text-muted-foreground">
 								Allows cloning from a path on the supervisor host. Mostly useful for testing; off by
@@ -402,7 +406,7 @@ export function WorkspacesPanel() {
 							htmlFor="git-clone-default-depth"
 							className="text-sm font-medium text-foreground block mb-1"
 						>
-							Default clone depth
+							{t("workspaces.cloneDepth")}
 						</label>
 						<input
 							id="git-clone-default-depth"
@@ -438,7 +442,7 @@ export function WorkspacesPanel() {
 							htmlFor="git-clone-timeout"
 							className="text-sm font-medium text-foreground block mb-1"
 						>
-							Clone timeout (seconds)
+							{t("workspaces.cloneTimeout")}
 						</label>
 						<input
 							id="git-clone-timeout"

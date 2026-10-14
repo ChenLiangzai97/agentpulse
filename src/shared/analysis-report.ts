@@ -9,7 +9,7 @@
 import type { ProviderKind } from "./types.js";
 
 export const ANALYSIS_SCHEMA_VERSION = 1;
-export const ANALYSIS_PROMPT_VERSION = "1";
+export const ANALYSIS_PROMPT_VERSION = "2";
 
 /** Hard caps a run accepts; more sessions is a request-body refusal, not a silent drop. */
 export const ANALYSIS_MAX_SESSIONS = 8;

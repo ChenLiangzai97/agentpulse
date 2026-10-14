@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useT } from "../../i18n/i18n.js";
 import { plainErrorMessage } from "../../lib/api-errors.js";
 import { type AiProvider, type AiProviderKind, api } from "../../lib/api.js";
 import { useAiStatusStore } from "../../stores/ai-status-store.js";
@@ -24,6 +25,7 @@ const _checkProviderKindCoverage: [_MissingProviderKind] extends [never] ? true 
 void _checkProviderKindCoverage;
 
 export function AiSettingsPanel() {
+	const t = useT();
 	const status = useAiStatusStore((s) => s.status);
 	// The store may already hold a status from app start; this panel shows "Failed to load"
 	// until its own first load succeeds, as it did when it held the status itself.
@@ -152,7 +154,7 @@ export function AiSettingsPanel() {
 							onChange={(e) => toggleRuntime(e.target.checked)}
 							className="w-4 h-4"
 						/>
-						<span className="text-xs">Enabled</span>
+						<span className="text-xs">{t("vector.enabled")}</span>
 					</label>
 				</div>
 				<div className="flex items-center justify-between border-t border-border pt-3">
@@ -187,7 +189,7 @@ export function AiSettingsPanel() {
 							onChange={(e) => toggleAutoEnableWatcherForAsk(e.target.checked)}
 							className="w-4 h-4"
 						/>
-						<span className="text-xs">Enabled</span>
+						<span className="text-xs">{t("vector.enabled")}</span>
 					</label>
 				</div>
 				<div className="border-t border-border pt-3 text-xs text-muted-foreground">
@@ -206,6 +208,7 @@ export function AiSettingsPanel() {
 						</div>
 					</div>
 					<ProviderForm
+						t={t}
 						disabled={!status.active}
 						onCreated={reload}
 						onError={(e) => setBanner({ kind: "error", text: e })}
@@ -265,14 +268,17 @@ export function AiSettingsPanel() {
 }
 
 function ProviderForm({
+	t: tProp,
 	disabled,
 	onCreated,
 	onError,
 }: {
+	t: (key: string, params?: Record<string, string | number>) => string;
 	disabled: boolean;
 	onCreated: () => void;
 	onError: (err: string) => void;
 }) {
+	const t = tProp;
 	const [open, setOpen] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
 	const [form, setForm] = useState({
@@ -369,7 +375,9 @@ function ProviderForm({
 			className="absolute right-4 mt-2 z-20 w-[22rem] rounded-lg border border-border bg-card p-3 space-y-2 shadow-lg"
 		>
 			<div>
-				<label className="text-[10px] uppercase tracking-wider text-muted-foreground">Kind</label>
+				<label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+					{t("search.kind")}
+				</label>
 				<select
 					value={form.kind}
 					onChange={(e) => {

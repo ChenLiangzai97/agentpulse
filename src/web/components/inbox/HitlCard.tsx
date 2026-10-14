@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useT } from "../../i18n/i18n.js";
 import { plainErrorMessage } from "../../lib/api-errors.js";
 import type { InboxWorkItem } from "../../lib/api.js";
 import { formatTimeAgo } from "../../lib/utils.js";
@@ -15,6 +16,7 @@ export function HitlCard({
 	item: HitlItem;
 	onDecide: (id: string, action: "approve" | "decline") => Promise<void>;
 }) {
+	const t = useT();
 	const [busy, setBusy] = useState(false);
 	const [err, setErr] = useState<string | null>(null);
 
@@ -65,7 +67,7 @@ export function HitlCard({
 					onClick={() => handleDecide("approve")}
 					className="text-xs px-3 py-1 rounded bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 disabled:opacity-50"
 				>
-					Approve
+					{t("inbox.approve")}
 				</button>
 				<button
 					type="button"
@@ -73,7 +75,7 @@ export function HitlCard({
 					onClick={() => handleDecide("decline")}
 					className="text-xs px-3 py-1 rounded border border-border hover:bg-muted disabled:opacity-50"
 				>
-					Decline
+					{t("inbox.decline")}
 				</button>
 				<span className="text-[10px] text-muted-foreground ml-auto">
 					{formatTimeAgo(item.openedAt)}

@@ -8,7 +8,7 @@ import {
 import type { HostStatsGroup, OwnerStatsGroup, Session } from "../../shared/types.js";
 import { useDirectoryInitials } from "../hooks/useDirectoryInitials.js";
 import { useNoteUnknownOwners } from "../hooks/useNoteUnknownOwners.js";
-import { useT } from "../i18n/i18n.js";
+import { t } from "../i18n/i18n.js";
 import { isAiDisabledError } from "../lib/api-errors.js";
 import { type SessionIntelligence, api } from "../lib/api.js";
 import type { HostParam } from "../lib/host-scope.js";
@@ -517,7 +517,6 @@ function NarrowedEmptyState({
 	onViewEveryone?: () => void;
 	onViewAllMachines?: () => void;
 }) {
-	const t = useT();
 	return (
 		<div className="flex flex-col items-center justify-center px-4 py-16 text-center">
 			<p className="mb-1 text-lg font-medium text-foreground">{state.heading}</p>

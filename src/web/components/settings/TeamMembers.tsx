@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { SupervisorRecord } from "../../../shared/types.js";
 import { useDropdownClose } from "../../hooks/useDropdownClose.js";
+import { useT } from "../../i18n/i18n.js";
 import { describeApiError } from "../../lib/api-errors.js";
 import { type AdminUserRow, api } from "../../lib/api.js";
 import { disambiguateInitials } from "../../lib/owner-label.js";
@@ -50,6 +51,7 @@ export function TeamMembers({
 	addUserOpen,
 	onAddUserClose,
 }: TeamMembersProps) {
+	const t = useT();
 	const rows = useMemo(() => memberRows(users, viewerUserId, Date.now()), [users, viewerUserId]);
 	const byId = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
 	const initials = useMemo(
@@ -148,6 +150,7 @@ export function TeamMembers({
 			<ul className="space-y-2">
 				{rows.map((row) => (
 					<MemberItem
+						t={t}
 						key={row.id}
 						row={row}
 						initials={initials.get(row.id) ?? ""}
@@ -229,6 +232,7 @@ export function TeamMembers({
 }
 
 function MemberItem({
+	t,
 	row,
 	initials,
 	busy,
@@ -237,6 +241,7 @@ function MemberItem({
 	onEnable,
 	onReset,
 }: {
+	t: (key: string, params?: Record<string, string | number>) => string;
 	row: MemberRow;
 	initials: string;
 	busy: boolean;
@@ -272,8 +277,8 @@ function MemberItem({
 							>
 								{row.name}
 							</span>
-							{row.isSelf && <span className="text-xs text-hint">you</span>}
-							{row.disabled && <Badge tone="red">Disabled</Badge>}
+							{row.isSelf && <span className="text-xs text-hint">{t("team.you")}</span>}
+							{row.disabled && <Badge tone="red">{t("team.disabled")}</Badge>}
 							{row.mustChangePassword && !row.disabled && (
 								<Badge tone="amber">Must choose a password</Badge>
 							)}
@@ -297,11 +302,12 @@ function MemberItem({
 						onChange={(e) => onRoleChange(e.target.value as "admin" | "member")}
 						className="min-h-[44px] rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60 md:min-h-0"
 					>
-						<option value="admin">Admin</option>
-						<option value="member">Member</option>
+						<option value="admin">{t("team.admin")}</option>
+						<option value="member">{t("team.member")}</option>
 					</select>
 					{(row.canResetPassword || row.canEnable || row.disableControl.enabled) && (
 						<MoreMenu
+							t={t}
 							row={row}
 							busy={busy}
 							describedBy={row.disableControl.reason ? reasonId : undefined}
@@ -327,6 +333,7 @@ function MemberItem({
 
 /** Reset password and Disable / Enable, out of the way until wanted. Focus returns to the button before a dialog opens, so closing the dialog lands back here. */
 function MoreMenu({
+	t,
 	row,
 	busy,
 	describedBy,
@@ -334,6 +341,7 @@ function MoreMenu({
 	onDisable,
 	onEnable,
 }: {
+	t: (key: string, params?: Record<string, string | number>) => string;
 	row: MemberRow;
 	busy: boolean;
 	describedBy: string | undefined;
@@ -418,7 +426,7 @@ function MoreMenu({
 							onClick={() => choose(onReset)}
 							className={`${itemClass} text-foreground`}
 						>
-							Reset password
+							{t("team.resetPassword")}
 						</button>
 					)}
 					{row.canEnable ? (
@@ -428,7 +436,7 @@ function MoreMenu({
 							onClick={() => choose(onEnable)}
 							className={`${itemClass} text-foreground`}
 						>
-							Enable
+							{t("team.enable")}
 						</button>
 					) : (
 						<button
@@ -441,7 +449,7 @@ function MoreMenu({
 							}}
 							className={`${itemClass} text-red-700 dark:text-red-400`}
 						>
-							Disable
+							{t("team.disable")}
 						</button>
 					)}
 				</div>
@@ -466,6 +474,7 @@ export function Badge({
 	title?: string;
 	children: React.ReactNode;
 }) {
+	const t = useT();
 	return (
 		<span
 			title={title}

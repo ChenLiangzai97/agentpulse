@@ -197,8 +197,8 @@ function CoverageBlock({ run }: { run: AnalysisRunView }) {
 		<details className="group rounded-lg border border-border bg-card">
 			<summary className="cursor-pointer select-none list-none px-4 py-2 text-xs text-muted-foreground flex items-center justify-between">
 				<span>
-					Input coverage — {coverage.sessions.filter((s) => s.included).length} of{" "}
-					{coverage.sessions.length} sessions, {coverage.hosts.length} machine(s)
+					输入覆盖 —— {coverage.sessions.filter((s) => s.included).length} /{" "}
+					{coverage.sessions.length} 个会话,{coverage.hosts.length} 台机器
 					{coverage.coveredFrom
 						? `, ${coverage.coveredFrom.slice(0, 10)} .. ${coverage.coveredTo?.slice(0, 10)}`
 						: ""}
@@ -219,8 +219,8 @@ function CoverageBlock({ run }: { run: AnalysisRunView }) {
 				</div>
 				{excluded.length > 0 && (
 					<p className="text-amber-300">
-						Excluded at run time: {excluded.map((s) => `${s.label} (${s.exclusion})`).join(", ")}.
-						Coverage below reflects only what was actually analyzed.
+						执行时已排除:{excluded.map((s) => `${s.label}(${s.exclusion})`).join("、")}。 Coverage
+						below reflects only what was actually analyzed.
 					</p>
 				)}
 				<table className="w-full text-left">
@@ -286,8 +286,8 @@ function RunRow({
 			>
 				<Chip tone={statusTone(run.status)}>{run.status}</Chip>
 				<span className="text-xs">
-					{run.scope.length} session{run.scope.length === 1 ? "" : "s"} ·{" "}
-					{new Set(run.scope.map((s: AnalysisSessionScope) => s.host ?? "unknown")).size} machine(s)
+					{run.scope.length} 个会话 ·{" "}
+					{new Set(run.scope.map((s: AnalysisSessionScope) => s.host ?? "unknown")).size} 台机器
 				</span>
 				{run.timeFrom && (
 					<span className="text-[10px] text-muted-foreground font-mono">
@@ -611,8 +611,8 @@ export function AnalysisPage() {
 								</div>
 								{preview.unselectedSessionIds.length > 0 && (
 									<p className="text-amber-300">
-										{preview.unselectedSessionIds.length} picked session(s) are not marked “Include
-										in analysis” and will be refused at generation.
+										{preview.unselectedSessionIds.length}{" "}
+										个所选会话未标记“纳入分析”,生成时将被拒绝。
 									</p>
 								)}
 								{preview.sessions.some((s) => s.eventsInRange === 0) && (

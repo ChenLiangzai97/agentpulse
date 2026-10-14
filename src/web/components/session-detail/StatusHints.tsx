@@ -1,7 +1,7 @@
 import { AGENT_METADATA } from "../../../shared/constants.js";
 import type { AgentType, Session } from "../../../shared/types.js";
 import { useCopyFeedback } from "../../hooks/useCopyFeedback.js";
-import { useT } from "../../i18n/i18n.js";
+import { t, useT } from "../../i18n/i18n.js";
 
 /**
  * F24 (D35): the caveat text for an observe-only agent (Copilot CLI), or
@@ -14,7 +14,6 @@ export function resolveObserveOnlyHint(agentType: AgentType): string | null {
 
 /** F24 (D35): renders AGENT_METADATA[agentType].observeOnlyHint when non-null. */
 export function AgentObserveOnlyHint({ agentType }: { agentType: AgentType }) {
-	const t = useT();
 	const hint = resolveObserveOnlyHint(agentType);
 	if (!hint) return null;
 	return (
@@ -61,7 +60,6 @@ export function selectStatusHint(
 }
 
 export function CodexStatusHint({ displayName }: { displayName: string }) {
-	const t = useT();
 	const renameCommand = `/rename ${displayName}`;
 	const { copy } = useCopyFeedback();
 
