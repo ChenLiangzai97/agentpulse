@@ -1,3 +1,4 @@
+import { useT } from "../i18n/i18n.js";
 import { OWNER_ALL, OWNER_ME, type OwnerParam } from "../lib/owner-scope.js";
 import { cn } from "../lib/utils.js";
 import { pressedSegment } from "../pages/dashboard-scope.js";
@@ -22,10 +23,11 @@ export function ScopeSwitch({
 	owner: OwnerParam | null;
 	onChoose: (owner: OwnerParam) => void;
 }) {
+	const t = useT();
 	const pressed = pressedSegment(owner);
 	return (
 		<fieldset
-			aria-label="Whose sessions"
+			aria-label={t("scope.whoseSessions")}
 			className="m-0 grid w-full min-w-0 grid-cols-2 gap-0.5 rounded-lg border-0 bg-muted p-1 md:inline-flex md:w-auto"
 		>
 			{OPTIONS.map((option) => (

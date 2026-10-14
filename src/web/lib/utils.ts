@@ -2,6 +2,7 @@ import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { parseStoredTimestamp } from "../../shared/timestamp.js";
 import type { ManagedState } from "../../shared/types.js";
+import { t } from "../i18n/i18n.js";
 
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
@@ -21,15 +22,14 @@ export function formatDuration(startedAt: string): string {
 	const now = Date.now();
 	const diff = now - start;
 
-	if (Number.isNaN(diff) || diff < 0) return "0s";
-
 	const hours = Math.floor(diff / 3600000);
 	const minutes = Math.floor((diff % 3600000) / 60000);
 	const seconds = Math.floor((diff % 60000) / 1000);
 
-	if (hours > 0) return `${hours}h ${minutes}m`;
-	if (minutes > 0) return `${minutes}m ${seconds}s`;
-	return `${seconds}s`;
+	if (Number.isNaN(diff) || diff < 0) return t("time.durationSeconds", { s: 0 });
+	if (hours > 0) return t("time.durationHours", { h: hours, m: minutes });
+	if (minutes > 0) return t("time.durationMinutes", { m: minutes, s: seconds });
+	return t("time.durationSeconds", { s: seconds });
 }
 
 export function formatTimeAgo(dateStr: string, opts?: { justNow?: boolean }): string {
@@ -37,16 +37,17 @@ export function formatTimeAgo(dateStr: string, opts?: { justNow?: boolean }): st
 	const now = Date.now();
 	const diff = now - date;
 
-	if (Number.isNaN(diff) || diff < 0) return opts?.justNow ? "just now" : "0s ago";
+	if (Number.isNaN(diff) || diff < 0)
+		return opts?.justNow ? t("time.justNow") : t("time.secondsAgoShort");
 	if (diff < 60000) {
 		// AskPage (and similar) want sub-60s resolution with "Xs ago".
 		// Callers that prefer "just now" pass { justNow: true }.
-		if (opts?.justNow) return "just now";
-		return `${Math.floor(diff / 1000)}s ago`;
+		if (opts?.justNow) return t("time.justNow");
+		return t("time.secondsAgo", { n: Math.floor(diff / 1000) });
 	}
-	if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-	if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-	return `${Math.floor(diff / 86400000)}d ago`;
+	if (diff < 3600000) return t("time.minutesAgo", { n: Math.floor(diff / 60000) });
+	if (diff < 86400000) return t("time.hoursAgo", { n: Math.floor(diff / 3600000) });
+	return t("time.daysAgo", { n: Math.floor(diff / 86400000) });
 }
 
 export function extractProjectName(cwd: string | null): string {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ControlAction } from "../../../shared/types.js";
+import { useT } from "../../i18n/i18n.js";
 
 /**
  * Control-history card. On mobile, the list is collapsed by default
@@ -8,6 +9,7 @@ import type { ControlAction } from "../../../shared/types.js";
  * Desktop shows the full card as before.
  */
 export function ControlHistory({ actions }: { actions: ControlAction[] }) {
+	const t = useT();
 	const [expanded, setExpanded] = useState(false);
 	if (actions.length === 0) return null;
 	const recent = actions.slice(-5).reverse();
@@ -38,7 +40,9 @@ export function ControlHistory({ actions }: { actions: ControlAction[] }) {
 					</svg>
 				</span>
 			</button>
-			<div className="hidden md:block text-xs font-medium text-foreground">Control History</div>
+			<div className="hidden md:block text-xs font-medium text-foreground">
+				{t("controlHistory.title")}
+			</div>
 			<div className={`${expanded ? "block" : "hidden"} md:block mt-2 space-y-1.5`}>
 				{recent.map((action) => (
 					<div key={action.id} className="flex items-center justify-between gap-3 text-[11px]">

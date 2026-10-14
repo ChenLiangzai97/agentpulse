@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import brandIcon from "../assets/agentpulse-icon.svg";
 import { useOwnershipUi } from "../hooks/useOwnershipUi.js";
 import { useSignOut } from "../hooks/useSignOut.js";
+import { t } from "../i18n/i18n.js";
 import { isAiDisabledError } from "../lib/api-errors.js";
 import { type InboxWorkItem, type LabsFlag, api } from "../lib/api.js";
 import { formatProviderLabel } from "../lib/formatProviderLabel.js";
@@ -324,7 +325,7 @@ export function Layout() {
 										onClick={handleSignOut}
 										className="block w-full text-left rounded-lg px-3 py-2 text-sm text-red-300 hover:bg-red-500/10"
 									>
-										Sign out
+										{t("layout.signOut")}
 									</button>
 								)}
 							</div>
@@ -377,8 +378,8 @@ export function Layout() {
 						<button
 							type="button"
 							onClick={() => setSidebarCollapsed(true)}
-							title="Collapse sidebar"
-							aria-label="Collapse sidebar"
+							title={t("layout.collapse")}
+							aria-label={t("layout.collapse")}
 							className="text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded p-1 flex-shrink-0 transition-colors"
 						>
 							<svg
@@ -398,8 +399,8 @@ export function Layout() {
 					<button
 						type="button"
 						onClick={() => setSidebarCollapsed(false)}
-						title="Expand sidebar"
-						aria-label="Expand sidebar"
+						title={t("layout.expand")}
+						aria-label={t("layout.expand")}
 						className="mx-2 mt-2 text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded p-1.5 flex items-center justify-center transition-colors"
 					>
 						<svg
@@ -458,7 +459,7 @@ export function Layout() {
 				{!sidebarCollapsed && (
 					<div className="px-4 py-3 border-t border-border">
 						<p className="text-[10px] font-mono text-muted-foreground/60 tracking-wide uppercase">
-							Open Source &middot; MIT
+							{t("layout.openSource")}
 						</p>
 					</div>
 				)}

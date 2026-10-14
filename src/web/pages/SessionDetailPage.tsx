@@ -35,6 +35,7 @@ import { useDirectoryInitials } from "../hooks/useDirectoryInitials.js";
 import { useEventReveal } from "../hooks/useEventReveal.js";
 import { useOwnershipUi, useViewerIsAdmin } from "../hooks/useOwnershipUi.js";
 import { useSessionSummaryPage } from "../hooks/useSessionSummaryPage.js";
+import { t } from "../i18n/i18n.js";
 import { describeApiError } from "../lib/api-errors.js";
 import { api } from "../lib/api.js";
 import { EVENT_LOAD_FAILED_COPY } from "../lib/event-deep-link.js";
@@ -251,7 +252,7 @@ export function SessionDetailPage() {
 		try {
 			const result = await api.unacknowledgeSession(sessionId);
 			if (classifyAckResponse(result) !== "applied") {
-				toast.error("Couldn't undo");
+				toast.error(t("detail.couldntUndo"));
 				return;
 			}
 			const current = sessionRef.current;
@@ -262,7 +263,7 @@ export function SessionDetailPage() {
 			}
 			setLiveAnnouncement("Marked as unseen");
 		} catch {
-			toast.error("Couldn't undo");
+			toast.error(t("detail.couldntUndo"));
 		}
 	}
 
@@ -291,7 +292,7 @@ export function SessionDetailPage() {
 					setSession(stamped);
 					applySessionUpdate(stamped);
 					setLiveAnnouncement("Marked as seen");
-					toast.success("Marked as seen", {
+					toast.success(t("detail.markedAsSeen"), {
 						action: { label: "Undo", onClick: () => void undoAutoAck() },
 						duration: UNDO_WINDOW_MS,
 					});
@@ -441,10 +442,8 @@ export function SessionDetailPage() {
 						</svg>
 					</div>
 					<div>
-						<h2 className="text-base font-semibold text-foreground">Session not found</h2>
-						<p className="text-xs text-muted-foreground mt-1">
-							This session may have been deleted, or the link is incorrect.
-						</p>
+						<h2 className="text-base font-semibold text-foreground">{t("detail.notFound")}</h2>
+						<p className="text-xs text-muted-foreground mt-1">{t("detail.notFoundHint")}</p>
 					</div>
 					<div className="flex flex-col gap-2">
 						<button
@@ -452,14 +451,14 @@ export function SessionDetailPage() {
 							onClick={() => navigate("/")}
 							className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
 						>
-							Back to dashboard
+							{t("detail.backToDashboard")}
 						</button>
 						<button
 							type="button"
 							onClick={() => navigate("/search")}
 							className="w-full rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
 						>
-							Search sessions
+							{t("detail.searchSessions")}
 						</button>
 					</div>
 				</div>
@@ -503,7 +502,7 @@ export function SessionDetailPage() {
 				onApplied?.();
 				return;
 			}
-			if (outcome === "not_owner") toast.error("Only the owner or an admin can do this");
+			if (outcome === "not_owner") toast.error(t("detail.onlyOwnerAdmin"));
 			else toast.error(failureMessage);
 		} catch {
 			toast.error(failureMessage);
@@ -725,16 +724,16 @@ export function SessionDetailPage() {
 					</div>
 				) : workspaceTab === "overview" ? (
 					<div className="grid gap-4 p-3 md:p-6 md:grid-cols-2 xl:grid-cols-4">
-						<SummaryField label="Project" value={session.cwd} mono />
+						<SummaryField label={t("field.project")} value={session.cwd} mono />
 						<SummaryField
-							label="Agent"
+							label={t("field.agent")}
 							value={AGENT_METADATA[session.agentType as AgentType]?.label ?? session.agentType}
 						/>
-						<SummaryField label="Started" value={session.startedAt} />
-						<SummaryField label="Status" value={session.status} />
+						<SummaryField label={t("field.started")} value={session.startedAt} />
+						<SummaryField label={t("field.status")} value={session.status} />
 						{showOwnerFields && (
 							<SummaryField
-								label="Owner"
+								label={t("field.owner")}
 								value={sessionOwnerText(session, (id) => directory[id], viewerUserId)}
 								action={
 									isAdmin ? (
@@ -744,7 +743,7 @@ export function SessionDetailPage() {
 											aria-label={`Change owner of ${displayName}`}
 											className="mt-1 min-h-[44px] rounded-md px-1 text-xs font-medium text-primary underline underline-offset-2 hover:text-foreground md:min-h-0"
 										>
-											Change owner
+											{t("detail.changeOwner")}
 										</button>
 									) : undefined
 								}
@@ -752,23 +751,23 @@ export function SessionDetailPage() {
 						)}
 						{showOwnerFields && launchedById && (
 							<SummaryField
-								label="Launched by"
+								label={t("field.launchedBy")}
 								value={ownerLabel(directory[launchedById], launchedById, {
 									selfId: viewerUserId,
 									style: "you",
 								})}
 							/>
 						)}
-						<SummaryField label="Model" value={session.model} />
-						<SummaryField label="Branch" value={session.gitBranch} mono />
-						<SummaryField label="Current task" value={session.currentTask} />
+						<SummaryField label={t("field.model")} value={session.model} />
+						<SummaryField label={t("field.branch")} value={session.gitBranch} mono />
+						<SummaryField label={t("field.currentTask")} value={session.currentTask} />
 						<SummaryField label="Tools" value={String(session.totalToolUses)} />
 						{hostLabel ? (
 							<SummaryField label={hostLabel.fieldLabel} value={hostLabel.name} mono />
 						) : null}
 						{session.managedSession?.launchRequestId ? (
 							<SummaryField
-								label="Launch request"
+								label={t("field.launchRequest")}
 								value={session.managedSession.launchRequestId}
 								mono
 							/>
@@ -778,7 +777,7 @@ export function SessionDetailPage() {
 					<Suspense
 						fallback={
 							<div aria-busy="true" className="p-6 text-sm text-muted-foreground">
-								Loading…
+								{t("detail.loading")}
 							</div>
 						}
 					>
@@ -821,9 +820,7 @@ export function SessionDetailPage() {
 				) : session.managedSession?.launchRequestId ? (
 					<EmbeddedLaunchPanel launchId={session.managedSession.launchRequestId} />
 				) : (
-					<div className="p-6 text-sm text-muted-foreground">
-						No linked launch for this session.
-					</div>
+					<div className="p-6 text-sm text-muted-foreground">{t("detail.noLinkedLaunch")}</div>
 				)}
 			</div>
 			{ownerDialogOpen && (

@@ -1,3 +1,4 @@
+import { useT } from "../i18n/i18n.js";
 import { useConnectionStore } from "../stores/connection-store.js";
 
 /**
@@ -14,6 +15,7 @@ import { useConnectionStore } from "../stores/connection-store.js";
  * A tooltip surfaces the exact technical state for power users.
  */
 export function WsStatusChip() {
+	const t = useT();
 	const wsState = useConnectionStore((s) => s.wsState);
 	const lastConnectedAt = useConnectionStore((s) => s.lastConnectedAt);
 
@@ -29,7 +31,7 @@ export function WsStatusChip() {
 					className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0"
 					aria-hidden="true"
 				/>
-				Live
+				{t("ws.live")}
 			</span>
 		);
 	}
@@ -49,7 +51,7 @@ export function WsStatusChip() {
 					className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0 ws-reconnect-pulse"
 					aria-hidden="true"
 				/>
-				Reconnecting…
+				{t("ws.reconnecting")}
 			</span>
 		);
 	}
@@ -61,7 +63,7 @@ export function WsStatusChip() {
 			className="inline-flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/8 px-2 py-0.5 text-[11px] font-medium text-red-400/80 select-none"
 		>
 			<span className="w-1.5 h-1.5 rounded-full bg-red-400/70 flex-shrink-0" aria-hidden="true" />
-			Live updates paused — using polling
+			{t("ws.paused")}
 		</span>
 	);
 }

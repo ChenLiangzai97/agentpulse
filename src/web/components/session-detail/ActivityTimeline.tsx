@@ -1,5 +1,6 @@
 import { type ReactNode, type RefObject, forwardRef } from "react";
 import type { SessionEvent } from "../../../shared/types.js";
+import { useT } from "../../i18n/i18n.js";
 import {
 	AssistantBubble,
 	PromptBubble,
@@ -27,15 +28,18 @@ interface ActivityTimelineProps {
  */
 export const ActivityTimeline = forwardRef<HTMLDivElement, ActivityTimelineProps>(
 	({ visibleEvents, mode, onScroll, endRef, loadingContext }, containerRef) => {
+		const t = useT();
 		return (
 			<div ref={containerRef} onScroll={onScroll} className="h-full overflow-auto p-3 md:p-6">
 				{loadingContext ? (
-					<p className="text-xs text-muted-foreground text-center pb-2">Loading older context…</p>
+					<p className="text-xs text-muted-foreground text-center pb-2">
+						{t("activity.loadingOlder")}
+					</p>
 				) : null}
 				<div className={mode === "terminal" ? "space-y-4" : "space-y-3"}>
 					{visibleEvents.length === 0 ? (
 						<p className="text-sm text-muted-foreground text-center py-8">
-							No events match this view yet.
+							{t("activity.noMatch")}
 						</p>
 					) : mode === "terminal" ? (
 						visibleEvents.map((event) => stampedItem(event, renderTerminalEvent(event)))

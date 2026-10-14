@@ -1,6 +1,7 @@
 import { type FormEvent, useId, useState } from "react";
 import { toast } from "sonner";
 import type { Session } from "../../../shared/types.js";
+import { useT } from "../../i18n/i18n.js";
 import { describeApiError } from "../../lib/api-errors.js";
 import { api } from "../../lib/api.js";
 import type { PersonOption } from "../../lib/people.js";
@@ -23,6 +24,7 @@ export function SessionOwnerDialog({
 	onClose: () => void;
 	onChanged: (session: Session | null) => void;
 }) {
+	const t = useT();
 	const headingId = useId();
 	const selectId = useId();
 	const [owner, setOwner] = useState(currentOwnerId ?? "");
@@ -59,7 +61,7 @@ export function SessionOwnerDialog({
 					</h2>
 					<div className="space-y-1">
 						<label htmlFor={selectId} className="block text-sm text-foreground">
-							Owner
+							{t("field.owner")}
 						</label>
 						<select
 							id={selectId}
@@ -76,9 +78,7 @@ export function SessionOwnerDialog({
 							))}
 						</select>
 					</div>
-					<p className="text-xs text-hint">
-						The owner (and any admin) can rename, pin, archive or delete this session.
-					</p>
+					<p className="text-xs text-hint">{t("ownerDialog.ownerHint")}</p>
 					{error && (
 						<p role="alert" className="text-sm text-red-700 dark:text-red-400">
 							{error}

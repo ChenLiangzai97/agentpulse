@@ -31,6 +31,11 @@ import type {
 } from "../../shared/types.js";
 import type { WorklogConfig, WorklogRun } from "../../shared/worklog.js";
 
+import type {
+	AnalysisPreview,
+	AnalysisRefusalBody,
+	AnalysisRunView,
+} from "../../shared/analysis-report.js";
 import {
 	SUMMARY_REFUSAL_CODES,
 	type SessionSummaryStartBody,

@@ -8,6 +8,7 @@ import {
 import type { HostStatsGroup, OwnerStatsGroup, Session } from "../../shared/types.js";
 import { useDirectoryInitials } from "../hooks/useDirectoryInitials.js";
 import { useNoteUnknownOwners } from "../hooks/useNoteUnknownOwners.js";
+import { useT } from "../i18n/i18n.js";
 import { isAiDisabledError } from "../lib/api-errors.js";
 import { type SessionIntelligence, api } from "../lib/api.js";
 import type { HostParam } from "../lib/host-scope.js";
@@ -516,6 +517,7 @@ function NarrowedEmptyState({
 	onViewEveryone?: () => void;
 	onViewAllMachines?: () => void;
 }) {
+	const t = useT();
 	return (
 		<div className="flex flex-col items-center justify-center px-4 py-16 text-center">
 			<p className="mb-1 text-lg font-medium text-foreground">{state.heading}</p>
@@ -527,7 +529,7 @@ function NarrowedEmptyState({
 							to="/setup"
 							className="inline-flex min-h-[44px] items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 md:min-h-0"
 						>
-							Set up my machine
+							{t("grid.setUpMachine")}
 						</Link>
 					)}
 					{state.actions.includes("allMachines") && onViewAllMachines && (
@@ -536,7 +538,7 @@ function NarrowedEmptyState({
 							onClick={onViewAllMachines}
 							className="min-h-[44px] rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent md:min-h-0"
 						>
-							Show all machines
+							{t("dashboard.showAllMachines")}
 						</button>
 					)}
 					{state.actions.includes("viewEveryone") && onViewEveryone && (
@@ -545,7 +547,7 @@ function NarrowedEmptyState({
 							onClick={onViewEveryone}
 							className="min-h-[44px] rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent md:min-h-0"
 						>
-							View everyone's sessions
+							{t("grid.viewEveryoneSessions")}
 						</button>
 					)}
 				</div>

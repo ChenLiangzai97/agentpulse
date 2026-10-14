@@ -1,3 +1,4 @@
+import { useT } from "../../i18n/i18n.js";
 import { type WorkspaceTabId, tabBadgeAccessibleName } from "../../lib/session-summary-core.js";
 import { WorkspaceTabButton } from "./SharedControls.js";
 
@@ -20,6 +21,7 @@ export function workspaceTabButtonId(tab: WorkspaceTabId): string {
 
 /** Overview · Summary · Activity · Notes · instructions · Launch · AI; Summary only when the feature is available. */
 export function WorkspaceTabBar(props: WorkspaceTabBarProps) {
+	const t = useT();
 	const { active, onSelect } = props;
 	const tab = (
 		id: WorkspaceTabId,
@@ -38,7 +40,7 @@ export function WorkspaceTabBar(props: WorkspaceTabBarProps) {
 	);
 	return (
 		<nav
-			aria-label="Session sections"
+			aria-label={t("tabs.sections")}
 			className="flex flex-nowrap items-center gap-1.5 overflow-x-auto md:flex-wrap md:gap-2"
 		>
 			{tab("overview", "Overview")}
