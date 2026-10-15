@@ -965,3 +965,10 @@ bun run dev        # starts API server + Vite dev server
 ## License
 
 MIT
+
+
+## Multi-host session control and daily work logs (this fork)
+
+Bind existing Codex and Claude sessions to enrolled hosts from session details. Codex supports follow-up messages, native command/file approval cards, durable offline message delivery, and recovery of the same thread after a control connection or Supervisor restart. The Work Log page schedules calendar-day conversation summaries and delivers Markdown to a configurable document HTTP endpoint, with per-session inclusion and retry deduplication.
+
+See [setup, behavior, limitations, and document API contract](docs/SESSION_CONTROL_WORKLOG.md).

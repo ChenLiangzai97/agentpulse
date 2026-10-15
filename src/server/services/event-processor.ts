@@ -133,6 +133,7 @@ async function persistEvents(sessionId: string, plan: InsertPlan): Promise<Sessi
 				toolResponse: row.toolResponse,
 				rawPayload: row.rawPayload,
 				dedupKey: row.dedupKey,
+				...(row.dedupKey?.startsWith("managed:") ? { createdAt: row.createdAt } : {}),
 			})),
 		)
 		.onConflictDoNothing()
@@ -227,6 +228,31 @@ export async function insertNormalizedEvents(
 	});
 
 	return persistEvents(sessionId, plan);
+}
+
+/** Native supervisor events have stable delivery identity across offline replays. */
+export async function insertManagedDelivery(
+	sessionId: string,
+	event: NormalizedEvent,
+	deliveryId: string,
+	occurredAt?: string,
+) {
+	const parsed = occurredAt ? new Date(occurredAt) : new Date();
+	const date =
+		Number.isFinite(parsed.getTime()) && parsed.getTime() <= Date.now() + 60_000
+			? parsed
+			: new Date();
+	return persistEvents(sessionId, {
+		retained: [
+			{
+				...event,
+				createdAt: date.toISOString().slice(0, 19).replace("T", " "),
+				dedupKey: `managed:${deliveryId}`,
+				deletesIfStored: [],
+			},
+		],
+		drops: {},
+	});
 }
 
 /**

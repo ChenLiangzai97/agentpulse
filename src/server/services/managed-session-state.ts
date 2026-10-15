@@ -15,7 +15,7 @@ import {
 	users,
 } from "../db/schema/index.js";
 import { withTransaction } from "../db/with-transaction.js";
-import { insertNormalizedEvents } from "./event-processor.js";
+import { insertManagedDelivery, insertNormalizedEvents } from "./event-processor.js";
 import { cleanMachineName } from "./machine-name.js";
 import { generateSessionName } from "./name-generator.js";
 import { ownerForNewSession } from "./session-attribution.js";
@@ -290,7 +290,22 @@ export async function appendManagedSessionEvents(
 		toolResponse: null,
 		rawPayload: event.rawPayload ?? {},
 	}));
-	return insertNormalizedEvents(sessionId, normalized);
+	if (events.every((event) => !event.deliveryId))
+		return insertNormalizedEvents(sessionId, normalized);
+	const inserted = [];
+	for (let index = 0; index < normalized.length; index++) {
+		const event = events[index];
+		const id =
+			typeof event.deliveryId === "string" && event.deliveryId.length <= 300
+				? event.deliveryId
+				: null;
+		inserted.push(
+			...(id
+				? await insertManagedDelivery(sessionId, normalized[index], id, event.occurredAt)
+				: await insertNormalizedEvents(sessionId, [normalized[index]])),
+		);
+	}
+	return inserted;
 }
 
 export async function attachManagedSessionToLaunch(input: {
@@ -374,7 +389,10 @@ export async function attachManagedSessionToLaunch(input: {
 	return managedRow ? mapManagedSession(managedRow) : null;
 }
 
-export async function listManagedSessionsNeedingSync(supervisorId: string) {
+export async function listManagedSessionsNeedingSync(
+	supervisorId: string,
+	includeRecoverable = false,
+) {
 	// Explicit column selection (rather than a bare .select()) keeps the row
 	// shape equal to managedSessions.$inferSelect once launchRequests is
 	// joined in for owner-of-record routing, so mapManagedSession still
@@ -407,11 +425,13 @@ export async function listManagedSessionsNeedingSync(supervisorId: string) {
 		.where(
 			and(
 				sessionOwnedBy(supervisorId),
-				isNotNull(managedSessions.desiredThreadTitle),
-				or(
-					isNull(managedSessions.providerThreadTitle),
-					ne(managedSessions.desiredThreadTitle, managedSessions.providerThreadTitle),
-				),
+				includeRecoverable ? undefined : isNotNull(managedSessions.desiredThreadTitle),
+				includeRecoverable
+					? undefined
+					: or(
+							isNull(managedSessions.providerThreadTitle),
+							ne(managedSessions.desiredThreadTitle, managedSessions.providerThreadTitle),
+						),
 			),
 		);
 

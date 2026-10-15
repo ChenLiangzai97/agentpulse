@@ -29,6 +29,7 @@ import type {
 	SupervisorRecord,
 	WatcherPolicy,
 } from "../../shared/types.js";
+import type { WorklogConfig, WorklogRun } from "../../shared/worklog.js";
 
 import {
 	SUMMARY_REFUSAL_CODES,
@@ -319,6 +320,38 @@ type SessionsResponse = {
 };
 
 export const api = {
+	getNativeApprovals: (id: string) =>
+		request<{ approvals: SessionEvent[] }>(`/sessions/${encodeURIComponent(id)}/native-approvals`),
+	getWorklogConfig: () => request<{ config: WorklogConfig }>("/worklog/config"),
+	saveWorklogConfig: (config: WorklogConfig) =>
+		request<{ config: WorklogConfig }>("/worklog/config", {
+			method: "PUT",
+			body: JSON.stringify(config),
+		}),
+	getWorklogs: () => request<{ runs: WorklogRun[] }>("/worklog/runs"),
+	runWorklog: (date: string, deliver: boolean) =>
+		request("/worklog/runs", { method: "POST", body: JSON.stringify({ date, deliver }) }),
+	discardWorklog: (date: string) =>
+		request(`/worklog/runs/${encodeURIComponent(date)}`, { method: "DELETE" }),
+	getWorklogIncluded: (id: string) =>
+		request<{ included: boolean }>(`/sessions/${encodeURIComponent(id)}/worklog`),
+	setWorklogIncluded: (id: string, included: boolean) =>
+		request(`/sessions/${encodeURIComponent(id)}/worklog`, {
+			method: "PUT",
+			body: JSON.stringify({ included }),
+		}),
+	bindSession: (id: string, supervisorId: string) =>
+		request(`/sessions/${encodeURIComponent(id)}/bind`, {
+			method: "POST",
+			body: JSON.stringify({ supervisorId }),
+		}),
+	recoverSession: (id: string) =>
+		request(`/sessions/${encodeURIComponent(id)}/resume`, { method: "POST" }),
+	respondNativeApproval: (id: string, approvalId: string, decision: string) =>
+		request(
+			`/sessions/${encodeURIComponent(id)}/native-approvals/${encodeURIComponent(approvalId)}`,
+			{ method: "POST", body: JSON.stringify({ decision }) },
+		),
 	search: (filters: {
 		q: string;
 		sessionId?: string;

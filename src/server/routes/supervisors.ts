@@ -430,7 +430,10 @@ supervisorsAgentRouter.post(
 
 supervisorsAgentRouter.get("/supervisors/:id/provider-sync", requireSupervisorAuth(), async (c) => {
 	const supervisorId = c.req.param("id") ?? "";
-	const managedSessions = await listManagedSessionsNeedingSync(supervisorId);
+	const managedSessions = await listManagedSessionsNeedingSync(
+		supervisorId,
+		c.req.query("includeRecoverable") === "true",
+	);
 	return c.json({ managedSessions });
 });
 

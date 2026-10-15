@@ -1,3 +1,5 @@
+import { realpath } from "node:fs/promises";
+import type { LaunchRequest } from "../shared/types.js";
 /**
  * Runs one claimed control action (stop, prompt, workarea cleanup) and reports
  * its result.
@@ -27,8 +29,14 @@ import type {
 	promptClaudeHeadlessSession,
 	promptClaudeInteractiveSession,
 } from "./providers/claude.js";
+import {
+	launchManagedCodexRequest,
+	promptManagedCodexSession,
+	respondManagedApproval,
+} from "./providers/codex-managed.js";
 import type { stopManagedCodexSession } from "./providers/codex-managed.js";
 import { CleanupError, type executeCleanupWorkArea } from "./services/cleanup-workarea.js";
+import { isUnderAnyRoot, resolveTrustedRoots } from "./services/prelaunch-actions.js";
 import { type ReportGate, controlRefusalBody } from "./services/report-gate.js";
 
 export type ControlProviders = {
@@ -119,6 +127,11 @@ export function createControlActionHandler(
 				throw new Error("Prompt action is missing prompt or working directory.");
 			}
 
+			if (metadata.agentType === "codex_cli") {
+				await promptManagedCodexSession(sessionId, text, callbacks);
+				await report(action, { status: "succeeded" });
+				return;
+			}
 			if (managedState === "interactive_terminal") {
 				const response = await providers.promptClaudeInteractiveSession(
 					{
@@ -202,6 +215,47 @@ export function createControlActionHandler(
 	return async function handleControlAction(action) {
 		const sessionId = action.sessionId ?? null;
 		const named = namedDirectory(action);
+		if (action.actionType === "resume" && sessionId) {
+			try {
+				const launch = action.metadata?.launch as LaunchRequest;
+				if (!launch || launch.launchCorrelationId !== sessionId)
+					throw new Error("Invalid resume descriptor");
+				const cwd = await realpath(launch.cwd);
+				const roots = await resolveTrustedRoots(deps.trustedRoots);
+				if (!isUnderAnyRoot(cwd, roots)) throw new Error("Directory outside trusted roots");
+				if (!gate.noteCwd(sessionId, cwd) || gate.verdict(sessionId, cwd) !== "send") {
+					await gate.refuseControlAction(action.id);
+					return;
+				}
+				if (launch.agentType === "codex_cli") {
+					const threadId = action.metadata?.providerThreadId;
+					if (typeof threadId !== "string" || !threadId)
+						throw new Error("Missing native thread ID");
+					await launchManagedCodexRequest(
+						launch,
+						{
+							reportState: (body) => gate.reportState(body),
+							reportEvents: (events) => gate.reportEvents(sessionId, events),
+						},
+						{ resumeThreadId: threadId, noPrompt: true },
+					);
+				} else if (launch.agentType === "claude_code") {
+					await gate.reportState({
+						sessionId,
+						managedState: "headless",
+						status: "idle",
+						providerSyncState: "synced",
+					});
+				} else throw new Error("Provider cannot resume");
+				await report(action, { status: "succeeded" });
+			} catch (error) {
+				await report(action, {
+					status: "failed",
+					error: error instanceof Error ? error.message : "Resume failed",
+				});
+			}
+			return;
+		}
 		const verdict = sessionId ? gate.verdict(sessionId, named) : gate.verdictForDirectory(named);
 		if (verdict !== "send") {
 			log(`[supervisor] control action ${action.id} (${action.actionType}) not executed`);
@@ -209,6 +263,30 @@ export function createControlActionHandler(
 			return;
 		}
 
+		if (action.actionType === "approval" && sessionId) {
+			try {
+				respondManagedApproval(
+					sessionId,
+					String(action.metadata?.approvalId),
+					String(action.metadata?.decision),
+				);
+				await gate.reportEvents(sessionId, [
+					{
+						eventType: "NativeApprovalResolved",
+						category: "system_event",
+						content: String(action.metadata?.decision),
+						rawPayload: { approvalId: action.metadata?.approvalId },
+					},
+				]);
+				await report(action, { status: "succeeded" });
+			} catch (error) {
+				await report(action, {
+					status: "failed",
+					error: error instanceof Error ? error.message : "Approval failed",
+				});
+			}
+			return;
+		}
 		if (action.actionType === "stop" && sessionId) return stop(action, sessionId);
 		if (action.actionType === "prompt" && sessionId) return prompt(action, sessionId);
 		if (action.actionType === "cleanup_workarea") return cleanup(action);

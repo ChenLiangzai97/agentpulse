@@ -1635,7 +1635,7 @@ describe("nothing else sends session data (drift guards)", () => {
 		'"/supervisors/register"',
 		"`/supervisors/${registration.supervisor.id}/launches/claim`",
 		"`/supervisors/${registration.supervisor.id}/heartbeat`",
-		"`/supervisors/${registration.supervisor.id}/provider-sync`",
+		"`/supervisors/${registration.supervisor.id}/provider-sync?includeRecoverable=true`",
 		"`/supervisors/${registration.supervisor.id}/control-actions/claim`",
 	];
 

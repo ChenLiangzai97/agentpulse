@@ -173,6 +173,7 @@ export type ControlActionType =
 	| "resume"
 	| "rename"
 	| "prompt"
+	| "approval"
 	| "cleanup_workarea";
 export type ControlActionStatus = "queued" | "running" | "succeeded" | "failed";
 export type EventSource =
@@ -1077,6 +1078,8 @@ export interface ManagedSessionStateInput {
 }
 
 export interface ManagedSessionEventInput {
+	deliveryId?: string;
+	occurredAt?: string;
 	eventType: string;
 	category: EventCategory;
 	source?: EventSource;

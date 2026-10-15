@@ -40,7 +40,9 @@ export function SessionPromptComposer({
 	const label = interactive ? "Send to terminal" : "Send task";
 	const hint = interactive
 		? "This sends your prompt into the owned interactive Claude session and keeps the terminal and workspace on the same session."
-		: "This runs a follow-up headless turn inside the same Claude session and streams the visible output back here.";
+		: session.agentType === "codex_cli"
+			? "Send a message to the same Codex thread on its bound host. If disconnected, resume the session first."
+			: "This runs a follow-up headless turn inside the same Claude session and streams the visible output back here.";
 
 	useEffect(() => {
 		if (!isClaudeManaged) return;
@@ -68,7 +70,7 @@ export function SessionPromptComposer({
 		};
 	}, [interactive, isClaudeManaged, session.managedSession?.supervisorId]);
 
-	if (!isClaudeManaged) return null;
+	if (!session.managedSession || session.agentType === "copilot_cli") return null;
 
 	async function submit() {
 		const clean = prompt.trim();

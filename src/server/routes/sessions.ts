@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lte } from "drizzle-orm";
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -58,6 +58,7 @@ import { toSessionEventDtos } from "../services/event-dto.js";
 import { notifySessionUpdated } from "../services/notifier.js";
 import { readServiceKeyLists } from "../services/service-key-lists.js";
 import { isServiceKeyRow } from "../services/service-keys.js";
+import { bindSession, queueApproval, queueResume } from "../services/session-binding.js";
 import {
 	type SessionDetailRead,
 	getSessionDetail,
@@ -793,7 +794,14 @@ sessionsRouter.post("/sessions/:sessionId/fork", async (c) => {
 });
 
 sessionsRouter.post("/sessions/:sessionId/resume", async (c) => {
-	return c.json({ error: "Resume is not implemented yet for this provider." }, 501);
+	const sessionId = c.req.param("sessionId");
+	const refusal = await refuseUnlessOwnerOrAdmin(c, sessionId, assertCanEditSessionNotes);
+	if (refusal) return refusal;
+	try {
+		return c.json({ action: await queueResume(sessionId, await getRequestActor(c)) }, 202);
+	} catch (error) {
+		return c.json({ error: error instanceof Error ? error.message : "Resume failed" }, 409);
+	}
 });
 
 // PUT /api/v1/sessions/:sessionId/pin - Toggle pin
@@ -1052,3 +1060,68 @@ sessionsRouter.delete("/sessions/:sessionId", async (c) => {
 });
 
 export { sessionsRouter };
+
+sessionsRouter.post("/sessions/:sessionId/bind", async (c) => {
+	const sessionId = c.req.param("sessionId");
+	const refusal = await refuseUnlessOwnerOrAdmin(c, sessionId, assertCanEditSessionNotes);
+	if (refusal) return refusal;
+	const body = await readJsonObject(c);
+	const { supervisorId } = body ?? {};
+	if (typeof supervisorId !== "string") return invalidBody(c);
+	try {
+		return c.json(await bindSession(sessionId, supervisorId, await getRequestActor(c)));
+	} catch (error) {
+		return c.json({ error: error instanceof Error ? error.message : "Binding failed" }, 409);
+	}
+});
+sessionsRouter.post("/sessions/:sessionId/native-approvals/:approvalId", async (c) => {
+	const sessionId = c.req.param("sessionId");
+	const refusal = await refuseUnlessOwnerOrAdmin(c, sessionId, assertCanEditSessionNotes);
+	if (refusal) return refusal;
+	const body = await readJsonObject(c);
+	if (!body || typeof body.decision !== "string") return invalidBody(c);
+	try {
+		return c.json(
+			{
+				action: await queueApproval(
+					sessionId,
+					c.req.param("approvalId"),
+					body.decision,
+					await getRequestActor(c),
+				),
+			},
+			202,
+		);
+	} catch (error) {
+		return c.json({ error: error instanceof Error ? error.message : "Approval failed" }, 409);
+	}
+});
+
+sessionsRouter.get("/sessions/:sessionId/native-approvals", async (c) => {
+	const rows = await getDb()
+		.select()
+		.from(events)
+		.where(
+			and(
+				eq(events.sessionId, c.req.param("sessionId")),
+				inArray(events.eventType, [
+					"NativeApprovalRequested",
+					"NativeApprovalResolved",
+					"ManagedSessionStart",
+				]),
+			),
+		)
+		.orderBy(desc(events.id))
+		.limit(200);
+	const resolved = new Set<string>();
+	const pending = [];
+	for (const row of rows) {
+		if (row.eventType === "ManagedSessionStart") break;
+		const payload = row.rawPayload as Record<string, unknown>;
+		const id = String(payload.approvalId);
+		if (row.eventType === "NativeApprovalResolved") resolved.add(id);
+		else if (!resolved.has(id) && Date.parse(String(payload.expiresAt)) > Date.now())
+			pending.push(row);
+	}
+	return c.json({ approvals: toSessionEventDtos(pending) });
+});

@@ -51,6 +51,11 @@ const navItems: NavItem[] = [
 		labsFlag: "inbox",
 	},
 	{
+		to: "/worklog",
+		label: "工作日志",
+		icon: "M9 12h6m-6 4h6M5 3h14v18H5z",
+	},
+	{
 		to: "/digest",
 		label: "Digest",
 		icon: "M9 17v-6h13v6M9 17a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2h2a2 2 0 012 2v6zm3-4l2 2 4-4",

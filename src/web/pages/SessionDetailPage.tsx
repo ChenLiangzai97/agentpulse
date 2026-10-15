@@ -13,6 +13,7 @@ import {
 	NotesPanel,
 	SummaryField,
 } from "../components/session-detail/Panels.js";
+import { SessionConnections } from "../components/session-detail/SessionConnections.js";
 import { SessionHeader } from "../components/session-detail/SessionHeader.js";
 import { SessionOwnerDialog } from "../components/session-detail/SessionOwnerDialog.js";
 import { SessionPromptComposer } from "../components/session-detail/SessionPromptComposer.js";
@@ -681,6 +682,7 @@ export function SessionDetailPage() {
 				}
 			})()}
 
+			<SessionConnections session={session} onChanged={loadSessionWorkspace} />
 			<ControlHistory actions={controlActions} />
 
 			{workspaceTab === "activity" && reveal.notice ? (

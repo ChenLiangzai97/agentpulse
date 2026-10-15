@@ -258,6 +258,7 @@ export async function queuePromptAction(sessionId: string, prompt: string, actor
 				cwd: session.cwd,
 				model: session.model,
 				managedState: managed.managedState,
+				providerSessionId: managed.providerSessionId,
 				launchMode: launch.requestedLaunchMode,
 				env: launch.env ?? {},
 				terminalOwner:
@@ -485,7 +486,7 @@ export async function claimNextControlAction(supervisorId: string) {
 			claimedBySupervisorId: supervisorId,
 			updatedAt: timestamp,
 		})
-		.where(eq(controlActions.id, candidate.id))
+		.where(and(eq(controlActions.id, candidate.id), eq(controlActions.status, "queued")))
 		.returning();
 	return updated ? mapControlAction(updated) : null;
 }
@@ -525,7 +526,12 @@ export async function updateControlAction(input: {
 				controlLockExpiresAt: null,
 				updatedAt: timestamp,
 			})
-			.where(eq(managedSessions.sessionId, current.sessionId));
+			.where(
+				and(
+					eq(managedSessions.sessionId, current.sessionId),
+					eq(managedSessions.activeControlActionId, current.id),
+				),
+			);
 	}
 
 	if (current.actionType === "cleanup_workarea" && input.status === "succeeded") {

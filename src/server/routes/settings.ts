@@ -49,7 +49,7 @@ settingsRouter.get("/settings", async (c) => {
 		// The instance rows (the mode, the kept admin service keys) are not for
 		// clients: the mode is read from /instance, the kept list from the
 		// `adminService` flag on a key, for admins only.
-		if (row.key.startsWith(INSTANCE_SETTING_PREFIX)) continue;
+		if (row.key.startsWith(INSTANCE_SETTING_PREFIX) || row.key.startsWith("worklog.")) continue;
 		result[row.key] = row.value;
 	}
 	return c.json(result);
