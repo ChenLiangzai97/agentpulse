@@ -25,13 +25,10 @@ export const SESSION_STATUSES = ["active", "idle", "completed", "failed", "archi
 
 export const AGENT_TYPES = ["claude_code", "codex_cli", "copilot_cli", "opencode"] as const;
 
-// Agent types AgentPulse can actively start a process for. Everything in
-// AGENT_TYPES that isn't here is observed-only (D5): it can post hook
-// events and show up on the dashboard, but no launch/template/resume path
-// may accept it as a target. Phase 1 keeps this identical to AGENT_TYPES;
-// Phase 6 adds "copilot_cli" to AGENT_TYPES without adding it here, which is
-// the whole point of the split.
-export const LAUNCHABLE_AGENT_TYPES = ["claude_code", "codex_cli"] as const;
+// Types eligible for NEW launches. This is never per-session control authority:
+// OpenCode additionally requires a protected AgentPulse launch binding/generation.
+// External, observer and legacy OpenCode sessions remain permanently read-only.
+export const LAUNCHABLE_AGENT_TYPES = ["claude_code", "codex_cli", "opencode"] as const;
 
 export function isLaunchable(agentType: string): agentType is LaunchableAgentType {
 	return (LAUNCHABLE_AGENT_TYPES as readonly string[]).includes(agentType);
@@ -76,7 +73,7 @@ export const AGENT_METADATA: Record<AgentType, AgentMetadata> = {
 		badgeClass: "bg-cyan-500/8 text-cyan-400/90 border-cyan-500/15",
 		dotClass: "bg-cyan-400/70",
 		instructionsFile: "AGENTS.md",
-		observeOnlyHint: "Observed only — AgentPulse can't launch or steer OpenCode sessions.",
+		observeOnlyHint: "External OpenCode sessions are observed only.",
 		hasNameSource: true,
 	},
 	claude_code: {

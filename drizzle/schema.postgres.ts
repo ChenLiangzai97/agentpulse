@@ -52,3 +52,5 @@ export {
 	providerInstancesPg as providerInstances,
 	sessionControlBindingsPg as sessionControlBindings,
 } from "../src/server/db/schema/core/provider-control";
+
+export { providerInteractionsPg as providerInteractions } from "../src/server/db/schema/core/provider-interactions.js";

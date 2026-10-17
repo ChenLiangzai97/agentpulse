@@ -40,6 +40,8 @@ import { isUnderAnyRoot, resolveTrustedRoots } from "./services/prelaunch-action
 import { type ReportGate, controlRefusalBody } from "./services/report-gate.js";
 
 export type ControlProviders = {
+	openCodeControl?: (action: ControlAction) => Promise<void>;
+	openCodeHealth?: () => Promise<string>;
 	stopManagedCodexSession: typeof stopManagedCodexSession;
 	promptClaudeHeadlessSession: typeof promptClaudeHeadlessSession;
 	promptClaudeInteractiveSession: typeof promptClaudeInteractiveSession;
@@ -214,6 +216,21 @@ export function createControlActionHandler(
 
 	return async function handleControlAction(action) {
 		const sessionId = action.sessionId ?? null;
+		if (action.actionType === "opencode_health" && !sessionId) {
+			try {
+				if (!providers.openCodeHealth) throw new Error("OpenCode unavailable");
+				await report(action, {
+					status: "succeeded",
+					metadata: {
+						targetSupervisorId: action.metadata?.targetSupervisorId,
+						health: await providers.openCodeHealth(),
+					},
+				});
+			} catch {
+				await report(action, { status: "failed", error: "opencode_health_unavailable" });
+			}
+			return;
+		}
 		const named = namedDirectory(action);
 		if (action.actionType === "resume" && sessionId) {
 			try {
@@ -263,6 +280,19 @@ export function createControlActionHandler(
 			return;
 		}
 
+		if (action.metadata?.agentType === "opencode") {
+			try {
+				if (!providers.openCodeControl) throw new Error("OpenCode provider unavailable");
+				await providers.openCodeControl(action);
+				await report(action, { status: "succeeded" });
+			} catch (error) {
+				await report(action, {
+					status: "failed",
+					error: error instanceof Error ? error.message : "OpenCode action failed",
+				});
+			}
+			return;
+		}
 		if (action.actionType === "approval" && sessionId) {
 			try {
 				respondManagedApproval(

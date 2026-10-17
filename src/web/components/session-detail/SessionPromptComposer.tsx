@@ -71,7 +71,7 @@ export function SessionPromptComposer({
 		};
 	}, [interactive, isClaudeManaged, session.managedSession?.supervisorId]);
 
-	if (!session.managedSession || !isLaunchable(session.agentType)) return null;
+	if (!session.managedSession || !isLaunchable(session.agentType) || session.agentType === "opencode") return null;
 
 	async function submit() {
 		const clean = prompt.trim();

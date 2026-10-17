@@ -21,6 +21,9 @@ import { generateSessionName } from "./name-generator.js";
 import {
 	SessionControlOriginError,
 	assertSessionControlOrigin,
+	bindCreatedOpenCodeSession,
+	inspectOpenCodeProvenance,
+	validateOpenCodeReport,
 } from "./opencode-control-provenance.js";
 import { ownerForNewSession } from "./session-attribution.js";
 import { mapSessionDto } from "./session-dto.js";
@@ -77,9 +80,12 @@ export async function upsertManagedSessionState(
 	supervisorId: string,
 	input: ManagedSessionStateInput,
 ): Promise<{ session: Session; managedSession: ManagedSession }> {
-	await assertSessionControlOrigin(input.sessionId);
-	if (String(input.agentType) === "opencode")
-		throw new SessionControlOriginError("opencode_control_not_enabled", 409);
+	const openCodeReport =
+		input.agentType === "opencode" ||
+		input.providerInstanceId ||
+		(await inspectOpenCodeProvenance(input.sessionId));
+	if (openCodeReport) await validateOpenCodeReport(supervisorId, input);
+	else await assertSessionControlOrigin(input.sessionId);
 	await assertSupervisorCanWriteSession(supervisorId, input.sessionId, {
 		launchRequestId: input.launchRequestId,
 	});
@@ -251,6 +257,13 @@ export async function upsertManagedSessionState(
 			},
 		});
 
+	if (openCodeReport)
+		await bindCreatedOpenCodeSession(
+			supervisorId,
+			input.providerInstanceId!,
+			input.providerSessionId!,
+			input.providerGeneration!,
+		);
 	const [managedRow] = await getDb()
 		.select()
 		.from(managedSessions)
@@ -286,6 +299,8 @@ export async function appendManagedSessionEvents(
 ) {
 	await assertSessionControlOrigin(sessionId);
 	await assertSupervisorCanWriteSession(supervisorId, sessionId);
+	if (await inspectOpenCodeProvenance(sessionId))
+		throw new SessionControlOriginError("provider_binding_invalid");
 	const normalized = events.map((event) => ({
 		eventType: event.eventType,
 		category: event.category,

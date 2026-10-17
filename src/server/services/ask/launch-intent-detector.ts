@@ -292,10 +292,10 @@ If this is NOT a launch request:
 {"intent":"none"}
 
 If this IS a launch request and the user named a project from the known list:
-{"intent":"launch","projectName":"<exact project name from the known list>","agentType":"claude_code|codex_cli|copilot_cli|opencode|null","mode":"interactive_terminal|headless|managed_codex|null","taskHint":"<short description of the task, or null>","displayName":"<kebab-case-2-to-4-word slug describing the task, or null>","taskBrief":{"summary":"<one-sentence task description>","outputPath":"<relative path or null>","format":"<format like markdown|json|null>"},"cloneSpec":{"url":"<https URL of the repo to clone, or omit>","branch":"<branch name, or omit>","depth":<positive integer or omit>}}
+{"intent":"launch","projectName":"<exact project name from the known list>","agentType":"claude_code|codex_cli|copilot_cli|opencode|null","mode":"interactive_terminal|headless|managed_codex|managed_opencode|null","taskHint":"<short description of the task, or null>","displayName":"<kebab-case-2-to-4-word slug describing the task, or null>","taskBrief":{"summary":"<one-sentence task description>","outputPath":"<relative path or null>","format":"<format like markdown|json|null>"},"cloneSpec":{"url":"<https URL of the repo to clone, or omit>","branch":"<branch name, or omit>","depth":<positive integer or omit>}}
 
 If this IS a launch-flavored request but the user did NOT name a project (e.g. "create a plan about caching strategies"):
-{"intent":"launch_needs_project","agentType":"claude_code|codex_cli|copilot_cli|opencode|null","mode":"interactive_terminal|headless|managed_codex|null","taskHint":"<short description of the task, or null>","displayName":"<kebab-case-2-to-4-word slug describing the task, or null>","taskBrief":{"summary":"<one-sentence task description>","outputPath":"<relative path or null>","format":"<format like markdown|json|null>"},"cloneSpec":{"url":"<https URL of the repo to clone, or omit>","branch":"<branch name, or omit>","depth":<positive integer or omit>}}
+{"intent":"launch_needs_project","agentType":"claude_code|codex_cli|copilot_cli|opencode|null","mode":"interactive_terminal|headless|managed_codex|managed_opencode|null","taskHint":"<short description of the task, or null>","displayName":"<kebab-case-2-to-4-word slug describing the task, or null>","taskBrief":{"summary":"<one-sentence task description>","outputPath":"<relative path or null>","format":"<format like markdown|json|null>"},"cloneSpec":{"url":"<https URL of the repo to clone, or omit>","branch":"<branch name, or omit>","depth":<positive integer or omit>}}
 
 Rules:
 - Only use project names from the known list (case-insensitive match) for the "launch" shape. If the user mentions a project name with extra whitespace, dashes, underscores, dots, or minor typos, normalize to the closest match from the known list (e.g. "agent pulse" → "agentpulse", "agnetpulse" → "agentpulse"). If you genuinely cannot resolve the user's reference to one known project, leave projectName empty and return "launch_needs_project" instead.
@@ -334,7 +334,8 @@ export function parseLaunchIntentResponse(
 	const mode =
 		parsed.mode === "headless" ||
 		parsed.mode === "interactive_terminal" ||
-		parsed.mode === "managed_codex"
+		parsed.mode === "managed_codex" ||
+		parsed.mode === "managed_opencode"
 			? (parsed.mode as LaunchMode)
 			: undefined;
 
@@ -656,9 +657,9 @@ If this IS an add-project request:
   "intent": "add_project",
   "name": "<project name or null>",
   "cwd": "<absolute directory path or null>",
-  "defaultAgentType": "claude_code|codex_cli|null",
+  "defaultAgentType": "claude_code|codex_cli|opencode|null",
   "defaultModel": "<model string or null>",
-  "defaultLaunchMode": "interactive_terminal|headless|managed_codex|null",
+  "defaultLaunchMode": "interactive_terminal|headless|managed_codex|managed_opencode|null",
   "githubRepoUrl": "<url or null>"
 }
 
@@ -873,7 +874,7 @@ If NOT a project/template edit or delete:
 {"intent":"none"}
 
 If editing a project:
-{"intent":"edit_project","targetName":"<exact project name>","fields":{"name":"<new name or omit>","cwd":"<absolute path or omit>","defaultAgentType":"claude_code|codex_cli|null or omit","defaultModel":"<model or null or omit>","defaultLaunchMode":"interactive_terminal|headless|managed_codex|null or omit","githubRepoUrl":"<url or null or omit>","notes":"<notes or null or omit>"}}
+{"intent":"edit_project","targetName":"<exact project name>","fields":{"name":"<new name or omit>","cwd":"<absolute path or omit>","defaultAgentType":"claude_code|codex_cli|opencode|null or omit","defaultModel":"<model or null or omit>","defaultLaunchMode":"interactive_terminal|headless|managed_codex|managed_opencode|null or omit","githubRepoUrl":"<url or null or omit>","notes":"<notes or null or omit>"}}
 
 If deleting a project:
 {"intent":"delete_project","targetName":"<exact project name>"}
@@ -937,7 +938,8 @@ export async function detectProjectTemplateCrudIntent(
 				if ("defaultAgentType" in rawFields) {
 					fields.defaultAgentType =
 						rawFields.defaultAgentType === "claude_code" ||
-						rawFields.defaultAgentType === "codex_cli"
+						rawFields.defaultAgentType === "codex_cli" ||
+						rawFields.defaultAgentType === "opencode"
 							? rawFields.defaultAgentType
 							: null;
 				}
@@ -948,7 +950,10 @@ export async function detectProjectTemplateCrudIntent(
 				if ("defaultLaunchMode" in rawFields) {
 					const lm = rawFields.defaultLaunchMode;
 					fields.defaultLaunchMode =
-						lm === "interactive_terminal" || lm === "headless" || lm === "managed_codex"
+						lm === "interactive_terminal" ||
+						lm === "headless" ||
+						lm === "managed_codex" ||
+						lm === "managed_opencode"
 							? lm
 							: null;
 				}
@@ -1365,7 +1370,11 @@ export async function detectAddProjectIntent(message: string): Promise<LaunchInt
 			if (typeof parsed.cwd === "string" && parsed.cwd.startsWith("/")) {
 				initialFields.cwd = parsed.cwd;
 			}
-			if (parsed.defaultAgentType === "claude_code" || parsed.defaultAgentType === "codex_cli") {
+			if (
+				parsed.defaultAgentType === "claude_code" ||
+				parsed.defaultAgentType === "codex_cli" ||
+				parsed.defaultAgentType === "opencode"
+			) {
 				initialFields.defaultAgentType = parsed.defaultAgentType;
 			}
 			if (typeof parsed.defaultModel === "string" && parsed.defaultModel) {

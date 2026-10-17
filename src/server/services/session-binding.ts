@@ -12,7 +12,10 @@ import {
 import { withTransaction } from "../db/with-transaction.js";
 import { assertCanEditSessionNotes, assertCanManageHost } from "./authorization.js";
 import { mapLaunchRequest } from "./launch-validator.js";
-import { assertSessionControlOrigin } from "./opencode-control-provenance.js";
+import {
+	assertSessionControlOrigin,
+	inspectOpenCodeProvenance,
+} from "./opencode-control-provenance.js";
 import { resolveSessionOwner } from "./session-ownership.js";
 
 /** Bind an observed native session to its enrolled host; never migrate a bound session. */
@@ -110,6 +113,8 @@ export async function queueApproval(
 ) {
 	await assertSessionControlOrigin(sessionId, actor);
 	await assertCanEditSessionNotes(actor, sessionId);
+	if (await inspectOpenCodeProvenance(sessionId))
+		throw new Error("Use the generation-fenced OpenCode interaction endpoint");
 	const recent = await getDb()
 		.select()
 		.from(events)

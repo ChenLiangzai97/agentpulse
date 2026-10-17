@@ -202,10 +202,18 @@ export function TemplateEditorPanel(props: {
 						onChange={(e) => {
 							if (isInherited("agentType")) onOverrideField("agentType");
 							onUpdateDraft("agentType", e.target.value as LaunchableAgentType);
+							if (e.target.value === "opencode") {
+								onOverrideField("model");
+								onUpdateDraft("model", "");
+								onUpdateDraft("approvalPolicy", null);
+								onUpdateDraft("sandboxMode", null);
+								onSetEnvText("");
+							}
 						}}
 						className={isInherited("agentType") ? inheritedInputClass : normalInputClass}
 					>
 						<option value="codex_cli">Codex CLI</option>
+						<option value="opencode">OpenCode (isolated managed)</option>
 						<option value="claude_code">Claude Code</option>
 					</select>
 					<OverrideResetButton fieldName="agentType" />
@@ -236,10 +244,16 @@ export function TemplateEditorPanel(props: {
 				<OverrideResetButton fieldName="cwd" />
 			</div>
 
+			{draft.agentType === "opencode" && (
+				<p className="text-xs text-muted-foreground">
+					模型与权限使用目标主机的私有 OpenCode profile；本模板不覆盖模型、环境或审批策略。
+				</p>
+			)}
 			<div className="grid gap-4 md:grid-cols-3">
 				<div className="space-y-1.5 text-sm">
 					<span className="block text-foreground">Model</span>
 					<input
+						disabled={draft.agentType === "opencode"}
 						value={draft.model ?? ""}
 						onChange={(e) => {
 							if (isInherited("model")) onOverrideField("model");
@@ -259,6 +273,7 @@ export function TemplateEditorPanel(props: {
 				<label className="space-y-1.5 text-sm">
 					<span className="text-foreground">Approval Policy</span>
 					<select
+						disabled={draft.agentType === "opencode"}
 						value={draft.approvalPolicy ?? ""}
 						onChange={(e) =>
 							onUpdateDraft("approvalPolicy", (e.target.value || null) as ApprovalPolicy | null)
@@ -275,6 +290,7 @@ export function TemplateEditorPanel(props: {
 				<label className="space-y-1.5 text-sm">
 					<span className="text-foreground">Sandbox Mode</span>
 					<select
+						disabled={draft.agentType === "opencode"}
 						value={draft.sandboxMode ?? ""}
 						onChange={(e) =>
 							onUpdateDraft("sandboxMode", (e.target.value || null) as SandboxMode | null)
@@ -364,6 +380,7 @@ export function TemplateEditorPanel(props: {
 				<label className="block space-y-1.5 text-sm">
 					<span className="text-foreground">Environment Variables</span>
 					<textarea
+						disabled={draft.agentType === "opencode"}
 						value={envText}
 						onChange={(e) => onSetEnvText(e.target.value)}
 						className="min-h-28 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs text-foreground"

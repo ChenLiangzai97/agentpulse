@@ -92,6 +92,13 @@
 			"when": 1792249655023,
 			"tag": "0012_opencode_provenance",
 			"breakpoints": true
+		},
+		{
+			"idx": 13,
+			"version": "6",
+			"when": 1792250671572,
+			"tag": "0013_opencode_interactions",
+			"breakpoints": true
 		}
 	]
 }

@@ -23,6 +23,10 @@ import { PrelaunchError, type executePrelaunchActions } from "./services/prelaun
 import { LAUNCH_REFUSED_CODE, type ReportGate } from "./services/report-gate.js";
 
 export type LaunchProviders = {
+	launchManagedOpenCode?: (
+		launch: LaunchRequest,
+		callbacks: LaunchCallbacks,
+	) => Promise<{ pid: number; metadata: Record<string, unknown> }>;
 	launchManagedCodex: typeof launchManagedCodexRequest;
 	launchClaudeHeadless: typeof launchClaudeHeadlessRequest;
 	launchClaudeInteractive: typeof launchClaudeInteractiveRequest;
@@ -103,6 +107,26 @@ export function createLaunchDispatcher(
 			return;
 		}
 
+		if (launch.agentType === "opencode" && launch.requestedLaunchMode === "managed_opencode") {
+			await gate.reportLaunchStatus(launch.id, { status: "launching" });
+			if (!(await runPrelaunchActionsForLaunch(launch))) return;
+			try {
+				if (!providers.launchManagedOpenCode)
+					throw new Error("Host has no managed OpenCode provider");
+				const result = await providers.launchManagedOpenCode(launch, callbacksFor(launch));
+				await gate.reportLaunchStatus(launch.id, {
+					status: "running",
+					pid: result.pid,
+					providerLaunchMetadata: result.metadata,
+				});
+			} catch (error) {
+				await gate.reportLaunchStatus(launch.id, {
+					status: "failed",
+					error: error instanceof Error ? error.message : "OpenCode launch failed",
+				});
+			}
+			return;
+		}
 		if (launch.agentType === "codex_cli" && launch.requestedLaunchMode === "managed_codex") {
 			await gate.reportLaunchStatus(launch.id, { status: "launching" });
 			if (!(await runPrelaunchActionsForLaunch(launch))) return;

@@ -19,6 +19,8 @@ import {
 	recoverManagedCodexSessions,
 	stopManagedCodexSession,
 } from "./providers/codex-managed.js";
+import { createManagedOpenCodeProvider } from "./providers/opencode-managed.js";
+import { checkOpenCodeProfileHealth } from "./providers/opencode-runtime.js";
 import { executeCleanupWorkArea } from "./services/cleanup-workarea.js";
 import { isCodexObserverEnabled, startCodexObserver } from "./services/codex-observer.js";
 import {
@@ -180,11 +182,19 @@ async function main() {
 			if (error instanceof SupervisorRequestError && error.status === 401) process.exit(1);
 		});
 	}, 3_000).unref();
+	const openCode = createManagedOpenCodeProvider(
+		{ ...config, id: registration.supervisor.id },
+		home,
+		{ request, verdict: (id) => gate.verdict(id) },
+	);
+	for (const signal of ["SIGTERM", "SIGINT"] as const)
+		process.on(signal, () => void openCode.close().finally(() => process.exit(0)));
 	const dispatchLaunch = createLaunchDispatcher({
 		gate: reportingGate,
 		trustedRoots: config.trustedRoots,
 		providers: {
 			launchManagedCodex: launchManagedCodexRequest,
+			launchManagedOpenCode: openCode.launch,
 			launchClaudeHeadless: launchClaudeHeadlessRequest,
 			launchClaudeInteractive: launchClaudeInteractiveRequest,
 		},
@@ -195,6 +205,8 @@ async function main() {
 		trustedRoots: config.trustedRoots,
 		providers: {
 			stopManagedCodexSession,
+			openCodeControl: openCode.control,
+			openCodeHealth: () => checkOpenCodeProfileHealth(config.opencodeProfilePath ?? ""),
 			promptClaudeHeadlessSession,
 			promptClaudeInteractiveSession,
 		},

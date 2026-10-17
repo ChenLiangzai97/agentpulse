@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import type { SupervisorRecord } from "../../shared/types.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { HostExcludeNotice } from "../components/HostExcludeNotice.js";
@@ -450,6 +451,41 @@ export function HostsPage() {
 									</div>
 
 									<HostExcludeNotice supervisor={supervisor} />
+									<div className="mt-3 rounded border border-border p-3 text-xs space-y-1">
+										<strong>OpenCode · 隔离受管实例</strong>
+										<button
+											type="button"
+											className="ml-2 rounded border px-2 py-1"
+											disabled={!access.canManage || supervisor.status !== "connected"}
+											onClick={() =>
+												void api
+													.checkOpenCodeHostHealth(supervisor.id)
+													.then(() => toast.success("健康检查已排队，结果会更新到主机状态"))
+													.catch(() => toast.error("健康检查请求失败"))
+											}
+										>
+											检查模型健康
+										</button>
+										<p>
+											模型健康：
+											{supervisor.capabilities.executables?.opencodeProfile?.health ?? "未配置"} ·
+											CLI {supervisor.capabilities.executables?.opencode?.binaryVersion ?? "未检测"}
+										</p>
+										<p>
+											并发上限：
+											{supervisor.capabilities.executables?.opencodeProfile?.maxInstances ?? "—"} ·
+											闲置回收：
+											{Math.round(
+												(supervisor.capabilities.executables?.opencodeProfile?.idleTimeoutMs ?? 0) /
+													60000,
+											)}{" "}
+											分钟
+										</p>
+										<p>
+											在此主机 Supervisor 配置中设置 opencodeProfilePath，指向权限 0600
+											的独立模型配置文件。密钥仅在目标主机保存，网页不传输或回显。
+										</p>
+									</div>
 
 									<div className="mt-4 space-y-3 text-xs">
 										{access.ownerText !== null && (

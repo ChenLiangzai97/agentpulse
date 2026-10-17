@@ -1,3 +1,4 @@
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import type {
 	LaunchRequest,
@@ -7,8 +8,9 @@ import type {
 	SessionTemplateInput,
 } from "../../shared/types.js";
 import type { Actor } from "../auth/actor.js";
-import { getDb } from "../db/client.js";
+import { supervisors } from "../db/schema/index.js";
 import { launchRequests } from "../db/schema/index.js";
+import { withTransaction } from "../db/with-transaction.js";
 import { pickFirstCapableSupervisor, validateAgainstSupervisor } from "./launch-compatibility.js";
 import { getConnectedSupervisor, listSupervisors } from "./supervisor-registry.js";
 import { normalizeTemplateInput, validateTemplateInput } from "./template-preview.js";
@@ -149,7 +151,9 @@ export async function createValidatedLaunchRequest(input: LaunchRequestInput, ac
 	}
 
 	const requestedLaunchMode =
-		input.requestedLaunchMode ?? input.launchSpec.launchMode ?? "interactive_terminal";
+		input.requestedLaunchMode ??
+		input.launchSpec.launchMode ??
+		(normalizedTemplate.agentType === "opencode" ? "managed_opencode" : "interactive_terminal");
 	const routingPolicy =
 		input.routingPolicy ?? (input.requestedSupervisorId ? "manual_target" : null);
 	const resolved = await resolveSupervisorForLaunch(
@@ -158,6 +162,7 @@ export async function createValidatedLaunchRequest(input: LaunchRequestInput, ac
 		routingPolicy,
 		requestedLaunchMode,
 	);
+
 	const supervisor = resolved.supervisor;
 	const supervisorValidation = resolved.validation;
 
@@ -191,42 +196,68 @@ export async function createValidatedLaunchRequest(input: LaunchRequestInput, ac
 	};
 
 	const now = new Date().toISOString();
-	const [row] = await getDb()
-		.insert(launchRequests)
-		.values({
-			templateId: input.templateId ?? null,
-			launchCorrelationId,
-			agentType: normalizedTemplate.agentType,
-			cwd: normalizedTemplate.cwd,
-			baseInstructions: normalizedTemplate.baseInstructions ?? "",
-			taskPrompt: normalizedTemplate.taskPrompt ?? "",
-			model: normalizedTemplate.model ?? null,
-			approvalPolicy: normalizedTemplate.approvalPolicy ?? null,
-			sandboxMode: normalizedTemplate.sandboxMode ?? null,
-			requestedLaunchMode,
-			env: normalizedTemplate.env ?? {},
-			launchSpec: normalizedLaunchSpec as unknown as Record<string, unknown>,
-			requestedBy: actor.label,
-			requestedByUserId: actor.userId,
-			requestedSupervisorId: input.requestedSupervisorId ?? null,
-			routingPolicy,
-			resolvedSupervisorId: supervisor.id,
-			routingDecision: resolved.routingDecision,
-			status,
-			error: supervisorValidation.errors.join(" ") || null,
-			validationWarnings: warnings,
-			validationSummary: summary,
-			metadata: input.metadata ?? null,
-			desiredDisplayName: input.desiredDisplayName ?? null,
-			createdAt: now,
-			updatedAt: now,
-		})
-		.returning();
+	return withTransaction(async (tx) => {
+		await tx
+			.update(supervisors)
+			.set({ updatedAt: sql`${supervisors.updatedAt}` })
+			.where(eq(supervisors.id, supervisor.id));
 
-	return {
-		launchRequest: mapLaunchRequest(row),
-		supervisor,
-	};
+		if (normalizedTemplate.agentType === "opencode") {
+			const limit =
+				resolved.supervisor.capabilities.executables?.opencodeProfile?.maxQueuedLaunches ?? 4;
+			const [queued] = await tx
+				.select({ count: sql<number>`count(*)` })
+				.from(launchRequests)
+				.where(
+					and(
+						eq(launchRequests.agentType, "opencode"),
+						eq(launchRequests.requestedSupervisorId, resolved.supervisor.id),
+						inArray(launchRequests.status, ["validated", "queued", "launching"]),
+					),
+				);
+			if (Number(queued?.count ?? 0) >= limit)
+				throw new HTTPException(409, { message: "OpenCode launch queue is full on this host." });
+		}
+		const [row] = await tx
+			.insert(launchRequests)
+			.values({
+				templateId: input.templateId ?? null,
+				launchCorrelationId,
+				agentType: normalizedTemplate.agentType,
+				cwd: normalizedTemplate.cwd,
+				baseInstructions: normalizedTemplate.baseInstructions ?? "",
+				taskPrompt: normalizedTemplate.taskPrompt ?? "",
+				model: normalizedTemplate.model ?? null,
+				approvalPolicy: normalizedTemplate.approvalPolicy ?? null,
+				sandboxMode: normalizedTemplate.sandboxMode ?? null,
+				requestedLaunchMode,
+				env: normalizedTemplate.env ?? {},
+				launchSpec: normalizedLaunchSpec as unknown as Record<string, unknown>,
+				requestedBy: actor.label,
+				requestedByUserId: actor.userId,
+				requestedSupervisorId:
+					normalizedTemplate.agentType === "opencode"
+						? supervisor.id
+						: (input.requestedSupervisorId ?? null),
+				routingPolicy,
+				resolvedSupervisorId: supervisor.id,
+				routingDecision: resolved.routingDecision,
+				status,
+				error: supervisorValidation.errors.join(" ") || null,
+				validationWarnings: warnings,
+				validationSummary: summary,
+				metadata: input.metadata ?? null,
+				desiredDisplayName: input.desiredDisplayName ?? null,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.returning();
+
+		return {
+			launchRequest: mapLaunchRequest(row),
+			supervisor,
+		};
+	});
 }
 
 export { mapLaunchRequest };

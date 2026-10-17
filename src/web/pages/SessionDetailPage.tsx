@@ -7,6 +7,7 @@ import type { AgentType, ControlAction, Session, SessionEvent } from "../../shar
 import { ActivityTimeline } from "../components/session-detail/ActivityTimeline.js";
 import { AiPanel } from "../components/session-detail/AiPanel.js";
 import { ControlHistory } from "../components/session-detail/ControlHistory.js";
+import { OpenCodeControls } from "../components/session-detail/OpenCodeControls.js";
 import {
 	ClaudeMdPanel,
 	EmbeddedLaunchPanel,
@@ -683,6 +684,9 @@ export function SessionDetailPage() {
 			})()}
 
 			<SessionConnections session={session} onChanged={loadSessionWorkspace} />
+			{session.agentType === "opencode" && (
+				<OpenCodeControls session={session} onChanged={loadSessionWorkspace} />
+			)}
 			<ControlHistory actions={controlActions} />
 
 			{workspaceTab === "activity" && reveal.notice ? (

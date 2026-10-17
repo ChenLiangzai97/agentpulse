@@ -320,6 +320,27 @@ type SessionsResponse = {
 };
 
 export const api = {
+	checkOpenCodeHostHealth: (id: string) =>
+		request(`/admin/supervisors/${encodeURIComponent(id)}/opencode/health`, { method: "POST" }),
+	getOpenCodeCapabilities: (id: string) =>
+		request<NonNullable<Session["controlCapabilities"]>>(
+			`/sessions/${encodeURIComponent(id)}/opencode/capabilities`,
+		),
+	getOpenCodeInteractions: (id: string) =>
+		request<{
+			interactions: {
+				id: string;
+				kind: string;
+				revision: string;
+				payload: Record<string, unknown>;
+				expiresAt: string;
+			}[];
+		}>(`/sessions/${encodeURIComponent(id)}/opencode/interactions`),
+	openCodeAction: (id: string, body: Record<string, unknown>) =>
+		request(`/sessions/${encodeURIComponent(id)}/opencode/actions`, {
+			method: "POST",
+			body: JSON.stringify(body),
+		}),
 	getNativeApprovals: (id: string) =>
 		request<{ approvals: SessionEvent[] }>(`/sessions/${encodeURIComponent(id)}/native-approvals`),
 	getWorklogConfig: () => request<{ config: WorklogConfig }>("/worklog/config"),

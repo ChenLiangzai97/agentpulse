@@ -63,3 +63,5 @@ export {
 	providerInstancesSqlite as providerInstances,
 	sessionControlBindingsSqlite as sessionControlBindings,
 } from "./core/provider-control.js";
+
+export { providerInteractionsSqlite as providerInteractions } from "./core/provider-interactions.js";

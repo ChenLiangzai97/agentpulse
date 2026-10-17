@@ -163,7 +163,7 @@ export type LabsFlags = Record<LabsFlag, boolean>;
 // Ask thread message author roles.
 export type AskMessageRole = "user" | "assistant" | "system";
 
-export type LaunchMode = "interactive_terminal" | "headless" | "managed_codex";
+export type LaunchMode = "interactive_terminal" | "headless" | "managed_codex" | "managed_opencode";
 export type ProviderSyncState = "pending" | "synced" | "failed";
 export type LaunchRoutingPolicy = "manual_target" | "first_capable_host";
 export type ControlActionType =
@@ -174,6 +174,9 @@ export type ControlActionType =
 	| "rename"
 	| "prompt"
 	| "approval"
+	| "interrupt"
+	| "interaction_response"
+	| "opencode_health"
 	| "cleanup_workarea";
 export type ControlActionStatus = "queued" | "running" | "succeeded" | "failed";
 export type EventSource =
@@ -411,6 +414,15 @@ export interface ProjectInput {
 
 // Session as returned by the API
 export interface Session {
+	controlCapabilities?: {
+		origin: string | null;
+		send: boolean;
+		interrupt: boolean;
+		stop: boolean;
+		respondPermission: boolean;
+		answerQuestion: boolean;
+		reason: string | null;
+	};
 	id: string;
 	sessionId: string;
 	displayName: string | null;
@@ -951,6 +963,21 @@ export interface SupervisorCapabilities {
 		reason: string | null;
 	};
 	executables?: {
+		opencode?: {
+			available: boolean;
+			command: string;
+			resolvedPath: string | null;
+			source: "auto" | "config";
+			binaryVersion?: string | null;
+		};
+		opencodeProfile?: {
+			configured: boolean;
+			maxQueuedLaunches?: number;
+			health: string;
+			maxInstances: number;
+			idleTimeoutMs: number;
+			stopGraceMs: number;
+		};
 		claude?: {
 			available: boolean;
 			command: string;
@@ -1000,6 +1027,7 @@ export interface SupervisorRecord {
 }
 
 export interface LaunchRequest {
+	openCodeInstance?: { id: string; generation: number };
 	id: string;
 	templateId: string | null;
 	launchCorrelationId: string;
@@ -1057,6 +1085,8 @@ export interface ControlAction {
 }
 
 export interface ManagedSessionStateInput {
+	providerInstanceId?: string;
+	providerGeneration?: number;
 	sessionId: string;
 	agentType?: LaunchableAgentType;
 	cwd?: string | null;

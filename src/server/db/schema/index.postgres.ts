@@ -63,3 +63,5 @@ export {
 	providerInstancesPg as providerInstances,
 	sessionControlBindingsPg as sessionControlBindings,
 } from "./core/provider-control.js";
+
+export { providerInteractionsPg as providerInteractions } from "./core/provider-interactions.js";

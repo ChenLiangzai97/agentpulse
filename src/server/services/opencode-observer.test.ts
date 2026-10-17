@@ -92,9 +92,9 @@ afterAll(() => {
 	rmSync(dir, { recursive: true, force: true });
 });
 
-test("observed-only registration and hidden context cleaning", () => {
+test("observer registration and hidden context cleaning after managed launch opt-in", () => {
 	expect(AGENT_TYPES).toContain("opencode");
-	expect(isLaunchable("opencode")).toBe(false);
+	expect(isLaunchable("opencode")).toBe(true);
 	expect(cleanOpenCodeText("<identity>x\ny</identity>正文")).toBe("正文");
 });
 test("imports native identities, title, parent and prompt/tool evidence", async () => {

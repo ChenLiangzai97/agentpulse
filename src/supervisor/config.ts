@@ -7,6 +7,8 @@ import {
 	writePrivateFileSyncNoFollow,
 } from "../shared/private-file.js";
 import type { SupervisorRegistrationInput } from "../shared/types.js";
+import { supportsOpenCodeRecovery } from "./providers/opencode-recovery.js";
+import { checkOpenCodeProfileHealth } from "./providers/opencode-runtime.js";
 
 export interface SupervisorConfig {
 	serverUrl: string;
@@ -22,6 +24,12 @@ export interface SupervisorConfig {
 	capabilities: SupervisorRegistrationInput["capabilities"];
 	claudeCommand?: string;
 	codexCommand?: string;
+	opencodeCommand?: string;
+	opencodeProfilePath?: string;
+	opencodeMaxInstances?: number;
+	opencodeMaxQueuedLaunches?: number;
+	opencodeIdleTimeoutMs?: number;
+	opencodeStopGraceMs?: number;
 	terminalPreference?: string;
 }
 
@@ -68,6 +76,12 @@ function buildDefaultConfig(): SupervisorConfig {
 		trustedRoots: [join(homedir(), "dev")],
 		claudeCommand: process.env.AGENTPULSE_CLAUDE_COMMAND,
 		codexCommand: process.env.AGENTPULSE_CODEX_COMMAND,
+		opencodeCommand: process.env.AGENTPULSE_OPENCODE_COMMAND,
+		opencodeProfilePath: process.env.AGENTPULSE_OPENCODE_PROFILE,
+		opencodeMaxInstances: 2,
+		opencodeMaxQueuedLaunches: 4,
+		opencodeIdleTimeoutMs: 1800000,
+		opencodeStopGraceMs: 5000,
 		terminalPreference: process.env.AGENTPULSE_TERMINAL_APP,
 		capabilities: {
 			version: 1,
@@ -218,11 +232,32 @@ function detectInteractiveTerminalControl(os: SupervisorRegistrationInput["capab
 	};
 }
 
+const profileHealthCache = new Map<
+	string,
+	{ at: number; health: Awaited<ReturnType<typeof checkOpenCodeProfileHealth>> }
+>();
+
 export async function withExecutableCapabilities(
 	config: SupervisorConfig,
 ): Promise<SupervisorConfig> {
 	const claude = resolveExecutable(config.claudeCommand, "claude");
 	const codex = resolveExecutable(config.codexCommand, "codex");
+	const opencode = resolveExecutable(config.opencodeCommand, "opencode");
+	const opencodeVersion = await captureExecutableVersion(opencode.resolvedPath);
+	const cachedHealth = profileHealthCache.get(config.opencodeProfilePath ?? "");
+	const opencodeHealth = cachedHealth
+		? cachedHealth.health
+		: config.opencodeProfilePath
+			? await checkOpenCodeProfileHealth(config.opencodeProfilePath)
+			: "not_configured";
+	profileHealthCache.set(config.opencodeProfilePath ?? "", {
+		at: Date.now(),
+		health: opencodeHealth,
+	});
+	const openCodeReady =
+		opencodeVersion === "1.18.35" &&
+		opencodeHealth === "ready" &&
+		(await supportsOpenCodeRecovery());
 	const git = resolveExecutable(undefined, "git");
 	const [claudeVersion, codexVersion] = await Promise.all([
 		captureExecutableVersion(claude.resolvedPath),
@@ -233,10 +268,12 @@ export async function withExecutableCapabilities(
 	const launchModes: SupervisorRegistrationInput["capabilities"]["launchModes"] = ["headless"];
 	if (terminalSupport.length > 0) launchModes.push("interactive_terminal");
 	if (codex.resolvedPath) launchModes.push("managed_codex");
+	if (openCodeReady) launchModes.push("managed_opencode");
 	return {
 		...config,
 		capabilities: {
 			...config.capabilities,
+			agentTypes: ["claude_code", "codex_cli", ...(openCodeReady ? ["opencode" as const] : [])],
 			launchModes,
 			terminalSupport,
 			features: [
@@ -249,9 +286,25 @@ export async function withExecutableCapabilities(
 				...(terminalSupport.length > 0 ? ["interactive_terminal"] : []),
 				...(interactiveTerminalControl.available ? ["interactive_terminal_control"] : []),
 				...(codex.resolvedPath ? ["managed_codex"] : []),
+				...(openCodeReady ? ["managed_opencode"] : []),
 			],
 			interactiveTerminalControl,
 			executables: {
+				opencode: {
+					available: openCodeReady,
+					command: opencode.command,
+					resolvedPath: opencode.resolvedPath,
+					source: opencode.source,
+					binaryVersion: opencodeVersion,
+				},
+				opencodeProfile: {
+					configured: opencodeHealth !== "not_configured",
+					health: opencodeHealth,
+					maxInstances: config.opencodeMaxInstances ?? 2,
+					maxQueuedLaunches: config.opencodeMaxQueuedLaunches ?? 4,
+					idleTimeoutMs: config.opencodeIdleTimeoutMs ?? 1800000,
+					stopGraceMs: config.opencodeStopGraceMs ?? 5000,
+				},
 				claude: {
 					available: Boolean(claude.resolvedPath),
 					command: claude.command,

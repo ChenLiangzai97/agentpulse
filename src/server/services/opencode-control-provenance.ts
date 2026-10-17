@@ -51,7 +51,7 @@ export async function reserveOpenCodeInstance(supervisorId: string, launchId: st
 			launch.requestedLaunchMode !== "managed_opencode" ||
 			launch.claimedBySupervisorId !== supervisorId ||
 			(launch.requestedSupervisorId && launch.requestedSupervisorId !== supervisorId) ||
-			!["claimed", "launching"].includes(launch.status) ||
+			!["queued", "claimed", "launching"].includes(launch.status) ||
 			launch.metadata?.boundExistingSession
 		)
 			throw new SessionControlOriginError("provider_binding_invalid");
@@ -239,8 +239,66 @@ export async function assertSessionControlOrigin(sessionId: string, actor?: Acto
 	const provenance = await inspectOpenCodeProvenance(sessionId);
 	if (!provenance) return;
 	if (actor) await assertCanEditSessionNotes(actor, sessionId);
+	if (provenance.bindingValid) return;
 	throw new SessionControlOriginError(
 		provenance.reason,
 		provenance.reason === "opencode_control_not_enabled" ? 409 : 403,
 	);
+}
+
+/** Authenticated report bootstrap: a claimed NEW launch reservation is the sole authority. */
+export async function validateOpenCodeReport(
+	supervisorId: string,
+	input: {
+		sessionId: string;
+		launchRequestId?: string | null;
+		cwd?: string | null;
+		providerSessionId?: string | null;
+		providerInstanceId?: string;
+		providerGeneration?: number;
+	},
+) {
+	const [instance] = await getDb()
+		.select()
+		.from(providerInstances)
+		.where(eq(providerInstances.id, input.providerInstanceId ?? ""));
+	const [binding] = await getDb()
+		.select()
+		.from(sessionControlBindings)
+		.where(eq(sessionControlBindings.sessionId, input.sessionId));
+	const [session] = await getDb()
+		.select()
+		.from(sessions)
+		.where(eq(sessions.sessionId, input.sessionId));
+	if (binding && binding.origin !== "agentpulse_launch")
+		throw new SessionControlOriginError("session_observe_only");
+	if (session && !binding) throw new SessionControlOriginError("session_observe_only");
+	const [launch] = instance
+		? await getDb()
+				.select()
+				.from(launchRequests)
+				.where(eq(launchRequests.id, instance.launchRequestId))
+		: [];
+	if (
+		!instance ||
+		instance.agentType !== "opencode" ||
+		instance.supervisorId !== supervisorId ||
+		instance.sessionId !== input.sessionId ||
+		instance.generation !== input.providerGeneration ||
+		!["reserved", "running"].includes(instance.state) ||
+		instance.launchRequestId !== input.launchRequestId ||
+		instance.cwd !== input.cwd ||
+		!/^ses_[A-Za-z0-9_-]{1,180}$/.test(input.providerSessionId ?? "") ||
+		!launch ||
+		launch.claimedBySupervisorId !== supervisorId ||
+		launch.agentType !== "opencode" ||
+		launch.requestedLaunchMode !== "managed_opencode" ||
+		launch.metadata?.boundExistingSession ||
+		(binding &&
+			(binding.instanceId !== instance.id ||
+				binding.nativeSessionId !== input.providerSessionId ||
+				binding.generation !== input.providerGeneration))
+	)
+		throw new SessionControlOriginError("provider_binding_invalid");
+	return instance;
 }

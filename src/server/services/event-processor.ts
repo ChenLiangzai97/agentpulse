@@ -8,6 +8,7 @@ import type {
 	SessionEvent,
 } from "../../shared/types.js";
 import { getDb } from "../db/client.js";
+import { providerInstances } from "../db/schema/index.js";
 import { events, sessions } from "../db/schema/index.js";
 import { withTransaction } from "../db/with-transaction.js";
 import {
@@ -728,6 +729,12 @@ export async function processHookEvent(
 	events: SessionEvent[];
 }> {
 	const sessionId = payload.session_id;
+	const [protectedInstance] = await getDb()
+		.select({ id: providerInstances.id })
+		.from(providerInstances)
+		.where(eq(providerInstances.sessionId, sessionId))
+		.limit(1);
+	if (protectedInstance) return { sessionId, isNew: false, session: null, events: [] };
 	const eventType = payload.hook_event_name;
 	const now = new Date().toISOString();
 	const attribution: Attribution = ctx.attribution ?? { ownerUserId: null, ingestKeyId: null };
