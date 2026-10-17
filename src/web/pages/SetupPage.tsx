@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { AGENT_METADATA } from "../../shared/constants.js";
 import { buildCodexHooksFile, buildCopilotHooksFile } from "../../shared/hook-command.js";
-import type { AgentType, ApiKeyInfo } from "../../shared/types.js";
+import type { ApiKeyInfo } from "../../shared/types.js";
 import { ExcludeDirectoriesCard } from "../components/ExcludeDirectoriesCard.js";
 import { useCopyFeedback } from "../hooks/useCopyFeedback.js";
 import { useOwnershipUi } from "../hooks/useOwnershipUi.js";
@@ -22,19 +22,20 @@ import {
 	CLAUDE_SKIP_LINE,
 	EXCLUDE_CARD_ANCHOR,
 	RELAY_PARAGRAPH,
+	type SetupAgentType,
 	codexSetupSteps,
 	lastEventLine,
 } from "../lib/setup-steps.js";
 import { useUserStore } from "../stores/user-store.js";
 import { keysForSetup } from "./team-view-state.js";
 
-const AGENT_TOGGLE: Array<{ value: AgentType; label: string }> = [
+const AGENT_TOGGLE: Array<{ value: SetupAgentType; label: string }> = [
 	{ value: "claude_code", label: "Claude Code" },
 	{ value: "codex_cli", label: "Codex CLI" },
 	{ value: "copilot_cli", label: "Copilot CLI" },
 ];
 
-const CONFIG_FILE: Record<AgentType, string> = {
+const CONFIG_FILE: Record<SetupAgentType, string> = {
 	claude_code: "~/.claude/settings.json",
 	codex_cli: "~/.codex/hooks.json",
 	copilot_cli: "~/.copilot/hooks/agentpulse.json",
@@ -44,7 +45,7 @@ export function SetupPage() {
 	const { copy } = useCopyFeedback();
 	const [apiKey, setApiKey] = useState("");
 	const serverUrl = window.location.origin;
-	const [agentType, setAgentType] = useState<AgentType>("claude_code");
+	const [agentType, setAgentType] = useState<SetupAgentType>("claude_code");
 	const disableAuth = useUserStore((s) => s.disableAuth);
 	const ownership = useOwnershipUi();
 	const { hash } = useLocation();

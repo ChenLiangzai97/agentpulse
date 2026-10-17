@@ -23,7 +23,7 @@ export const SEMANTIC_STATUSES = [
 // search backend's sessionStatus filter (clarity-slice-h-archive-status-removal).
 export const SESSION_STATUSES = ["active", "idle", "completed", "failed", "archived"] as const;
 
-export const AGENT_TYPES = ["claude_code", "codex_cli", "copilot_cli"] as const;
+export const AGENT_TYPES = ["claude_code", "codex_cli", "copilot_cli", "opencode"] as const;
 
 // Agent types AgentPulse can actively start a process for. Everything in
 // AGENT_TYPES that isn't here is observed-only (D5): it can post hook
@@ -70,6 +70,15 @@ export interface AgentMetadata {
 }
 
 export const AGENT_METADATA: Record<AgentType, AgentMetadata> = {
+	opencode: {
+		label: "OpenCode",
+		shortLabel: "OpenCode",
+		badgeClass: "bg-cyan-500/8 text-cyan-400/90 border-cyan-500/15",
+		dotClass: "bg-cyan-400/70",
+		instructionsFile: "AGENTS.md",
+		observeOnlyHint: "Observed only — AgentPulse can't launch or steer OpenCode sessions.",
+		hasNameSource: true,
+	},
 	claude_code: {
 		label: "Claude Code",
 		shortLabel: "Claude",

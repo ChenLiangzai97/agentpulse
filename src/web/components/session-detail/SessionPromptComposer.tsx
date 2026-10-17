@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { isLaunchable } from "../../../shared/constants.js";
 import type { Session } from "../../../shared/types.js";
 import { describeApiError } from "../../lib/api-errors.js";
 import { api } from "../../lib/api.js";
@@ -70,7 +71,7 @@ export function SessionPromptComposer({
 		};
 	}, [interactive, isClaudeManaged, session.managedSession?.supervisorId]);
 
-	if (!session.managedSession || session.agentType === "copilot_cli") return null;
+	if (!session.managedSession || !isLaunchable(session.agentType)) return null;
 
 	async function submit() {
 		const clean = prompt.trim();

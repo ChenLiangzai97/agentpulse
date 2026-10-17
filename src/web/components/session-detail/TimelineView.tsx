@@ -257,7 +257,10 @@ function getBaseCategories(mode: TimelineMode): Set<EventCategory> {
 	return categories;
 }
 
-export function getVisibleEvents<E extends Pick<SessionEvent, "category" | "isNoise" | "content">>(
+export function getVisibleEvents<
+	E extends Pick<SessionEvent, "category" | "isNoise" | "content"> &
+		Partial<Pick<SessionEvent, "eventType">>,
+>(
 	allEvents: E[],
 	mode: TimelineMode,
 	showTools: boolean,
@@ -269,6 +272,8 @@ export function getVisibleEvents<E extends Pick<SessionEvent, "category" | "isNo
 	if (!showSystem) categories.delete("system_event");
 
 	return allEvents.filter((event) => {
+		// Per-step usage is retained for accounting; only Debug shows its raw telemetry.
+		if (event.eventType === "OpenCodeStepFinish" && mode !== "debug") return false;
 		if (!event.category || !categories.has(event.category)) return false;
 		if (event.category === "tool_event" && !showTools && mode !== "debug" && mode !== "terminal")
 			return false;
@@ -339,7 +344,12 @@ export function mergeSessionEvents(baseEvents: SessionEvent[], liveEvents: Sessi
 	// value, so the polled (base) row's shape always wins over the
 	// optimistic live copy.
 	for (const event of [...liveEvents, ...baseEvents]) {
-		merged.set(mergeKey(event), event);
+		const key = mergeKey(event);
+		const previous = merged.get(key);
+		// OpenCode parts update in place; an older REST response must not undo a newer WS revision.
+		const oldRevision = Number(previous?.rawPayload?.source_updated_at ?? 0);
+		const revision = Number(event.rawPayload?.source_updated_at ?? 0);
+		if (!previous || !oldRevision || revision > oldRevision) merged.set(key, event);
 	}
 	return collapseEquivalentEvents(
 		Array.from(merged.values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
