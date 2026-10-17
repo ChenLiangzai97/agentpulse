@@ -15,9 +15,16 @@ import {
 	users,
 } from "../db/schema/index.js";
 import { withTransaction } from "../db/with-transaction.js";
-import { insertNormalizedEvents } from "./event-processor.js";
+import { insertManagedDelivery, insertNormalizedEvents } from "./event-processor.js";
 import { cleanMachineName } from "./machine-name.js";
 import { generateSessionName } from "./name-generator.js";
+import {
+	SessionControlOriginError,
+	assertSessionControlOrigin,
+	bindCreatedOpenCodeSession,
+	inspectOpenCodeProvenance,
+	validateOpenCodeReport,
+} from "./opencode-control-provenance.js";
 import { ownerForNewSession } from "./session-attribution.js";
 import { mapSessionDto } from "./session-dto.js";
 import {
@@ -73,6 +80,12 @@ export async function upsertManagedSessionState(
 	supervisorId: string,
 	input: ManagedSessionStateInput,
 ): Promise<{ session: Session; managedSession: ManagedSession }> {
+	const openCodeReport =
+		input.agentType === "opencode" ||
+		input.providerInstanceId ||
+		(await inspectOpenCodeProvenance(input.sessionId));
+	if (openCodeReport) await validateOpenCodeReport(supervisorId, input);
+	else await assertSessionControlOrigin(input.sessionId);
 	await assertSupervisorCanWriteSession(supervisorId, input.sessionId, {
 		launchRequestId: input.launchRequestId,
 	});
@@ -244,6 +257,13 @@ export async function upsertManagedSessionState(
 			},
 		});
 
+	if (openCodeReport)
+		await bindCreatedOpenCodeSession(
+			supervisorId,
+			input.providerInstanceId!,
+			input.providerSessionId!,
+			input.providerGeneration!,
+		);
 	const [managedRow] = await getDb()
 		.select()
 		.from(managedSessions)
@@ -277,7 +297,10 @@ export async function appendManagedSessionEvents(
 	sessionId: string,
 	events: ManagedSessionEventInput[],
 ) {
+	await assertSessionControlOrigin(sessionId);
 	await assertSupervisorCanWriteSession(supervisorId, sessionId);
+	if (await inspectOpenCodeProvenance(sessionId))
+		throw new SessionControlOriginError("provider_binding_invalid");
 	const normalized = events.map((event) => ({
 		eventType: event.eventType,
 		category: event.category,
@@ -290,7 +313,22 @@ export async function appendManagedSessionEvents(
 		toolResponse: null,
 		rawPayload: event.rawPayload ?? {},
 	}));
-	return insertNormalizedEvents(sessionId, normalized);
+	if (events.every((event) => !event.deliveryId))
+		return insertNormalizedEvents(sessionId, normalized);
+	const inserted = [];
+	for (let index = 0; index < normalized.length; index++) {
+		const event = events[index];
+		const id =
+			typeof event.deliveryId === "string" && event.deliveryId.length <= 300
+				? event.deliveryId
+				: null;
+		inserted.push(
+			...(id
+				? await insertManagedDelivery(sessionId, normalized[index], id, event.occurredAt)
+				: await insertNormalizedEvents(sessionId, [normalized[index]])),
+		);
+	}
+	return inserted;
 }
 
 export async function attachManagedSessionToLaunch(input: {
@@ -299,6 +337,7 @@ export async function attachManagedSessionToLaunch(input: {
 	supervisorId: string;
 	correlationSource?: string | null;
 }) {
+	await assertSessionControlOrigin(input.sessionId);
 	const timestamp = nowIso();
 	const [existingManaged] = await getDb()
 		.select()
@@ -374,7 +413,10 @@ export async function attachManagedSessionToLaunch(input: {
 	return managedRow ? mapManagedSession(managedRow) : null;
 }
 
-export async function listManagedSessionsNeedingSync(supervisorId: string) {
+export async function listManagedSessionsNeedingSync(
+	supervisorId: string,
+	includeRecoverable = false,
+) {
 	// Explicit column selection (rather than a bare .select()) keeps the row
 	// shape equal to managedSessions.$inferSelect once launchRequests is
 	// joined in for owner-of-record routing, so mapManagedSession still
@@ -407,11 +449,13 @@ export async function listManagedSessionsNeedingSync(supervisorId: string) {
 		.where(
 			and(
 				sessionOwnedBy(supervisorId),
-				isNotNull(managedSessions.desiredThreadTitle),
-				or(
-					isNull(managedSessions.providerThreadTitle),
-					ne(managedSessions.desiredThreadTitle, managedSessions.providerThreadTitle),
-				),
+				includeRecoverable ? undefined : isNotNull(managedSessions.desiredThreadTitle),
+				includeRecoverable
+					? undefined
+					: or(
+							isNull(managedSessions.providerThreadTitle),
+							ne(managedSessions.desiredThreadTitle, managedSessions.providerThreadTitle),
+						),
 			),
 		);
 

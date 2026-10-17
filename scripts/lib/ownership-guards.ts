@@ -22,6 +22,8 @@ export interface OwnershipGuardReport {
 
 /** Files allowed to write sessions.owner_user_id, and why. */
 export const OWNER_WRITERS_ALLOWED: Readonly<Record<string, string>> = {
+	"src/server/services/opencode-managed.ts":
+		"creates verified native child sessions with the root owner; conflict does nothing and never changes an existing owner",
 	"src/server/services/event-processor.ts":
 		"creates a session with the posting key's attribution (first write wins; never changes a non-null owner)",
 	"src/server/services/managed-session-state.ts":

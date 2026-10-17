@@ -35,11 +35,11 @@
 // ─── Literal unions (self-contained; mirror src/shared/constants.ts's
 //     `as const` tuples and src/shared/types.ts's inline unions) ─────────
 
-export type AgentType = "claude_code" | "codex_cli" | "copilot_cli";
+export type AgentType = "claude_code" | "codex_cli" | "copilot_cli" | "opencode";
 // Agent types AgentPulse can launch a process for — a subset of AgentType
 // (D5, mirrors src/shared/types.ts's LaunchableAgentType). "copilot_cli" is
 // observe-only (F23): it's in AgentType, deliberately not here.
-export type LaunchableAgentType = "claude_code" | "codex_cli";
+export type LaunchableAgentType = "claude_code" | "codex_cli" | "opencode";
 export type ApprovalPolicy = "default" | "suggest" | "auto" | "manual" | "untrusted" | "on-failure";
 export type SandboxMode = "default" | "workspace-write" | "read-only" | "danger-full-access";
 export type SemanticStatus =
@@ -57,7 +57,7 @@ export type NotificationChannelKind = "telegram" | "webhook" | "email";
 export type SessionMutationKind = "stop" | "archive" | "delete";
 export type AskThreadOrigin = "web" | "telegram";
 export type ActionRequestDecision = "applied" | "declined";
-export type LaunchMode = "interactive_terminal" | "headless" | "managed_codex";
+export type LaunchMode = "interactive_terminal" | "headless" | "managed_codex" | "managed_opencode";
 export type ProviderSyncState = "pending" | "synced" | "failed";
 export type LaunchRoutingPolicy = "manual_target" | "first_capable_host";
 export type ControlActionType =
@@ -186,6 +186,15 @@ export interface ManagedSession {
 }
 
 export interface Session {
+	controlCapabilities?: {
+		origin: string | null;
+		send: boolean;
+		interrupt: boolean;
+		stop: boolean;
+		respondPermission: boolean;
+		answerQuestion: boolean;
+		reason: string | null;
+	};
 	id: string;
 	sessionId: string;
 	displayName: string | null;

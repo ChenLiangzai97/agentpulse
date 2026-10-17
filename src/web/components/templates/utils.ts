@@ -41,10 +41,19 @@ export function createBlankTemplate(
 export const launchModeLabels: Record<LaunchMode, string> = {
 	headless: "Headless task",
 	interactive_terminal: "Interactive terminal",
+	managed_opencode: "Managed OpenCode",
 	managed_codex: "Managed Codex",
 };
 
 export function getLaunchModeOptions(agentType: LaunchableAgentType) {
+	if (agentType === "opencode")
+		return [
+			{
+				value: "managed_opencode" as const,
+				label: launchModeLabels.managed_opencode,
+				description: "Isolated OpenCode server using the host private model profile.",
+			},
+		];
 	if (agentType === "claude_code") {
 		return [
 			{
@@ -73,7 +82,11 @@ export function getLaunchModeOptions(agentType: LaunchableAgentType) {
 }
 
 export function defaultLaunchModeForAgent(agentType: LaunchableAgentType): LaunchMode {
-	return agentType === "claude_code" ? "headless" : "managed_codex";
+	return agentType === "opencode"
+		? "managed_opencode"
+		: agentType === "claude_code"
+			? "headless"
+			: "managed_codex";
 }
 
 export function parseEnvLines(raw: string): Record<string, string> {

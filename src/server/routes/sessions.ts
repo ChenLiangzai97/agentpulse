@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lte } from "drizzle-orm";
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -56,8 +56,18 @@ import {
 } from "../services/control-actions.js";
 import { toSessionEventDtos } from "../services/event-dto.js";
 import { notifySessionUpdated } from "../services/notifier.js";
+import {
+	SessionControlOriginError,
+	assertSessionControlOrigin,
+} from "../services/opencode-control-provenance.js";
+import {
+	listOpenCodeInteractions,
+	openCodeControlCapabilities,
+	queueOpenCodeAction,
+} from "../services/opencode-managed.js";
 import { readServiceKeyLists } from "../services/service-key-lists.js";
 import { isServiceKeyRow } from "../services/service-keys.js";
+import { bindSession, queueApproval, queueResume } from "../services/session-binding.js";
 import {
 	type SessionDetailRead,
 	getSessionDetail,
@@ -125,6 +135,25 @@ sessionsRouter.use("*", requireAuth());
 // read-only routes in OBSERVE_READ_PATHS (list, detail, timeline, event
 // context, claude-md); mutating routes and control-actions stay manage-only.
 sessionsRouter.use("*", requireOperatorScope());
+// Central REST boundary also covers currently unsupported future question/fork routes.
+sessionsRouter.use("/sessions/:sessionId/*", async (c, next) => {
+	if (
+		["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method) &&
+		/\/sessions\/[^/]+\/(bind|prompt|stop|approval|native-approvals|question|questions|native-questions|resume|retry|fork)(?:\/|$)/.test(
+			c.req.path,
+		)
+	) {
+		try {
+			await assertSessionControlOrigin(c.req.param("sessionId"), await getRequestActor(c));
+		} catch (error) {
+			if (error instanceof SessionControlOriginError)
+				return c.json({ error: error.code }, error.status);
+			if (error instanceof NotOwnerError) return c.json({ error: "not_owner" }, 403);
+			throw error;
+		}
+	}
+	await next();
+});
 
 type SessionAssertion = typeof assertCanDeleteSession;
 
@@ -544,6 +573,10 @@ sessionsRouter.get("/sessions/:sessionId", async (c: Context) => {
 		return c.json({ error: "Session not found" }, 404);
 	}
 	const { session } = detail;
+	const controlCapabilities =
+		session.agentType === "opencode"
+			? await openCodeControlCapabilities(sessionId, await getRequestActor(c))
+			: undefined;
 
 	// Get timeline events for the detail page; the UI handles mode filtering.
 	const sessionEvents = toSessionEventDtos(
@@ -563,7 +596,47 @@ sessionsRouter.get("/sessions/:sessionId", async (c: Context) => {
 	const controlActions = operator ? await listControlActionsForSession(sessionId) : undefined;
 	const reportedByKey = operator ? await reportedByKeyFor(c, detail) : undefined;
 
-	return c.json({ session, events: sessionEvents, controlActions, reportedByKey });
+	return c.json({
+		session: { ...session, controlCapabilities },
+		events: sessionEvents,
+		controlActions,
+		reportedByKey,
+	});
+});
+
+sessionsRouter.get("/sessions/:sessionId/opencode/capabilities", async (c) =>
+	c.json(await openCodeControlCapabilities(c.req.param("sessionId"), await getRequestActor(c))),
+);
+sessionsRouter.get("/sessions/:sessionId/opencode/interactions", async (c) => {
+	try {
+		return c.json({ interactions: await listOpenCodeInteractions(c.req.param("sessionId")) });
+	} catch (error) {
+		if (error instanceof SessionControlOriginError)
+			return c.json({ error: error.code }, error.status);
+		throw error;
+	}
+});
+sessionsRouter.post("/sessions/:sessionId/opencode/actions", async (c) => {
+	const body = await readJsonObject(c);
+	if (!body || !["prompt", "interrupt", "stop", "interaction_response"].includes(String(body.kind)))
+		return invalidBody(c);
+	try {
+		return c.json(
+			{
+				action: await queueOpenCodeAction(
+					c.req.param("sessionId"),
+					body.kind as "prompt" | "interrupt" | "stop" | "interaction_response",
+					body,
+					await getRequestActor(c),
+				),
+			},
+			202,
+		);
+	} catch (error) {
+		if (error instanceof SessionControlOriginError)
+			return c.json({ error: error.code }, error.status);
+		return c.json({ error: error instanceof Error ? error.message : "control_failed" }, 409);
+	}
 });
 
 // GET /api/v1/sessions/:sessionId/timeline - Paginated event timeline
@@ -793,7 +866,14 @@ sessionsRouter.post("/sessions/:sessionId/fork", async (c) => {
 });
 
 sessionsRouter.post("/sessions/:sessionId/resume", async (c) => {
-	return c.json({ error: "Resume is not implemented yet for this provider." }, 501);
+	const sessionId = c.req.param("sessionId");
+	const refusal = await refuseUnlessOwnerOrAdmin(c, sessionId, assertCanEditSessionNotes);
+	if (refusal) return refusal;
+	try {
+		return c.json({ action: await queueResume(sessionId, await getRequestActor(c)) }, 202);
+	} catch (error) {
+		return c.json({ error: error instanceof Error ? error.message : "Resume failed" }, 409);
+	}
 });
 
 // PUT /api/v1/sessions/:sessionId/pin - Toggle pin
@@ -1052,3 +1132,68 @@ sessionsRouter.delete("/sessions/:sessionId", async (c) => {
 });
 
 export { sessionsRouter };
+
+sessionsRouter.post("/sessions/:sessionId/bind", async (c) => {
+	const sessionId = c.req.param("sessionId");
+	const refusal = await refuseUnlessOwnerOrAdmin(c, sessionId, assertCanEditSessionNotes);
+	if (refusal) return refusal;
+	const body = await readJsonObject(c);
+	const { supervisorId } = body ?? {};
+	if (typeof supervisorId !== "string") return invalidBody(c);
+	try {
+		return c.json(await bindSession(sessionId, supervisorId, await getRequestActor(c)));
+	} catch (error) {
+		return c.json({ error: error instanceof Error ? error.message : "Binding failed" }, 409);
+	}
+});
+sessionsRouter.post("/sessions/:sessionId/native-approvals/:approvalId", async (c) => {
+	const sessionId = c.req.param("sessionId");
+	const refusal = await refuseUnlessOwnerOrAdmin(c, sessionId, assertCanEditSessionNotes);
+	if (refusal) return refusal;
+	const body = await readJsonObject(c);
+	if (!body || typeof body.decision !== "string") return invalidBody(c);
+	try {
+		return c.json(
+			{
+				action: await queueApproval(
+					sessionId,
+					c.req.param("approvalId"),
+					body.decision,
+					await getRequestActor(c),
+				),
+			},
+			202,
+		);
+	} catch (error) {
+		return c.json({ error: error instanceof Error ? error.message : "Approval failed" }, 409);
+	}
+});
+
+sessionsRouter.get("/sessions/:sessionId/native-approvals", async (c) => {
+	const rows = await getDb()
+		.select()
+		.from(events)
+		.where(
+			and(
+				eq(events.sessionId, c.req.param("sessionId")),
+				inArray(events.eventType, [
+					"NativeApprovalRequested",
+					"NativeApprovalResolved",
+					"ManagedSessionStart",
+				]),
+			),
+		)
+		.orderBy(desc(events.id))
+		.limit(200);
+	const resolved = new Set<string>();
+	const pending = [];
+	for (const row of rows) {
+		if (row.eventType === "ManagedSessionStart") break;
+		const payload = row.rawPayload as Record<string, unknown>;
+		const id = String(payload.approvalId);
+		if (row.eventType === "NativeApprovalResolved") resolved.add(id);
+		else if (!resolved.has(id) && Date.parse(String(payload.expiresAt)) > Date.now())
+			pending.push(row);
+	}
+	return c.json({ approvals: toSessionEventDtos(pending) });
+});

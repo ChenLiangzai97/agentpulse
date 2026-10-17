@@ -29,7 +29,7 @@ describe("validateTemplateInput — D5 Pattern A'", () => {
 			agentType: "copilot_cli" as any,
 		});
 		const { errors } = validateTemplateInput(input);
-		expect(errors).toContain("Agent type must be claude_code or codex_cli.");
+		expect(errors).toContain("Agent type must be claude_code, codex_cli or opencode.");
 	});
 
 	test("accepts claude_code and codex_cli", () => {

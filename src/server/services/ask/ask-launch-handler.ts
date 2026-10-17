@@ -129,7 +129,9 @@ export async function handleAskLaunchIntent(
 	const agentType: LaunchableAgentType =
 		intent.agentType ?? projectDefaultAgentType ?? "claude_code";
 	const launchMode: LaunchMode =
-		intent.mode ?? (project.defaultLaunchMode as LaunchMode | null) ?? "interactive_terminal";
+		intent.mode ??
+		(project.defaultLaunchMode as LaunchMode | null) ??
+		(agentType === "opencode" ? "managed_opencode" : "interactive_terminal");
 
 	const rawTemplate: Partial<SessionTemplateInput> = {
 		name: `${project.name} (ask-initiated)`,

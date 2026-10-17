@@ -124,7 +124,7 @@ Do NOT use `503 / ai_kill_switch_active` — that code was never shipped.
 - `isWorking` toggles on UserPromptSubmit/PreToolUse (true) and Stop (false)
 - Timeline events are filtered **client-side** in session detail UI (not server-side)
 - Supervisor writes are ownership-checked (`session-ownership.ts`) — a supervisor acting on a session it doesn't own gets `403 { error: "session_not_owned" }`
-- Three observed agent types: `claude_code`, `codex_cli`, `copilot_cli`. `LAUNCHABLE_AGENT_TYPES` (`src/shared/constants.ts`) is `["claude_code", "codex_cli"]` — Copilot CLI is observe-only, use `isLaunchable()` to check. Hook-event lists (Claude/Codex/Copilot: 16/12/10 events) must stay in parity across setup scripts and `SetupPage.tsx`; `bun run check:hook-event-parity` and `check:agent-type-parity` (both chained into `check:architecture`) enforce it.
+- Three observed agent types: `claude_code`, `codex_cli`, `copilot_cli`. `LAUNCHABLE_AGENT_TYPES` (`src/shared/constants.ts`) is `["claude_code", "codex_cli", "opencode"]` — Copilot CLI is observe-only, use `isLaunchable()` to check. Hook-event lists (Claude/Codex/Copilot: 16/12/10 events) must stay in parity across setup scripts and `SetupPage.tsx`; `bun run check:hook-event-parity` and `check:agent-type-parity` (both chained into `check:architecture`) enforce it.
 
 ## Core API Endpoints
 
@@ -174,3 +174,7 @@ Do NOT use `503 / ai_kill_switch_active` — that code was never shipped.
 - Never commit real domains, IPs, API keys, hostnames, or private infrastructure identifiers
 - Replace private values with safe placeholders before commit
 - `deploy/k8s-homelab/` (gitignored overlay) is the correct place for real deployment values
+
+## Managed OpenCode control
+
+Only new `managed_opencode` launches on verified 1.18.35 Linux Supervisors can be controlled. External/BotMux/legacy sessions remain permanently observe-only, regardless of metadata, administrator role or agent-type launchability. Authorize with protected provider_instances/session_control_bindings and generation fencing. Native permission controls allow only once/reject; never expose always. Keep isolated XDG stores separate from the default observer source. See docs/OPENCODE.md.

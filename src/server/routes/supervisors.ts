@@ -18,6 +18,8 @@ import {
 	verifySupervisorCredential,
 } from "../auth/supervisor-auth.js";
 import { config } from "../config.js";
+import { getDb } from "../db/client.js";
+import { controlActions } from "../db/schema/index.js";
 import { logAdminAction } from "../services/audit-log.js";
 import {
 	AdminRequiredError,
@@ -38,6 +40,11 @@ import {
 	upsertManagedSessionState,
 } from "../services/managed-session-state.js";
 import { notifySessionEvents, notifySessionUpdated } from "../services/notifier.js";
+import {
+	SessionControlOriginError,
+	reserveOpenCodeInstance,
+} from "../services/opencode-control-provenance.js";
+import { acceptOpenCodeSnapshot, interruptOpenCodeInstance } from "../services/opencode-managed.js";
 import { SessionOwnershipError } from "../services/session-ownership.js";
 import { getSession } from "../services/session-tracker.js";
 import { parseRegistrationShape } from "../services/supervisor-capabilities.js";
@@ -72,6 +79,22 @@ supervisorsAdminRouter.use("*", requireRolePolicy());
 supervisorsAdminRouter.get("/supervisors", async (c) => {
 	const supervisors = await listSupervisors();
 	return c.json({ supervisors, total: supervisors.length });
+});
+
+supervisorsAdminRouter.post("/supervisors/:id/opencode/health", async (c) => {
+	const supervisorId = c.req.param("id");
+	const refusal = await refuseUnlessMayManageHost(c, supervisorId);
+	if (refusal) return refusal;
+	const [action] = await getDb()
+		.insert(controlActions)
+		.values({
+			actionType: "opencode_health",
+			requestedBy: "user",
+			requestedByUserId: (await getRequestActor(c)).userId,
+			metadata: { targetSupervisorId: supervisorId },
+		})
+		.returning();
+	return c.json({ actionId: action.id }, 202);
 });
 
 supervisorsAdminRouter.get("/supervisors/:id", async (c) => {
@@ -333,11 +356,63 @@ supervisorsAgentRouter.post("/supervisors/:id/heartbeat", requireSupervisorAuth(
 });
 
 supervisorsAgentRouter.post(
+	"/supervisors/:id/opencode/:instanceId/snapshot",
+	requireSupervisorAuth(),
+	async (c) => {
+		try {
+			return c.json(
+				await acceptOpenCodeSnapshot(
+					c.req.param("id"),
+					c.req.param("instanceId"),
+					await c.req.json(),
+				),
+			);
+		} catch (error) {
+			if (error instanceof SessionControlOriginError)
+				return c.json({ error: error.code }, error.status);
+			throw error;
+		}
+	},
+);
+supervisorsAgentRouter.post(
+	"/supervisors/:id/opencode/:instanceId/closed",
+	requireSupervisorAuth(),
+	async (c) => {
+		const body = await c.req.json();
+		if (!["stopped", "interrupted"].includes(body.state))
+			return c.json({ error: "invalid_state" }, 400);
+		try {
+			await interruptOpenCodeInstance(
+				c.req.param("id"),
+				c.req.param("instanceId"),
+				body.generation,
+				body.state,
+			);
+			return c.json({ ok: true });
+		} catch (error) {
+			if (error instanceof SessionControlOriginError)
+				return c.json({ error: error.code }, error.status);
+			throw error;
+		}
+	},
+);
+
+supervisorsAgentRouter.post(
 	"/supervisors/:id/launches/claim",
 	requireSupervisorAuth(),
 	async (c) => {
 		const supervisorId = c.req.param("id") ?? "";
 		const launchRequest = await claimNextLaunchRequest(supervisorId);
+		if (launchRequest?.agentType === "opencode") {
+			const instance = await reserveOpenCodeInstance(supervisorId, launchRequest.id);
+			return c.json({
+				launchRequest: {
+					...launchRequest,
+					openCodeInstance: { id: instance.id, generation: instance.generation },
+				},
+				openCodeInstance: { id: instance.id, generation: instance.generation },
+			});
+		}
 		return c.json({ launchRequest: launchRequest ?? null });
 	},
 );
@@ -386,6 +461,7 @@ supervisorsAgentRouter.post(
 			notifySessionUpdated(freshResult.session);
 			return c.json(freshResult);
 		} catch (err) {
+			if (err instanceof SessionControlOriginError) return c.json({ error: err.code }, err.status);
 			if (err instanceof SessionOwnershipError) {
 				console.warn("[supervisors] session write rejected", {
 					supervisorId,
@@ -415,6 +491,7 @@ supervisorsAgentRouter.post(
 			}
 			return c.json({ events: inserted });
 		} catch (err) {
+			if (err instanceof SessionControlOriginError) return c.json({ error: err.code }, err.status);
 			if (err instanceof SessionOwnershipError) {
 				console.warn("[supervisors] session write rejected", {
 					supervisorId,
@@ -430,7 +507,10 @@ supervisorsAgentRouter.post(
 
 supervisorsAgentRouter.get("/supervisors/:id/provider-sync", requireSupervisorAuth(), async (c) => {
 	const supervisorId = c.req.param("id") ?? "";
-	const managedSessions = await listManagedSessionsNeedingSync(supervisorId);
+	const managedSessions = await listManagedSessionsNeedingSync(
+		supervisorId,
+		c.req.query("includeRecoverable") === "true",
+	);
 	return c.json({ managedSessions });
 });
 

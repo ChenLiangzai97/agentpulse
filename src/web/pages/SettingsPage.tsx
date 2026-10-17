@@ -36,6 +36,7 @@ import {
 } from "./settings-view-state.js";
 
 const launchModeLabels = {
+	managed_opencode: "Managed OpenCode",
 	headless: "Headless task",
 	interactive_terminal: "Interactive terminal",
 	managed_codex: "Managed Codex",

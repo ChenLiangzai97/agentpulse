@@ -1,3 +1,4 @@
+import { PROVIDER_CONTROL_SQLITE_MIGRATIONS } from "./provider-control-migration.js";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -1161,6 +1162,7 @@ async function runLegacySqliteInit(sqlite: Database): Promise<void> {
 		);
 	}
 
+	migrations.push(...PROVIDER_CONTROL_SQLITE_MIGRATIONS);
 	for (const migration of migrations) {
 		// Retry on lock contention — during rolling k8s updates the old
 		// pod still holds the SQLite writer briefly while the new pod

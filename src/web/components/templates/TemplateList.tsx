@@ -67,7 +67,11 @@ export function TemplateListPanel({
 										{template.name}
 									</div>
 									<div className="mt-1 text-[11px] text-muted-foreground">
-										{template.agentType === "claude_code" ? "Claude Code" : "Codex CLI"}
+										{template.agentType === "claude_code"
+											? "Claude Code"
+											: template.agentType === "opencode"
+												? "OpenCode"
+												: "Codex CLI"}
 									</div>
 								</div>
 								{template.isFavorite && (

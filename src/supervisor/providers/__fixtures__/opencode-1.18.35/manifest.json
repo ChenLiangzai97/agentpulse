@@ -1,0 +1,26 @@
+{
+  "cli_version": "1.18.35",
+  "sdk_reference_version": "1.18.34",
+  "real_opencode_server": true,
+  "model_backend": "local deterministic OpenAI-compatible fixture; no live provider credentials",
+  "openapi_paths": 162,
+  "id_sanitization": "stable per-export placeholders",
+  "schema_namespace_note": "SDK v2 does not imply storage V2",
+  "findings": {
+    "process_restart_drops_native_pending_requests": true,
+    "same_messageID_replay_adds_text_parts": true,
+    "global_and_project_plugins_disabled_by_pure": true,
+    "provider_connected_does_not_validate_credentials": true,
+    "always_authorizes_another_session_in_same_instance": true
+  },
+  "fixture_sha256": {
+    "credentials.json": "740a10b7649e08241439efdfc2c3301098a04e4a4abc2a4cb5cdf753b1657f94",
+    "hello.json": "58dd5f8271decb57f1b80a92776aeb19e862d300c5f9963ec2e52ead2ce2ca04",
+    "interactions.json": "00fe5ca58ae594897e679e449858c275d88ced08eb9069f5ded4487a69d2200c",
+    "isolation.json": "a16c8f23b0be7378943f707e8f2ff3a772931751945fa268c340b4689c656228",
+    "lifecycle.json": "54426bc8bd5a670990310e4e6534574ffb79b69a3f6507ac58a06c7e54e33459",
+    "openapi.json": "67a9c8036e63776d80376ecd34c022d13a26615c5e5722e1c301250942588088",
+    "recovery.json": "6d155a33e6a622c6a768688ccd091700e7b9a4baa092d3f30f8b9865326c2f37",
+    "sse.json": "524ee34a4ec0704af77774a1ec88a1dfbd80ae3ac675406d9fe942a7f53ea0a8"
+  }
+}

@@ -120,3 +120,9 @@ export type {
 
 // Per-dialect typed variants (for drizzle-kit / explicit type imports).
 export { settingsSqlite, settingsPg } from "./core/settings.js";
+
+export const providerInstances = active.providerInstances as typeof sqliteSchema.providerInstances;
+export const sessionControlBindings =
+	active.sessionControlBindings as typeof sqliteSchema.sessionControlBindings;
+
+export const providerInteractions = active.providerInteractions as typeof sqliteSchema.providerInteractions;

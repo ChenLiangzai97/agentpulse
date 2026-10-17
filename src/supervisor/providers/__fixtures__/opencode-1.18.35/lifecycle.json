@@ -1,0 +1,10 @@
+{
+  "without_auth_status": 401,
+  "port_zero_first": "4096",
+  "port_zero_when_preferred_port_busy": "46431",
+  "distinct_private_directories": true,
+  "secondary_stopped": true,
+  "primary_healthy_after_secondary_stop": true,
+  "explicit_directory_query_supported": true,
+  "primary_default_directory_correct": true
+}

@@ -1,9 +1,10 @@
-import { and, asc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type {
 	ControlAction,
 	ControlActionStatus,
 	ControlActionType,
 	LaunchRequest,
+	SupervisorCapabilities,
 } from "../../shared/types.js";
 import type { Actor } from "../auth/actor.js";
 import { getDb } from "../db/client.js";
@@ -14,10 +15,14 @@ import {
 	managedSessions,
 	projects,
 	sessions,
+	supervisors,
 } from "../db/schema/index.js";
 import { jsonExtractText } from "../db/sql-helpers.js";
 import { withTransaction } from "../db/with-transaction.js";
 import { mapLaunchRequest } from "./launch-validator.js";
+import { inspectOpenCodeProvenance } from "./opencode-control-provenance.js";
+import { assertSessionControlOrigin } from "./opencode-control-provenance.js";
+import { queueOpenCodeAction } from "./opencode-managed.js";
 import { bumpVersionAndReload } from "./projects/cache.js";
 import { ownerLaunchJoin, resolveSessionOwner, sessionOwnedBy } from "./session-ownership.js";
 
@@ -157,6 +162,9 @@ export async function listControlActionsForSession(sessionId: string) {
 }
 
 export async function queueStopAction(sessionId: string, actor: Actor) {
+	if (await inspectOpenCodeProvenance(sessionId))
+		return mapControlAction(await queueOpenCodeAction(sessionId, "stop", {}, actor));
+	await assertSessionControlOrigin(sessionId, actor);
 	await expireStaleControlLock(sessionId);
 	const [managed] = await getDb()
 		.select()
@@ -202,6 +210,9 @@ export async function queueStopAction(sessionId: string, actor: Actor) {
 }
 
 export async function queuePromptAction(sessionId: string, prompt: string, actor: Actor) {
+	if (await inspectOpenCodeProvenance(sessionId))
+		return mapControlAction(await queueOpenCodeAction(sessionId, "prompt", { prompt }, actor));
+	await assertSessionControlOrigin(sessionId, actor);
 	const cleanPrompt = prompt.trim();
 	if (!cleanPrompt) throw new Error("Prompt is required.");
 	await expireStaleControlLock(sessionId);
@@ -258,6 +269,7 @@ export async function queuePromptAction(sessionId: string, prompt: string, actor
 				cwd: session.cwd,
 				model: session.model,
 				managedState: managed.managedState,
+				providerSessionId: managed.providerSessionId,
 				launchMode: launch.requestedLaunchMode,
 				env: launch.env ?? {},
 				terminalOwner:
@@ -291,6 +303,7 @@ export async function queuePromptAction(sessionId: string, prompt: string, actor
 }
 
 export async function retryLaunchForSession(sessionId: string, actor: Actor) {
+	await assertSessionControlOrigin(sessionId, actor);
 	const [managed] = await getDb()
 		.select()
 		.from(managedSessions)
@@ -449,7 +462,10 @@ export async function claimNextControlAction(supervisorId: string) {
 		.innerJoin(managedSessions, eq(managedSessions.sessionId, controlActions.sessionId))
 		.leftJoin(launchRequests, ownerLaunchJoin)
 		.where(and(eq(controlActions.status, "queued"), sessionOwnedBy(supervisorId)))
-		.orderBy(asc(controlActions.createdAt))
+		.orderBy(
+			sql`CASE WHEN ${controlActions.actionType} IN ('stop', 'interrupt', 'interaction_response', 'approval') THEN 0 ELSE 1 END`,
+			asc(controlActions.createdAt),
+		)
 		.limit(1);
 
 	const sessionlessRow = await getDb()
@@ -485,7 +501,7 @@ export async function claimNextControlAction(supervisorId: string) {
 			claimedBySupervisorId: supervisorId,
 			updatedAt: timestamp,
 		})
-		.where(eq(controlActions.id, candidate.id))
+		.where(and(eq(controlActions.id, candidate.id), eq(controlActions.status, "queued")))
 		.returning();
 	return updated ? mapControlAction(updated) : null;
 }
@@ -517,6 +533,46 @@ export async function updateControlAction(input: {
 		.where(eq(controlActions.id, input.actionId))
 		.returning();
 
+	if (
+		current.actionType === "opencode_health" &&
+		input.status === "succeeded" &&
+		[
+			"ready",
+			"not_configured",
+			"authentication_failed",
+			"model_unavailable",
+			"unavailable",
+		].includes(String(input.metadata?.health))
+	) {
+		const [host] = await getDb()
+			.select()
+			.from(supervisors)
+			.where(eq(supervisors.id, input.supervisorId));
+		if (host) {
+			const caps = host.capabilities as unknown as SupervisorCapabilities;
+			const previous = caps.executables?.opencodeProfile;
+			await getDb()
+				.update(supervisors)
+				.set({
+					capabilities: {
+						...caps,
+						executables: {
+							...caps.executables,
+							opencodeProfile: {
+								...previous,
+								configured: input.metadata?.health !== "not_configured",
+								health: input.metadata?.health,
+								maxInstances: previous?.maxInstances ?? 2,
+								maxQueuedLaunches: previous?.maxQueuedLaunches ?? 4,
+								idleTimeoutMs: previous?.idleTimeoutMs ?? 1800000,
+								stopGraceMs: previous?.stopGraceMs ?? 5000,
+							},
+						},
+					},
+				})
+				.where(eq(supervisors.id, input.supervisorId));
+		}
+	}
 	if (current.sessionId && input.status !== "running") {
 		await getDb()
 			.update(managedSessions)
@@ -525,7 +581,12 @@ export async function updateControlAction(input: {
 				controlLockExpiresAt: null,
 				updatedAt: timestamp,
 			})
-			.where(eq(managedSessions.sessionId, current.sessionId));
+			.where(
+				and(
+					eq(managedSessions.sessionId, current.sessionId),
+					eq(managedSessions.activeControlActionId, current.id),
+				),
+			);
 	}
 
 	if (current.actionType === "cleanup_workarea" && input.status === "succeeded") {

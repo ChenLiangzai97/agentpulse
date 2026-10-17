@@ -29,3 +29,12 @@ describe("live events are capped per session", () => {
 		expect(useEventStore.getState().liveEvents.get("quiet")?.length).toBe(1);
 	});
 });
+
+test("a persisted event revision replaces its previous live value", () => {
+	const { addLiveEvent } = useEventStore.getState();
+	addLiveEvent({ ...event("s1", 7), eventType: "PreToolUse" });
+	addLiveEvent({ ...event("s1", 7), eventType: "PostToolUse" });
+	const kept = useEventStore.getState().liveEvents.get("s1") ?? [];
+	expect(kept.length).toBe(1);
+	expect(kept[0].eventType).toBe("PostToolUse");
+});
