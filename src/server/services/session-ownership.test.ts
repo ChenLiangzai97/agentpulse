@@ -409,8 +409,10 @@ const ALLOWED_OCCURRENCES: Record<string, number> = {
 	// only a display-name lookup key; nothing here decides who owns or may drive a session
 	"src/server/services/effective-machine.ts": 4,
 	// action-claimant check (updateControlAction's input.supervisorId) —
-	// verifying who claimed THIS action, not session ownership
-	"src/server/services/control-actions.ts": 1,
+	// verifying who claimed THIS action, not session ownership; plus the two
+	// OpenCode action-path reads (claim fencing and the claimant echo on the
+	// opencode action queue), same claimant-only semantics
+	"src/server/services/control-actions.ts": 3,
 	// launch-claimant check (claimNextLaunchRequest) + resolver input
 	// (resolveObservedSessionCorrelation's supervisorId parameter)
 	"src/server/services/launch-dispatch.ts": 2,
@@ -425,6 +427,16 @@ const ALLOWED_OCCURRENCES: Record<string, number> = {
 	"src/server/services/managed-session-state.ts": 5,
 	// host-compatibility candidate list, unrelated to session ownership
 	"src/server/services/template-preview.ts": 1,
+	// OpenCode provenance backfill migration: reads supervisor_id only to
+	// stamp the owning supervisor onto provider_instances rows it creates
+	"src/server/db/provider-control-migration.ts": 2,
+	// OpenCode provenance checks: server-owned instance/binding lookups key
+	// on the claimant supervisor id to fence foreign supervisors — the id is
+	// the ownership fence itself, read from trusted tables (never client input)
+	"src/server/services/opencode-control-provenance.ts": 7,
+	// OpenCode managed runtime: interrupt/stop verify the reporting
+	// supervisor owns the instance before mutating generation state
+	"src/server/services/opencode-managed.ts": 2,
 };
 
 function walkServerTsFiles(dir: string): string[] {

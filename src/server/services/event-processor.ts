@@ -717,6 +717,16 @@ async function admitForeignKeyWrite(
  * exact identity to key on, and it's counted via recordLegacyObserverDelivery
  * so operators can see hosts that need a supervisor upgrade.
  */
+async function isProtectedOpenCodeIdentity(sessionId: string) {
+	const root = sessionId.split(":opencode-child:")[0];
+	const [instance] = await getDb()
+		.select({ id: providerInstances.id })
+		.from(providerInstances)
+		.where(eq(providerInstances.sessionId, root))
+		.limit(1);
+	return Boolean(instance);
+}
+
 export async function processHookEvent(
 	payload: HookEventPayload,
 	agentType: AgentType,
@@ -729,12 +739,8 @@ export async function processHookEvent(
 	events: SessionEvent[];
 }> {
 	const sessionId = payload.session_id;
-	const [protectedInstance] = await getDb()
-		.select({ id: providerInstances.id })
-		.from(providerInstances)
-		.where(eq(providerInstances.sessionId, sessionId))
-		.limit(1);
-	if (protectedInstance) return { sessionId, isNew: false, session: null, events: [] };
+	if (await isProtectedOpenCodeIdentity(sessionId))
+		return { sessionId, isNew: false, session: null, events: [] };
 	const eventType = payload.hook_event_name;
 	const now = new Date().toISOString();
 	const attribution: Attribution = ctx.attribution ?? { ownerUserId: null, ingestKeyId: null };
@@ -1206,6 +1212,7 @@ export async function processStatusUpdate(
 	input: SemanticStatusUpdate,
 	attribution: Attribution = { ownerUserId: null, ingestKeyId: null },
 ): Promise<boolean> {
+	if (await isProtectedOpenCodeIdentity(input.session_id)) return false;
 	const { status, ...rest } = input;
 	const update: SemanticStatusUpdate = isSemanticStatus(status) ? { ...rest, status } : rest;
 

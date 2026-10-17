@@ -380,11 +380,25 @@ export class OpenCodeRuntimePool {
 					);
 					const belongs = (item: unknown) =>
 						descendants.has(String((item as { sessionID?: string })?.sessionID));
+					const hasRunningTools = [messages, ...children.map((child) => child.messages)]
+						.flat()
+						.some(
+							(value) =>
+								Array.isArray((value as { parts?: unknown[] }).parts) &&
+								(value as { parts: unknown[] }).parts.some((part) => {
+									const p = part as { type?: string; state?: { status?: string } };
+									return (
+										p.type === "tool" && ["running", "pending"].includes(p.state?.status ?? "")
+									);
+								}),
+						);
 					const entry = this.instances.get(input.sessionId);
 					if (entry) {
-						entry.busy = [...descendants].some(
-							(id) => status[id]?.type === "busy" || status[id]?.type === "retry",
-						);
+						entry.busy =
+							hasRunningTools ||
+							[...descendants].some(
+								(id) => status[id]?.type === "busy" || status[id]?.type === "retry",
+							);
 						entry.pending = permissions.some(belongs) || questions.some(belongs);
 						if (entry.busy || entry.pending) entry.lastUsed = Date.now();
 					}
@@ -393,11 +407,13 @@ export class OpenCodeRuntimePool {
 						children,
 						permissions: permissions.filter(belongs),
 						questions: questions.filter(belongs),
-						status: [...descendants].some(
-							(id) => status[id]?.type === "busy" || status[id]?.type === "retry",
-						)
-							? { type: "busy" }
-							: (status[native.id] ?? { type: "idle" }),
+						status:
+							hasRunningTools ||
+							[...descendants].some(
+								(id) => status[id]?.type === "busy" || status[id]?.type === "retry",
+							)
+								? { type: "busy" }
+								: (status[native.id] ?? { type: "idle" }),
 					};
 				},
 			};

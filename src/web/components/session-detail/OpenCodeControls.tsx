@@ -141,12 +141,18 @@ export function OpenCodeControls({
 			setBusy(false);
 		}
 	}
-	if (!cap?.send)
+	if (!cap?.send) {
+		if (!error && (!cap || cap.origin !== "agentpulse_launch")) return null;
 		return (
 			<section className="border-b border-border px-3 py-3 text-sm text-muted-foreground">
-				{error ?? "外部会话仅供观察；受管实例停止后不会自动重投消息或恢复旧审批。"}
+				{error ??
+					(cap?.reason === "not_owner"
+						? "你没有控制此会话的权限。"
+						: "受管实例已停止或中断；旧审批已失效，消息不会自动重投。")}
 			</section>
 		);
+	}
+
 	return (
 		<section className="space-y-3 border-b border-border px-3 py-3 md:px-6">
 			<div className="flex gap-3 items-center text-sm">

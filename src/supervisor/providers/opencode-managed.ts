@@ -34,6 +34,7 @@ export function createManagedOpenCodeProvider(
 		{ runtime: NonNullable<ReturnType<typeof pool.get>>; polling: boolean }
 	>();
 	const closingRuntime = new Map<string, NonNullable<ReturnType<typeof pool.get>>>();
+	const interruptEpoch = new Map<string, number>();
 	const promptQueues = new Map<string, Promise<void>>();
 	const closed = new Map<string, { generation: number; state: "stopped" | "interrupted" }>();
 	let recovering: Promise<void> | undefined;
@@ -252,8 +253,12 @@ export function createManagedOpenCodeProvider(
 				throw new Error("opencode_control_binding_mismatch");
 			const runtime = entry.runtime;
 			if (action.actionType === "stop") return stop(runtime.sessionId);
-			if (action.actionType === "interrupt") return runtime.abort();
+			if (action.actionType === "interrupt") {
+				interruptEpoch.set(runtime.sessionId, (interruptEpoch.get(runtime.sessionId) ?? 0) + 1);
+				return runtime.abort();
+			}
 			if (action.actionType === "prompt") {
+				const epoch = interruptEpoch.get(runtime.sessionId) ?? 0;
 				const previous = promptQueues.get(runtime.sessionId) ?? Promise.resolve();
 				const next = previous
 					.catch(() => {})
@@ -261,6 +266,8 @@ export function createManagedOpenCodeProvider(
 						const deadline = Date.now() + 15 * 60 * 1000;
 						while (true) {
 							if (!active.has(runtime.sessionId)) throw new Error("opencode_process_interrupted");
+							if (epoch !== (interruptEpoch.get(runtime.sessionId) ?? 0))
+								throw new Error("opencode_prompt_cancelled_before_delivery");
 							const status = await runtime.snapshot();
 							if (
 								(status.status as { type: string }).type === "idle" &&

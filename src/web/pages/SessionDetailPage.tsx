@@ -656,7 +656,12 @@ export function SessionDetailPage() {
 				onStop={handleStop}
 				ackAction={ackAction}
 				headerRef={headerRef}
-				permissionWaitNote={ackDerivation.permissionWaitNote}
+				permissionWaitNote={
+					ackDerivation.permissionWaitNote &&
+					session.controlCapabilities?.origin === "agentpulse_launch"
+						? "审批或提问待回答 — 使用下方网页卡片"
+						: ackDerivation.permissionWaitNote
+				}
 				notOwnerNote={ackDerivation.notOwnerNote}
 				ownerChip={
 					showOwnerFields
@@ -679,7 +684,9 @@ export function SessionDetailPage() {
 					case "CodexStatusHint":
 						return <CodexStatusHint displayName={sel.displayName} />;
 					case "AgentObserveOnlyHint":
-						return <AgentObserveOnlyHint agentType={sel.agentType} />;
+						return session.controlCapabilities?.origin === "agentpulse_launch" ? null : (
+							<AgentObserveOnlyHint agentType={sel.agentType} />
+						);
 				}
 			})()}
 

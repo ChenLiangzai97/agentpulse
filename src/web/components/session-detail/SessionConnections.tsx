@@ -63,7 +63,8 @@ export function SessionConnections({
 				{session.managedSession ? (
 					<>
 						<span className="text-muted-foreground">
-							{session.machine} · {session.managedSession.managedState}
+							{session.managedSession.hostName ?? session.machine} ·{" "}
+							{session.managedSession.managedState}
 						</span>
 						{launchable && (
 							<button

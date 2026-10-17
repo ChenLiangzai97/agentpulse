@@ -202,7 +202,8 @@ export async function handleResumeIntent(
 			actionRequestId: null,
 		};
 	}
-	const launchMode: LaunchMode = intent.mode ?? "interactive_terminal";
+	const launchMode: LaunchMode =
+		intent.mode ?? (agentType === "opencode" ? "managed_opencode" : "interactive_terminal");
 
 	const rawTemplate: Partial<SessionTemplateInput> = {
 		name: `${parentName} (resumed)`,

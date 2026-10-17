@@ -764,6 +764,9 @@ const SELF_SCAN_FAKE_CREDENTIAL_FIXTURES = new Set([
 	"src/web/lib/setup-steps.test.ts",
 	"scripts/install-local-private-write.test.ts",
 	"scripts/write-private-no-follow.test.ts",
+	// OpenCode setup doc: the profile example's placeholder apiKey literal is
+	// documentation of the config shape, not a credential
+	"docs/OPENCODE.md",
 ]);
 /** Files that are about redaction itself: their text is the rules' own test input. */
 const SELF_SCAN_FILES_ABOUT_REDACTION = new Set([

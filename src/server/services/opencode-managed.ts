@@ -6,6 +6,7 @@ import { getDb } from "../db/client.js";
 import {
 	events,
 	controlActions,
+	managedSessions,
 	providerInstances,
 	providerInteractions,
 	sessionControlBindings,
@@ -43,7 +44,7 @@ export async function openCodeControlCapabilities(sessionId: string, actor?: Act
 		stop: enabled,
 		respondPermission: enabled,
 		answerQuestion: enabled,
-		reason: enabled ? null : (origin?.reason ?? null),
+		reason: enabled ? null : origin?.bindingValid ? "not_owner" : (origin?.reason ?? null),
 	};
 }
 export async function ownedOpenCodeInstance(
@@ -391,6 +392,22 @@ export async function queueOpenCodeAction(
 				throw new Error("opencode_prompt_queue_full");
 		}
 
+		if (kind === "interrupt")
+			await tx
+				.update(controlActions)
+				.set({
+					status: "failed",
+					error: "opencode_prompt_cancelled_before_delivery",
+					finishedAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+				})
+				.where(
+					and(
+						eq(controlActions.sessionId, sessionId),
+						eq(controlActions.actionType, "prompt"),
+						eq(controlActions.status, "queued"),
+					),
+				);
 		let interaction: typeof providerInteractions.$inferSelect | undefined;
 		if (kind === "interaction_response") {
 			if (input.decision === "always") throw new Error("permission_decision_not_allowed");
@@ -533,6 +550,20 @@ export async function interruptOpenCodeInstance(
 				),
 			);
 		await tx
+			.update(managedSessions)
+			.set({
+				managedState: state === "stopped" ? "stopped" : "degraded",
+				providerSyncState: state === "stopped" ? "synced" : "failed",
+				providerSyncError:
+					state === "interrupted"
+						? "OpenCode process interrupted; old interactions invalidated."
+						: null,
+				activeControlActionId: null,
+				controlLockExpiresAt: null,
+				updatedAt: new Date().toISOString(),
+			})
+			.where(eq(managedSessions.sessionId, instance.sessionId));
+		await tx
 			.update(controlActions)
 			.set({
 				status: "failed",
@@ -559,6 +590,11 @@ export async function interruptOpenCodeInstance(
 			})
 			.where(eq(sessions.sessionId, instance.sessionId));
 	});
+	const [updated] = await getDb()
+		.select()
+		.from(sessions)
+		.where(eq(sessions.sessionId, instance.sessionId));
+	if (updated) notifySessionUpdated(updated);
 }
 
 async function persistManagedChildren(

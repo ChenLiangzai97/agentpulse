@@ -170,7 +170,9 @@ export async function buildTemplatePreview(
 	},
 ): Promise<TemplatePreview> {
 	const normalizedTemplate = normalizeTemplateInput(input);
-	const requestedLaunchMode = options?.requestedLaunchMode ?? "interactive_terminal";
+	const requestedLaunchMode =
+		options?.requestedLaunchMode ??
+		(normalizedTemplate.agentType === "opencode" ? "managed_opencode" : "interactive_terminal");
 	const launchCorrelationId = crypto.randomUUID();
 	// normalizedTemplate.agentType is typed LaunchableAgentType, but
 	// normalizeTemplateInput deliberately passes an explicit non-launchable

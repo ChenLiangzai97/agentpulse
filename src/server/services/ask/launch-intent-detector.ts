@@ -1383,7 +1383,8 @@ export async function detectAddProjectIntent(message: string): Promise<LaunchInt
 			if (
 				parsed.defaultLaunchMode === "interactive_terminal" ||
 				parsed.defaultLaunchMode === "headless" ||
-				parsed.defaultLaunchMode === "managed_codex"
+				parsed.defaultLaunchMode === "managed_codex" ||
+				parsed.defaultLaunchMode === "managed_opencode"
 			) {
 				initialFields.defaultLaunchMode = parsed.defaultLaunchMode;
 			}
