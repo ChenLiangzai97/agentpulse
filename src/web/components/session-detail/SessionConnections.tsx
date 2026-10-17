@@ -132,7 +132,7 @@ export function SessionConnections({
 					Supervisor，工作目录需位于 trustedRoots 内。
 				</p>
 			)}
-			{approvals.map((event) => {
+			{(launchable ? approvals : []).map((event) => {
 				const id = String(event.rawPayload.approvalId);
 				const expired = Date.parse(String(event.rawPayload.expiresAt)) < Date.now();
 				return (

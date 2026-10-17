@@ -12,10 +12,12 @@ import {
 import { withTransaction } from "../db/with-transaction.js";
 import { assertCanEditSessionNotes, assertCanManageHost } from "./authorization.js";
 import { mapLaunchRequest } from "./launch-validator.js";
+import { assertSessionControlOrigin } from "./opencode-control-provenance.js";
 import { resolveSessionOwner } from "./session-ownership.js";
 
 /** Bind an observed native session to its enrolled host; never migrate a bound session. */
 export async function bindSession(sessionId: string, supervisorId: string, actor: Actor) {
+	await assertSessionControlOrigin(sessionId, actor);
 	await assertCanEditSessionNotes(actor, sessionId);
 	await assertCanManageHost(actor, supervisorId);
 	const [session] = await getDb().select().from(sessions).where(eq(sessions.sessionId, sessionId));
@@ -63,6 +65,7 @@ export async function bindSession(sessionId: string, supervisorId: string, actor
 }
 
 export async function queueResume(sessionId: string, actor: Actor) {
+	await assertSessionControlOrigin(sessionId, actor);
 	await assertCanEditSessionNotes(actor, sessionId);
 	const [managed] = await getDb()
 		.select()
@@ -105,6 +108,7 @@ export async function queueApproval(
 	decision: string,
 	actor: Actor,
 ) {
+	await assertSessionControlOrigin(sessionId, actor);
 	await assertCanEditSessionNotes(actor, sessionId);
 	const recent = await getDb()
 		.select()

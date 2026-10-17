@@ -9,6 +9,7 @@ import { withTransaction } from "../db/with-transaction.js";
 import { toSessionEventDtos } from "./event-dto.js";
 import type { NormalizedEvent } from "./event-normalizer.js";
 import { notifySessionCreated, notifySessionEvents, notifySessionUpdated } from "./notifier.js";
+import { recordExternalOpenCodeSession } from "./opencode-control-provenance.js";
 import { getCachedProjects } from "./projects/cache.js";
 import { resolveProjectIdForCwd } from "./projects/resolver.js";
 
@@ -282,6 +283,7 @@ export class OpenCodeObserver {
 					agentType: "opencode",
 					startedAt: date(session.time_created),
 				});
+			await recordExternalOpenCodeSession(sessionId, tx);
 			const stored = await tx
 				.select({
 					id: events.id,

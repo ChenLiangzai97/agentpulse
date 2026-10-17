@@ -56,6 +56,10 @@ import {
 } from "../services/control-actions.js";
 import { toSessionEventDtos } from "../services/event-dto.js";
 import { notifySessionUpdated } from "../services/notifier.js";
+import {
+	SessionControlOriginError,
+	assertSessionControlOrigin,
+} from "../services/opencode-control-provenance.js";
 import { readServiceKeyLists } from "../services/service-key-lists.js";
 import { isServiceKeyRow } from "../services/service-keys.js";
 import { bindSession, queueApproval, queueResume } from "../services/session-binding.js";
@@ -126,6 +130,25 @@ sessionsRouter.use("*", requireAuth());
 // read-only routes in OBSERVE_READ_PATHS (list, detail, timeline, event
 // context, claude-md); mutating routes and control-actions stay manage-only.
 sessionsRouter.use("*", requireOperatorScope());
+// Central REST boundary also covers currently unsupported future question/fork routes.
+sessionsRouter.use("/sessions/:sessionId/*", async (c, next) => {
+	if (
+		["POST", "PUT", "PATCH", "DELETE"].includes(c.req.method) &&
+		/\/sessions\/[^/]+\/(bind|prompt|stop|approval|native-approvals|question|questions|native-questions|resume|retry|fork)(?:\/|$)/.test(
+			c.req.path,
+		)
+	) {
+		try {
+			await assertSessionControlOrigin(c.req.param("sessionId"), await getRequestActor(c));
+		} catch (error) {
+			if (error instanceof SessionControlOriginError)
+				return c.json({ error: error.code }, error.status);
+			if (error instanceof NotOwnerError) return c.json({ error: "not_owner" }, 403);
+			throw error;
+		}
+	}
+	await next();
+});
 
 type SessionAssertion = typeof assertCanDeleteSession;
 

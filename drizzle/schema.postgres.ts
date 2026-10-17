@@ -47,3 +47,8 @@ export { askMessagesPg as askMessages } from "../src/server/db/schema/ask-projec
 export { projectsPg as projects } from "../src/server/db/schema/ask-projects/projects";
 export { projectAlertRulesPg as projectAlertRules } from "../src/server/db/schema/ask-projects/project-alert-rules";
 export { projectAlertRuleFiresPg as projectAlertRuleFires } from "../src/server/db/schema/ask-projects/project-alert-rule-fires";
+
+export {
+	providerInstancesPg as providerInstances,
+	sessionControlBindingsPg as sessionControlBindings,
+} from "../src/server/db/schema/core/provider-control";

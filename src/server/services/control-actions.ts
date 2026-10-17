@@ -18,6 +18,7 @@ import {
 import { jsonExtractText } from "../db/sql-helpers.js";
 import { withTransaction } from "../db/with-transaction.js";
 import { mapLaunchRequest } from "./launch-validator.js";
+import { assertSessionControlOrigin } from "./opencode-control-provenance.js";
 import { bumpVersionAndReload } from "./projects/cache.js";
 import { ownerLaunchJoin, resolveSessionOwner, sessionOwnedBy } from "./session-ownership.js";
 
@@ -157,6 +158,7 @@ export async function listControlActionsForSession(sessionId: string) {
 }
 
 export async function queueStopAction(sessionId: string, actor: Actor) {
+	await assertSessionControlOrigin(sessionId, actor);
 	await expireStaleControlLock(sessionId);
 	const [managed] = await getDb()
 		.select()
@@ -202,6 +204,7 @@ export async function queueStopAction(sessionId: string, actor: Actor) {
 }
 
 export async function queuePromptAction(sessionId: string, prompt: string, actor: Actor) {
+	await assertSessionControlOrigin(sessionId, actor);
 	const cleanPrompt = prompt.trim();
 	if (!cleanPrompt) throw new Error("Prompt is required.");
 	await expireStaleControlLock(sessionId);
@@ -292,6 +295,7 @@ export async function queuePromptAction(sessionId: string, prompt: string, actor
 }
 
 export async function retryLaunchForSession(sessionId: string, actor: Actor) {
+	await assertSessionControlOrigin(sessionId, actor);
 	const [managed] = await getDb()
 		.select()
 		.from(managedSessions)

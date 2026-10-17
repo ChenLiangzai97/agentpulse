@@ -38,6 +38,7 @@ import {
 	upsertManagedSessionState,
 } from "../services/managed-session-state.js";
 import { notifySessionEvents, notifySessionUpdated } from "../services/notifier.js";
+import { SessionControlOriginError } from "../services/opencode-control-provenance.js";
 import { SessionOwnershipError } from "../services/session-ownership.js";
 import { getSession } from "../services/session-tracker.js";
 import { parseRegistrationShape } from "../services/supervisor-capabilities.js";
@@ -386,6 +387,7 @@ supervisorsAgentRouter.post(
 			notifySessionUpdated(freshResult.session);
 			return c.json(freshResult);
 		} catch (err) {
+			if (err instanceof SessionControlOriginError) return c.json({ error: err.code }, err.status);
 			if (err instanceof SessionOwnershipError) {
 				console.warn("[supervisors] session write rejected", {
 					supervisorId,
@@ -415,6 +417,7 @@ supervisorsAgentRouter.post(
 			}
 			return c.json({ events: inserted });
 		} catch (err) {
+			if (err instanceof SessionControlOriginError) return c.json({ error: err.code }, err.status);
 			if (err instanceof SessionOwnershipError) {
 				console.warn("[supervisors] session write rejected", {
 					supervisorId,

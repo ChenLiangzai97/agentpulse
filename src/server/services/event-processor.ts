@@ -45,6 +45,7 @@ import {
 import { getMode } from "./instance-mode.js";
 import { associateObservedSession } from "./launch-dispatch.js";
 import { generateSessionName } from "./name-generator.js";
+import { recordExternalOpenCodeSession } from "./opencode-control-provenance.js";
 import { getCachedProjects } from "./projects/cache.js";
 import { resolveProjectIdForCwd } from "./projects/resolver.js";
 import {
@@ -960,6 +961,8 @@ export async function processHookEvent(
 			incrementIngestOwnerMismatch();
 		}
 	}
+
+	if (agentType === "opencode") await recordExternalOpenCodeSession(sessionId);
 
 	// D21: compute the terminal-latch/closed-turn state from the metadata as
 	// it stood *before* this event, then fold this event's own effects

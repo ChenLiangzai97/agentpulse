@@ -18,6 +18,10 @@ import { withTransaction } from "../db/with-transaction.js";
 import { insertManagedDelivery, insertNormalizedEvents } from "./event-processor.js";
 import { cleanMachineName } from "./machine-name.js";
 import { generateSessionName } from "./name-generator.js";
+import {
+	SessionControlOriginError,
+	assertSessionControlOrigin,
+} from "./opencode-control-provenance.js";
 import { ownerForNewSession } from "./session-attribution.js";
 import { mapSessionDto } from "./session-dto.js";
 import {
@@ -73,6 +77,9 @@ export async function upsertManagedSessionState(
 	supervisorId: string,
 	input: ManagedSessionStateInput,
 ): Promise<{ session: Session; managedSession: ManagedSession }> {
+	await assertSessionControlOrigin(input.sessionId);
+	if (String(input.agentType) === "opencode")
+		throw new SessionControlOriginError("opencode_control_not_enabled", 409);
 	await assertSupervisorCanWriteSession(supervisorId, input.sessionId, {
 		launchRequestId: input.launchRequestId,
 	});
@@ -277,6 +284,7 @@ export async function appendManagedSessionEvents(
 	sessionId: string,
 	events: ManagedSessionEventInput[],
 ) {
+	await assertSessionControlOrigin(sessionId);
 	await assertSupervisorCanWriteSession(supervisorId, sessionId);
 	const normalized = events.map((event) => ({
 		eventType: event.eventType,
@@ -314,6 +322,7 @@ export async function attachManagedSessionToLaunch(input: {
 	supervisorId: string;
 	correlationSource?: string | null;
 }) {
+	await assertSessionControlOrigin(input.sessionId);
 	const timestamp = nowIso();
 	const [existingManaged] = await getDb()
 		.select()

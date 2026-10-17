@@ -46,3 +46,8 @@ export { askMessagesSqlite as askMessages } from "../src/server/db/schema/ask-pr
 export { projectsSqlite as projects } from "../src/server/db/schema/ask-projects/projects";
 export { projectAlertRulesSqlite as projectAlertRules } from "../src/server/db/schema/ask-projects/project-alert-rules";
 export { projectAlertRuleFiresSqlite as projectAlertRuleFires } from "../src/server/db/schema/ask-projects/project-alert-rule-fires";
+
+export {
+	providerInstancesSqlite as providerInstances,
+	sessionControlBindingsSqlite as sessionControlBindings,
+} from "../src/server/db/schema/core/provider-control";
