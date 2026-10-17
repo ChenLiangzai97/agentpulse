@@ -1,6 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# >>> agentpulse-opencode-notice
+# Detection only. Never execute OpenCode, source shell configuration, or import data.
+(
+  ap_opencode_db="${AGENTPULSE_OPENCODE_DB:-${XDG_DATA_HOME:-$HOME/.local/share}/opencode/opencode.db}"
+  if command -v opencode >/dev/null 2>&1 || [ -e "$ap_opencode_db" ]; then
+    printf '\n%s\n' 'OpenCode detected (observe-only; no hooks or control channel installed).'
+    printf '  Database for this installer account: %s\n' "$ap_opencode_db"
+    printf '%s\n' '  In the AgentPulse checkout, check without importing:' \
+      '    bun scripts/observe-opencode.ts --check' \
+      '  To enable, persist AGENTPULSE_OPENCODE_ENABLED=true in the AgentPulse SERVER environment and restart it.' \
+      '  For a custom path, also persist AGENTPULSE_OPENCODE_DB=/absolute/path/to/opencode.db.' \
+      '  The server account must be able to read the source DB and its WAL files.' \
+      '  First import includes all historical sessions, including archives; there is no session-count cap.' \
+      '  A remote relay/supervisor cannot expose this local DB to the central server.' \
+      '  No observation setting was changed. See docs/OPENCODE.md for setup and compatibility.'
+  fi
+)
+# <<< agentpulse-opencode-notice
+
 # AgentPulse local installer
 # One-command Bun + SQLite deployment for macOS/Linux.
 
@@ -198,6 +217,16 @@ SQLITE_PATH=${DATA_DIR}/agentpulse.db
 NODE_ENV=production
 EOF
 )"$'\n'
+# Retain explicit OpenCode opt-in and stable source identity during upgrades.
+# Copy only single-line dotenv entries; never evaluate the existing env file.
+if [[ -f "${ENV_FILE}" && ! -L "${ENV_FILE}" ]]; then
+  while IFS= read -r ap_env_line || [[ -n "$ap_env_line" ]]; do
+    case "$ap_env_line" in
+      AGENTPULSE_OPENCODE_ENABLED=*|AGENTPULSE_OPENCODE_DB=*|AGENTPULSE_OPENCODE_INSTANCE_ID=*)
+        ENV_CONTENT+="$ap_env_line"$'\n' ;;
+    esac
+  done < "${ENV_FILE}"
+fi
 ap_write_private_no_follow "${ENV_FILE}" "${ENV_CONTENT}" || exit 1
 echo "  ✓ Wrote ${ENV_FILE}"
 

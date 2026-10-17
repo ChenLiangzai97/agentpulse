@@ -1,14 +1,20 @@
 /** Read-only OpenCode v1 SQLite observer. Never loads or changes OpenCode plugins. */
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { homedir, hostname } from "node:os";
-import { join, resolve } from "node:path";
+import { hostname } from "node:os";
+import { resolve } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { events, sessions } from "../db/schema/index.js";
 import { withTransaction } from "../db/with-transaction.js";
 import { toSessionEventDtos } from "./event-dto.js";
 import type { NormalizedEvent } from "./event-normalizer.js";
 import { notifySessionCreated, notifySessionEvents, notifySessionUpdated } from "./notifier.js";
+import {
+	OpenCodeSchemaError,
+	defaultOpenCodeDbPath,
+	validateOpenCodeSchema,
+} from "./opencode-source.js";
+export { defaultOpenCodeDbPath } from "./opencode-source.js";
 import { getCachedProjects } from "./projects/cache.js";
 import { resolveProjectIdForCwd } from "./projects/resolver.js";
 
@@ -129,32 +135,16 @@ export function normalizeOpenCodePart(
 	return base;
 }
 
-export function defaultOpenCodeDbPath(): string {
-	return join(
-		process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"),
-		"opencode",
-		"opencode.db",
-	);
-}
-
 export class OpenCodeObserver {
 	private source: Database;
 	private watermark = 0;
+	private schemaVersion = -1;
 	readonly instanceId: string;
 	constructor(path: string, instanceId = `${hostname()}:${resolve(path)}`) {
 		this.instanceId = hash(instanceId).slice(0, 20);
 		this.source = new Database(path, { readonly: true, create: false });
 		try {
-			for (const [table, required] of Object.entries({
-				session: ["id", "title", "directory", "parent_id", "time_created", "time_updated"],
-				message: ["id", "session_id", "data", "time_created", "time_updated"],
-				part: ["id", "session_id", "message_id", "data", "time_created", "time_updated"],
-			})) {
-				const statement = this.source.query(`PRAGMA table_info("${table}")`);
-				const columns = statement.all() as { name: string }[];
-				if (!required.every((key) => columns.some((column) => column.name === key)))
-					throw new Error(`Unsupported OpenCode schema: ${table}`);
-			}
+			validateOpenCodeSchema(this.source);
 		} catch (error) {
 			this.source.close();
 			throw error;
@@ -171,35 +161,50 @@ export class OpenCodeObserver {
 		// A short source snapshot ends BEFORE any asynchronous destination writes.
 		// Inclusive watermark handles equal millisecond timestamps; durable upserts handle replay.
 		const read = this.source.transaction(() => {
+			const { schema_version: schemaVersion } = this.source
+				.query("PRAGMA schema_version")
+				.get() as { schema_version: number };
+			if (schemaVersion !== this.schemaVersion) validateOpenCodeSchema(this.source);
+			// Re-read all rows after a compatible migration, including newly added metadata.
+			const watermark = schemaVersion === this.schemaVersion ? this.watermark : 0;
 			const ids = this.source
 				.query(`SELECT id FROM session WHERE time_updated >= ?
     UNION SELECT session_id AS id FROM message WHERE time_updated >= ?
     UNION SELECT session_id AS id FROM part WHERE time_updated >= ?`)
-				.all(this.watermark, this.watermark, this.watermark) as { id: string }[];
+				.all(watermark, watermark, watermark) as { id: string }[];
 			const snapshots: Snapshot[] = [];
-			let high = this.watermark;
-			for (const { id } of ids) {
-				const session = this.source
-					.query("SELECT * FROM session WHERE id = ?")
-					.get(id) as SourceSession | null;
-				if (!session) continue;
-				const messages = this.source
-					.query("SELECT * FROM message WHERE session_id = ? ORDER BY time_created, id")
-					.all(id) as SourceMessage[];
-				const parts = this.source
-					.query("SELECT * FROM part WHERE session_id = ? ORDER BY time_created, id")
-					.all(id) as SourcePart[];
-				high = [...messages, ...parts].reduce(
-					(latest, row) => Math.max(latest, row.time_updated),
-					Math.max(high, session.time_updated),
-				);
-				snapshots.push({ session, messages, parts });
+			let high = watermark;
+			// Fresh statements refresh SELECT * column mappings after a live migration.
+			const sessionQuery = this.source.prepare("SELECT * FROM session WHERE id = ?");
+			const messageQuery = this.source.prepare(
+				"SELECT * FROM message WHERE session_id = ? ORDER BY time_created, id",
+			);
+			const partQuery = this.source.prepare(
+				"SELECT * FROM part WHERE session_id = ? ORDER BY time_created, id",
+			);
+			try {
+				for (const { id } of ids) {
+					const session = sessionQuery.get(id) as SourceSession | null;
+					if (!session) continue;
+					const messages = messageQuery.all(id) as SourceMessage[];
+					const parts = partQuery.all(id) as SourcePart[];
+					high = [...messages, ...parts].reduce(
+						(latest, row) => Math.max(latest, row.time_updated),
+						Math.max(high, session.time_updated),
+					);
+					snapshots.push({ session, messages, parts });
+				}
+			} finally {
+				sessionQuery.finalize();
+				messageQuery.finalize();
+				partQuery.finalize();
 			}
-			return { snapshots, high };
+			return { snapshots, high, schemaVersion };
 		})();
 		let changedEvents = 0;
 		for (const snapshot of read.snapshots) changedEvents += await this.importSession(snapshot);
 		this.watermark = read.high;
+		this.schemaVersion = read.schemaVersion;
 		return { sessions: read.snapshots.length, changedEvents };
 	}
 
@@ -343,16 +348,26 @@ export function startOpenCodeObserver(): () => Promise<void> {
 		if (stopped || running) return;
 		running = (async () => {
 			try {
+				const initial = !observer;
 				observer ??= new OpenCodeObserver(
 					process.env.AGENTPULSE_OPENCODE_DB || defaultOpenCodeDbPath(),
 					process.env.AGENTPULSE_OPENCODE_INSTANCE_ID,
 				);
-				await observer.sync();
+				const result = await observer.sync();
+				if (initial)
+					console.info(
+						`[opencode-observer] Observation ready (v1, read-only): ${result.sessions} sessions scanned, ${result.changedEvents} events changed.`,
+					);
 				warned = false;
-			} catch {
+			} catch (error) {
+				// Reopen after failures so a repaired/replaced DB or completed migration can recover.
+				observer?.close();
+				observer = undefined;
 				if (!warned)
 					console.warn(
-						"[opencode-observer] Source unavailable, unsupported schema, or sync failed; retrying. See docs/OPENCODE.md.",
+						error instanceof OpenCodeSchemaError
+							? `[opencode-observer] ${error.message}; no schema migration will be attempted. Retrying. Run bun scripts/observe-opencode.ts --check; see docs/OPENCODE.md.`
+							: "[opencode-observer] Source unavailable or sync failed; reopening and retrying. Run bun scripts/observe-opencode.ts --check as the server account; see docs/OPENCODE.md.",
 					);
 				warned = true;
 			}

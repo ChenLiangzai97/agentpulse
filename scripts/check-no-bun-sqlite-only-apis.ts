@@ -37,6 +37,10 @@ import { join, relative } from "node:path";
 const ROOT = new URL("..", import.meta.url).pathname;
 
 const ALLOWLISTED_SUFFIXES = [
+	// OpenCode owns a separate, read-only SQLite source regardless of the destination dialect.
+	// Destination writes in the observer still go through withTransaction().
+	"src/server/services/opencode-source.ts",
+	"src/server/services/opencode-observer.ts",
 	// Core DB adapter and test helpers
 	"src/server/db/client.ts",
 	// The withTransaction helper is the canonical DB-layer file for sync-tx
