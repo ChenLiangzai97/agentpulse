@@ -1,6 +1,6 @@
 # AGENTS.md - AgentPulse
 
-AgentPulse is the command center for AI coding agents across all your machines. It monitors, orchestrates, and manages Claude Code and Codex CLI sessions from a single dashboard with chat-style prompt history, session notes, templates, managed launches, and remote access from any device. GitHub Copilot CLI is also observed (dedicated hooks, badge, "Observed only" hint) but can't be launched or steered — see `LAUNCHABLE_AGENT_TYPES` below.
+AgentPulse is the command center for AI coding agents across all your machines. It monitors, orchestrates, and manages Claude Code and Codex CLI sessions from a single dashboard with chat-style prompt history, session notes, templates, managed launches, and remote access from any device. GitHub Copilot CLI (hooks) and OpenCode (opt-in read-only SQLite polling) are also observed but can't be launched or steered — see `LAUNCHABLE_AGENT_TYPES` below.
 
 ## Tech Stack
 
@@ -124,7 +124,7 @@ Do NOT use `503 / ai_kill_switch_active` — that code was never shipped.
 - `isWorking` toggles on UserPromptSubmit/PreToolUse (true) and Stop (false)
 - Timeline events are filtered **client-side** in session detail UI (not server-side)
 - Supervisor writes are ownership-checked (`session-ownership.ts`) — a supervisor acting on a session it doesn't own gets `403 { error: "session_not_owned" }`
-- Three observed agent types: `claude_code`, `codex_cli`, `copilot_cli`. `LAUNCHABLE_AGENT_TYPES` (`src/shared/constants.ts`) is `["claude_code", "codex_cli"]` — Copilot CLI is observe-only, use `isLaunchable()` to check. Hook-event lists (Claude/Codex/Copilot: 16/12/10 events) must stay in parity across setup scripts and `SetupPage.tsx`; `bun run check:hook-event-parity` and `check:agent-type-parity` (both chained into `check:architecture`) enforce it.
+- Four observed agent types: `claude_code`, `codex_cli`, `copilot_cli`, `opencode`. `LAUNCHABLE_AGENT_TYPES` (`src/shared/constants.ts`) is `["claude_code", "codex_cli"]` — Copilot CLI and OpenCode are observe-only, use `isLaunchable()` to check. Hook-event lists (Claude/Codex/Copilot: 16/12/10 events) must stay in parity across setup scripts and `SetupPage.tsx`; `bun run check:hook-event-parity` and `check:agent-type-parity` (both chained into `check:architecture`) enforce it.
 
 ## Core API Endpoints
 
@@ -174,3 +174,10 @@ Do NOT use `503 / ai_kill_switch_active` — that code was never shipped.
 - Never commit real domains, IPs, API keys, hostnames, or private infrastructure identifiers
 - Replace private values with safe placeholders before commit
 - `deploy/k8s-homelab/` (gitignored overlay) is the correct place for real deployment values
+
+## OpenCode onboarding
+
+- `docs/OPENCODE.md` covers server-side opt-in, diagnostics and compatibility policy.
+- `bun scripts/observe-opencode.ts --check` inspects only the source; it must not initialize the AgentPulse destination DB.
+- OpenCode has no hooks. Keep the detection notice in `scripts/opencode-notice.sh`, all three Bash installers, and served `/setup.sh` in parity (`scripts/opencode-setup.test.ts`). Detection must never implicitly import data.
+- `opencode-source.ts` and the observer may use raw SQLite only for the read-only OpenCode source; destination writes must remain portable through `withTransaction()`.

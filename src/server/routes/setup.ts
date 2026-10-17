@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import openCodeNotice from "../../../scripts/opencode-notice.sh" with { type: "text" };
 import {
 	CODEX_MARKER_SH_PIECE,
 	SH_GATE_PIECE,
@@ -138,6 +139,8 @@ setup.get("/setup.sh", (c) => {
 
 	const script = `#!/usr/bin/env bash
 set -euo pipefail
+
+${openCodeNotice}
 
 # ───────────────────────────────────────────────────
 #  AgentPulse - One-Command Hook Setup
