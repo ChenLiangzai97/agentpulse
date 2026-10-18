@@ -20,6 +20,7 @@ docs/*
 !docs/PRODUCT_REQUIREMENTS.md
 !docs/IMPLEMENTATION_TASKBOOK_2026-10-18.md
 !docs/WORKLOG_P4_FACT_MODEL.md
+!docs/P1_WORKBENCH_PLAN.md
 
 # Private Kustomize overlays. The OSS-clean base lives at deploy/k8s/.
 # Environment-specific overlays (real image registry, cluster hostnames,

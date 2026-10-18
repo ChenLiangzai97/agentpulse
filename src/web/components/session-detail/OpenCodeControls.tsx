@@ -5,6 +5,7 @@ import type { Session } from "../../../shared/types.js";
 import { useT } from "../../i18n/i18n.js";
 import { api } from "../../lib/api.js";
 import { scopedQuery } from "../../lib/scoped-query.js";
+import { usePromptDraftStore } from "../../stores/prompt-draft-store.js";
 
 type Interaction = Awaited<ReturnType<typeof api.getOpenCodeInteractions>>["interactions"][number];
 type Question = {
@@ -101,7 +102,10 @@ export function OpenCodeControls({
 	const t = useT();
 	const [cap, setCap] = useState<Session["controlCapabilities"]>();
 	const [items, setItems] = useState<Interaction[]>([]);
-	const [prompt, setPrompt] = useState("");
+	// Per-session draft (P1): survives tab switches and reloads; cleared on send.
+	const [prompt, setPrompt] = useState(() =>
+		usePromptDraftStore.getState().getDraft(session.sessionId),
+	);
 	const [catalog, setCatalog] = useState<{
 		commands: { name: string; description?: string; source?: string }[];
 		agents: { name: string; description?: string }[];
@@ -228,6 +232,7 @@ export function OpenCodeControls({
 				...(pendingAgent ? { agent: pendingAgent } : {}),
 			});
 			setPrompt("");
+			usePromptDraftStore.getState().clearDraft(session.sessionId);
 			return;
 		}
 		toast.error(t("opencodeCmd.unknown").replace("{name}", name));
@@ -236,7 +241,10 @@ export function OpenCodeControls({
 		setBusy(true);
 		try {
 			await api.openCodeAction(session.sessionId, body);
-			if (body.kind === "prompt") setPrompt("");
+			if (body.kind === "prompt") {
+				setPrompt("");
+				usePromptDraftStore.getState().clearDraft(session.sessionId);
+			}
 			if (body.interactionId)
 				setItems((old) => old.filter((item) => item.id !== body.interactionId));
 			await onChanged();
@@ -459,6 +467,7 @@ export function OpenCodeControls({
 						value={prompt}
 						onChange={(e) => {
 							setPrompt(e.target.value);
+							usePromptDraftStore.getState().setDraft(session.sessionId, e.target.value);
 							setCommandMenuOpen(e.target.value.startsWith("/") && !e.target.value.includes(" "));
 						}}
 						onKeyDown={(e) => {
