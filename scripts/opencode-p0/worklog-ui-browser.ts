@@ -50,7 +50,11 @@ try {
 		evidenceLink.click(),
 	]);
 	await popup.waitForURL(/\/sessions\/e2e-main\?tab=activity#event-\d+/, { timeout: 10_000 });
-	check(true, `evidence link navigated to ${popup.url()}`);
+	// The link must not just change the URL: the TARGET EVENT has to load and
+	// be located in the activity timeline (element id = URL hash).
+	const hash = popup.url().split("#")[1] ?? "";
+	await popup.locator(`#${hash}`).waitFor({ state: "visible", timeout: 20_000 });
+	check(true, `evidence link loaded and located event element #${hash}`);
 	await popup.close();
 	check(personalText.includes("目标与指令"), "personal view labels fact categories");
 	check(personalText.includes("助手自述"), "claims stay separated from results");

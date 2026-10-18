@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
 	DEFAULT_WORKLOG_CONFIG,
@@ -22,9 +22,13 @@ export function WorklogPage() {
 	const [preview, setPreview] = useState<Awaited<ReturnType<typeof api.getWorklogPreview>> | null>(
 		null,
 	);
-	// Stale-response guard: a slow preview request for an earlier date must
-	// never overwrite the currently selected one (A→B with A resolving last).
+	// Stale-response guard with DATE IDENTITY: a slow or late-completing
+	// request issued for an earlier date must never overwrite the current
+	// one — neither by resolving last, nor by an action started on the old
+	// date finishing after the switch.
 	const previewGuard = useMemo(() => createStaleLoadGuard(setPreview), []);
+	const dateRef = useRef(date);
+	dateRef.current = date;
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState("");
 	const refresh = useCallback(() => api.getWorklogs().then((r) => setRuns(r.runs)), []);
@@ -50,7 +54,10 @@ export function WorklogPage() {
 		try {
 			await fn();
 			await refresh();
-			void previewGuard.load(() => api.getWorklogPreview(date));
+			// Identity-checked: if the user switched dates while this action
+			// was running, the refresh targets the CURRENT date, and a
+			// stale-date value can never land.
+			void previewGuard.load(dateRef.current, () => api.getWorklogPreview(dateRef.current));
 		} catch (e) {
 			setError(e instanceof Error ? e.message : "操作失败");
 		} finally {
@@ -62,7 +69,8 @@ export function WorklogPage() {
 	const current = runs.find((r) => `${r.timezone}/${r.date}` === selected) ?? runs[0];
 	useEffect(() => {
 		setPreview(null);
-		void previewGuard.load(() => api.getWorklogPreview(date));
+		previewGuard.setIdentity(date);
+		void previewGuard.load(date, () => api.getWorklogPreview(date));
 	}, [date, previewGuard]);
 	return (
 		<div className="mx-auto max-w-5xl space-y-6 p-6">
