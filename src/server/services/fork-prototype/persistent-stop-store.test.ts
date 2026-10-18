@@ -8,7 +8,6 @@ import { getDb, initializeDatabase } from "../../db/client.js";
 import { settings } from "../../db/schema/index.js";
 import { PersistentStopStore } from "./persistent-stop-store.js";
 
-
 async function unsettledCount(store: PersistentStopStore, sessionId: string): Promise<number> {
 	const snap = await store.snapshot(sessionId);
 	if (!snap) throw new Error("round missing");
@@ -191,15 +190,13 @@ describe("persistent stop operations — revision CAS & per-attempt uncertainty 
 		expect((await store.snapshot("r3"))?.unsettled.length).toBe(2);
 		// settle ONE attempt via its late wired completion
 		gate1.resolve();
-		for (let i = 0; i < 40 && (await unsettledCount(store, "r3")) !== 1; i++)
-			await Bun.sleep(10);
+		for (let i = 0; i < 40 && (await unsettledCount(store, "r3")) !== 1; i++) await Bun.sleep(10);
 		expect((await store.snapshot("r3"))?.unsettled.length).toBe(1); // still uncertain
 		expect(await store.confirmTermination("r3", round.stopOpId)).toEqual({ refused: "uncertain" });
 		expect(await store.canResume("r3")).toBe(false); // not stopped yet anyway
 		// settle the second
 		gate2.resolve();
-		for (let i = 0; i < 40 && (await unsettledCount(store, "r3")) !== 0; i++)
-			await Bun.sleep(10);
+		for (let i = 0; i < 40 && (await unsettledCount(store, "r3")) !== 0; i++) await Bun.sleep(10);
 		expect((await store.snapshot("r3"))?.unsettled.length).toBe(0);
 		expect(await store.confirmTermination("r3", round.stopOpId)).toBe(true);
 		expect(await store.canResume("r3")).toBe(true);
