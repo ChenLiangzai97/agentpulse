@@ -1,0 +1,56 @@
+{
+ "cli_version": "1.18.35",
+ "records": [
+  {
+   "label": "fork with title",
+   "result": {
+    "status": 200,
+    "response": {
+     "id": "SES_ANON",
+     "slug": "quick-eagle",
+     "projectID": "global",
+     "directory": "<ISOLATED_ROOT>/project",
+     "path": "",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "fork title probe root (fork #1)",
+     "version": "1.18.35",
+     "time": {
+      "created": 1792339384637,
+      "updated": 1792339384637
+     }
+    }
+   }
+  },
+  {
+   "label": "fork without title (response title field)",
+   "result": {
+    "status": 200,
+    "title": "fork title probe root (fork #1)",
+    "id": "SES_ANON"
+   }
+  },
+  {
+   "label": "PATCH rename child",
+   "result": {
+    "patch": 200,
+    "title_after": "agentpulse-fork:probe"
+   }
+  },
+  {
+   "label": "title is mutable and multi-matchable",
+   "result": {
+    "parent_patch": 200,
+    "matches": 2
+   }
+  }
+ ]
+}

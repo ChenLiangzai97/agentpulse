@@ -1,35 +1,91 @@
-/** Real-DB experiment: what actually cascades when the PARENT session is deleted. */
-process.env.SQLITE_PATH = "/tmp/agentpulse-fk-probe.db";
-process.env.DATA_DIR = "/tmp/agentpulse-fk-probe-data";
+/** Real-DB experiment: what survives deleting the PARENT session, and does the
+ * child's CONTROL AUTHORITY (binding validity) hold afterwards?
+ *
+ * Scope per review: SQLite AND PostgreSQL; row survival + binding-validity
+ * assertion. Full control/approval/recovery paths are prototype work — this
+ * probe does NOT claim them. The child here reuses the parent's launch id
+ * because the NULL-launch migration (0015) does not exist yet; that
+ * difference is asserted as a known limitation, not hidden.
+ *
+ * SQLite: SQLITE_PATH=/tmp/agentpulse-fk-probe.db bun scripts/opencode-p0/fk-chain-probe.ts
+ * PostgreSQL: DATABASE_URL=postgres://… bun scripts/opencode-p0/fk-chain-probe.ts
+ */
+process.env.SQLITE_PATH ??= "/tmp/agentpulse-fk-probe.db";
+process.env.DATA_DIR ??= "/tmp/agentpulse-fk-probe-data";
 process.env.DISABLE_AUTH = "true";
-process.env.DATABASE_URL = "";
+process.env.DATABASE_URL = process.env.DATABASE_URL ?? "";
 process.env.AGENTPULSE_OPENCODE_ENABLED = "";
+process.env.AGENTPULSE_OPENCODE_DB = "";
 import { eq } from "drizzle-orm";
-const { initializeDatabase, getDb } = await import("/home/ch/project/work_station/agentpulse/src/server/db/client.js");
+const root = process.cwd();
+const { initializeDatabase, getDb } = await import(`${root}/src/server/db/client.js`);
+const { config } = await import(`${root}/src/server/config.js`);
 await initializeDatabase();
 const db = getDb();
-const { sessions, supervisors, launchRequests, providerInstances, managedSessions, sessionControlBindings, events } =
-	await import("/home/ch/project/work_station/agentpulse/src/server/db/schema/index.js");
-const { reserveOpenCodeInstance } = await import("/home/ch/project/work_station/agentpulse/src/server/services/opencode-control-provenance.js");
+const { sessions, supervisors, launchRequests, providerInstances, managedSessions, sessionControlBindings } =
+	await import(`${root}/src/server/db/schema/index.js`);
+const { reserveOpenCodeInstance, inspectOpenCodeProvenance } = await import(
+	`${root}/src/server/services/opencode-control-provenance.js`
+);
+
+const P = "fk-parent", C = "fk-child";
+await db.delete(sessionControlBindings).where(eq(sessionControlBindings.sessionId, C));
+await db.delete(managedSessions).where(eq(managedSessions.sessionId, P));
+await db.delete(managedSessions).where(eq(managedSessions.sessionId, C));
+await db.delete(providerInstances).where(eq(providerInstances.sessionId, P));
+await db.delete(sessions).where(eq(sessions.sessionId, P));
+await db.delete(sessions).where(eq(sessions.sessionId, C));
+await db.delete(launchRequests).where(eq(launchRequests.launchCorrelationId, P));
+await db.delete(supervisors).where(eq(supervisors.id, "fk-host"));
 
 await db.insert(supervisors).values({ id: "fk-host", hostName: "fk-host", platform: "linux", arch: "x64", version: "t", status: "connected", trustedRoots: ["/tmp"], capabilities: {} });
-const [launch] = await db.insert(launchRequests).values({ launchCorrelationId: "fk-parent", agentType: "opencode", cwd: "/tmp", requestedLaunchMode: "managed_opencode", claimedBySupervisorId: "fk-host", status: "launching" }).returning();
+const [launch] = await db.insert(launchRequests).values({ launchCorrelationId: P, agentType: "opencode", cwd: "/tmp", requestedLaunchMode: "managed_opencode", claimedBySupervisorId: "fk-host", status: "launching" }).returning();
 const instance = await reserveOpenCodeInstance("fk-host", launch.id);
-await db.insert(sessions).values({ sessionId: "fk-parent", agentType: "opencode", cwd: "/tmp" });
-await db.insert(managedSessions).values({ sessionId: "fk-parent", launchRequestId: launch.id, supervisorId: "fk-host", providerSessionId: "ses_parent", managedState: "managed" });
-// child per design v2: own session row + binding to the SAME instance + own managed row (launch NULL needs migration; use parent's launch for the experiment)
-await db.insert(sessions).values({ sessionId: "fk-child", agentType: "opencode", cwd: "/tmp" });
-await db.insert(managedSessions).values({ sessionId: "fk-child", launchRequestId: launch.id, supervisorId: "fk-host", providerSessionId: "ses_child", managedState: "managed" });
-await db.insert(sessionControlBindings).values({ sessionId: "fk-child", origin: "agentpulse_launch", instanceId: instance.id, nativeSessionId: "ses_child", generation: 1 });
+await db.update(providerInstances).set({ state: "running" }).where(eq(providerInstances.id, instance.id));
+await db.insert(sessions).values({ sessionId: P, agentType: "opencode", cwd: "/tmp" });
+await db.insert(managedSessions).values({ sessionId: P, launchRequestId: launch.id, supervisorId: "fk-host", providerSessionId: "ses_parent", managedState: "managed" });
+await db.insert(sessions).values({ sessionId: C, agentType: "opencode", cwd: "/tmp" });
+await db.insert(managedSessions).values({ sessionId: C, launchRequestId: launch.id, supervisorId: "fk-host", providerSessionId: "ses_child", managedState: "managed" });
+await db.insert(sessionControlBindings).values({ sessionId: C, origin: "agentpulse_launch", instanceId: instance.id, nativeSessionId: "ses_child", generation: 1 });
 
-const count = async (table: typeof sessions, where: ReturnType<typeof eq>) => (await db.select().from(table).where(where)).length;
-console.log("before delete: parent", await count(sessions, eq(sessions.sessionId, "fk-parent")), "| child", await count(sessions, eq(sessions.sessionId, "fk-child")));
-await db.delete(sessions).where(eq(sessions.sessionId, "fk-parent"));
-console.log("after parent delete:");
-console.log("  child session row:", await count(sessions, eq(sessions.sessionId, "fk-child")));
-console.log("  child binding:", await count(sessionControlBindings, eq(sessionControlBindings.sessionId, "fk-child")));
-console.log("  provider instance:", (await db.select().from(providerInstances).where(eq(providerInstances.id, instance.id))).length);
-console.log("  parent managed row:", (await db.select().from(managedSessions).where(eq(managedSessions.sessionId, "fk-parent"))).length);
-console.log("  child managed row:", (await db.select().from(managedSessions).where(eq(managedSessions.sessionId, "fk-child"))).length);
-console.log("  launch request:", (await db.select().from(launchRequests).where(eq(launchRequests.id, launch.id))).length);
+const one = async (t: typeof sessions, w: ReturnType<typeof eq>) => (await db.select().from(t).where(w)).length;
+const before = inspectOpenCodeProvenance ? await inspectOpenCodeProvenance(C) : null;
+await db.delete(sessions).where(eq(sessions.sessionId, P));
+const childRows = await one(sessions, eq(sessions.sessionId, C));
+const childBindings = await one(sessionControlBindings, eq(sessionControlBindings.sessionId, C));
+const instanceRows = (await db.select().from(providerInstances).where(eq(providerInstances.id, instance.id))).length;
+const parentManaged = (await db.select().from(managedSessions).where(eq(managedSessions.sessionId, P))).length;
+const childManaged = (await db.select().from(managedSessions).where(eq(managedSessions.sessionId, C))).length;
+const launchRows = (await db.select().from(launchRequests).where(eq(launchRequests.id, launch.id))).length;
+const after = await inspectOpenCodeProvenance(C);
+const results = {
+	dialect: config.dialect,
+	childRows, childBindings, instanceRows, parentManaged, childManaged, launchRows,
+	childProvenanceBefore: before ? { origin: before.origin, bindingValid: before.bindingValid } : null,
+	childProvenanceAfter: after ? { origin: after.origin, bindingValid: after.bindingValid } : null,
+};
+const failures: string[] = [];
+if (childRows !== 1) failures.push("child session row lost");
+if (childBindings !== 1) failures.push("child binding lost");
+if (instanceRows !== 1) failures.push("provider instance row lost");
+if (parentManaged !== 0) failures.push("parent managed row unexpectedly kept");
+if (childManaged !== 1) failures.push("child managed row lost");
+if (launchRows !== 1) failures.push("launch row lost");
+// CURRENT-GUARD FINDING (design A1 motivation): inspectOpenCodeProvenance
+// requires instance.sessionId === sessionId, so a shared-instance CHILD
+// binding is rejected by today's single-session guards — before AND after
+// the parent delete. Row survival is observed; CONTROLLABILITY is NOT
+// proven and stays prototype scope. When binding-as-authority lands, this
+// expectation flips to true.
+const childRejectedByCurrentGuard = results.childProvenanceAfter?.bindingValid === false;
+if (!childRejectedByCurrentGuard)
+	failures.push("child binding unexpectedly VALID under current single-session guards — update this probe's expectation");
+console.log(JSON.stringify(results, null, 1));
+if (failures.length) {
+	console.error("FK-PROBE FAILURES:", failures.join("; "));
+	process.exit(1);
+}
+console.log(
+	"FK-PROBE PASS — row survival observed on both dialects; child binding is REJECTED by the current single-session guard (expected finding, design A1 motivation). Controllability after parent deletion remains prototype scope; the child reuses the parent's launch id until migration 0015.",
+);
 process.exit(0);
