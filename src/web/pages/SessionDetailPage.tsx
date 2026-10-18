@@ -37,6 +37,7 @@ import { useOwnershipUi, useViewerIsAdmin } from "../hooks/useOwnershipUi.js";
 import { useSessionSummaryPage } from "../hooks/useSessionSummaryPage.js";
 import { t } from "../i18n/i18n.js";
 import { describeApiError } from "../lib/api-errors.js";
+import { ApiError } from "../lib/api.js";
 import { api } from "../lib/api.js";
 import { EVENT_LOAD_FAILED_COPY } from "../lib/event-deep-link.js";
 import { applyManualRename } from "../lib/name-source.js";
@@ -46,6 +47,7 @@ import { NOTES_BLOCKED_REASON, sessionActionAccess } from "../lib/ownership-ui.j
 import { assignablePeople, withCurrentOwner } from "../lib/people.js";
 import { sessionHostLabel } from "../lib/session-host.js";
 import type { WorkspaceTabId } from "../lib/session-summary-core.js";
+import { shouldCloseTabOnLoadFailure } from "../lib/tab-visibility.js";
 import { canAcknowledgeSession, explicitAckAccess } from "../lib/utils.js";
 import { useEventStore } from "../stores/event-store.js";
 import { mergeSessionIntoDetail, useSessionStore } from "../stores/session-store.js";
@@ -152,11 +154,25 @@ export function SessionDetailPage() {
 			setEventsLoaded(true);
 			setControlActions((data.controlActions as ControlAction[]) || []);
 		} catch (err) {
+			// P1 tab-restore revalidation: a tab whose session is GONE (404)
+			// or not visible to this viewer (403) closes itself instead of
+			// parking on an error page. Transient failures keep the page.
+			if (err instanceof ApiError && shouldCloseTabOnLoadFailure(err.status)) {
+				toast.error(
+					err.status === 404
+						? "会话已不存在，页签已自动关闭"
+						: "该会话对此账号不可见，页签已自动关闭",
+				);
+				useTabsStore.getState().close(sessionId);
+				const remaining = useTabsStore.getState().tabs;
+				navigate(remaining.length ? `/sessions/${remaining[0].sessionId}` : "/", { replace: true });
+				return;
+			}
 			console.error("Failed to fetch session:", err);
 		} finally {
 			setLoading(false);
 		}
-	}, [sessionId]);
+	}, [sessionId, navigate]);
 
 	// Warm the header from the cached dashboard list so switching tabs feels instant.
 	useEffect(() => {
