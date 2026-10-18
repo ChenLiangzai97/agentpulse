@@ -123,31 +123,84 @@ describe("conservative copy dedup", () => {
 		expect(dedupeFacts([branchA, branchB])).toHaveLength(2);
 	});
 
-	test("a PROVEN copy mapping (copyOf) collapses duplicates onto the original", () => {
-		const original = fact({
-			sessionId: "s-parent",
-			category: "tool_action",
-			text: "构建通过",
-			evidenceEventId: 5,
-			copyOf: null,
-		});
-		const copy1 = fact({
-			sessionId: "s-parent:opencode-child:ses_x",
-			category: "tool_action",
-			text: "构建通过",
-			evidenceEventId: 15,
-			copyOf: "s-parent:5",
-		});
-		const copy2 = fact({
-			sessionId: "s-parent:opencode-child:ses_y",
-			category: "tool_action",
-			text: "构建通过",
-			evidenceEventId: 22,
-			copyOf: "s-parent:5",
-		});
-		const kept = dedupeFacts([original, copy1, copy2]);
-		expect(kept).toHaveLength(1);
-		expect(kept[0].sessionId).toBe("s-parent");
+	test("a PROVEN copy mapping drops copy facts when the original event's facts are present", () => {
+		// The original event yielded TWO facts; both must survive, and every
+		// fact copied from it is dropped (dedup is event-scoped, not one-per-source).
+		const originalFacts = [
+			fact({
+				sessionId: "s-parent",
+				category: "tool_action",
+				text: "执行了构建",
+				evidenceEventId: 5,
+				copyOf: null,
+			}),
+			fact({
+				sessionId: "s-parent",
+				category: "verified_result",
+				text: "构建成功",
+				evidenceEventId: 5,
+				copyOf: null,
+			}),
+		];
+		const copyFacts = [
+			fact({
+				sessionId: "s-parent:opencode-child:ses_x",
+				category: "tool_action",
+				text: "执行了构建",
+				evidenceEventId: 15,
+				copyOf: "s-parent:5",
+			}),
+			fact({
+				sessionId: "s-parent:opencode-child:ses_y",
+				category: "tool_action",
+				text: "执行了构建",
+				evidenceEventId: 22,
+				copyOf: "s-parent:5",
+			}),
+		];
+		const kept = dedupeFacts([...originalFacts, ...copyFacts]);
+		expect(kept).toHaveLength(2);
+		expect(kept.every((f) => f.sessionId === "s-parent")).toBe(true);
+	});
+
+	test("copy facts keep single-event multi-fact when the anchor is outside the set", () => {
+		// Two copy EVENTS of the same original: the first copy event is kept
+		// WHOLE (both its facts), later copy events are dropped.
+		const firstCopy = [
+			fact({
+				sessionId: "c1",
+				category: "tool_action",
+				text: "执行了构建",
+				evidenceEventId: 15,
+				copyOf: "s-parent:5",
+			}),
+			fact({
+				sessionId: "c1",
+				category: "verified_result",
+				text: "构建成功",
+				evidenceEventId: 15,
+				copyOf: "s-parent:5",
+			}),
+		];
+		const secondCopy = [
+			fact({
+				sessionId: "c2",
+				category: "tool_action",
+				text: "执行了构建",
+				evidenceEventId: 22,
+				copyOf: "s-parent:5",
+			}),
+			fact({
+				sessionId: "c2",
+				category: "verified_result",
+				text: "构建成功",
+				evidenceEventId: 22,
+				copyOf: "s-parent:5",
+			}),
+		];
+		const kept = dedupeFacts([...firstCopy, ...secondCopy]);
+		expect(kept).toHaveLength(2);
+		expect(kept.every((f) => f.sessionId === "c1")).toBe(true);
 	});
 
 	test("lineageRootOf strips nested child segments", () => {
@@ -233,6 +286,56 @@ describe("evidence-type classification constraints", () => {
 			]),
 		);
 		expect(parsed.facts[0].category).toBe("tool_action");
+	});
+
+	test("UNKNOWN lifecycle states with output stay unverified (explicit whitelist)", () => {
+		const raw = JSON.stringify({
+			facts: [{ category: "verified_result", text: "未知状态却声称验证", evidenceEventId: 6 }],
+		});
+		for (const unknown of [undefined, "SomeFutureToolEvent", null]) {
+			const parsed = parseFacts(
+				raw,
+				ctx("s", [
+					event(6, "tool_event", "bash", "2026-10-18 02:00:00", {
+						eventType: unknown as string | null | undefined,
+						toolResponse: "looks fine",
+					}),
+				]),
+			);
+			expect(parsed.facts[0].category).toBe("tool_action");
+			expect(parsed.facts[0].confidence).toBe("stated");
+		}
+	});
+
+	test("COMPLETED tools whose output looks like FAILURE stay unverified", () => {
+		const raw = JSON.stringify({
+			facts: [{ category: "verified_result", text: "声称成功", evidenceEventId: 6 }],
+		});
+		for (const output of ["3 failed, 47 passed", "exit code 1", "BUILD FAILURE", "2 failing"]) {
+			const parsed = parseFacts(
+				raw,
+				ctx("s", [
+					event(6, "tool_event", "bash", "2026-10-18 02:00:00", {
+						eventType: "PostToolUse",
+						toolResponse: output,
+					}),
+				]),
+			);
+			expect(parsed.facts[0].category).toBe("tool_action");
+		}
+		// "0 failed" is a PASSING shape and must NOT be rejected.
+		const pass = parseFacts(
+			JSON.stringify({
+				facts: [{ category: "verified_result", text: "全部通过", evidenceEventId: 7 }],
+			}),
+			ctx("s", [
+				event(7, "tool_event", "bash", "2026-10-18 02:00:00", {
+					eventType: "PostToolUse",
+					toolResponse: "0 failed, 51 passed",
+				}),
+			]),
+		);
+		expect(pass.facts[0].category).toBe("verified_result");
 	});
 
 	test("user_goal cited on an assistant message becomes agent_claim; tool_action needs tool_event", () => {
