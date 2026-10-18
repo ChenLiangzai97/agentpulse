@@ -350,17 +350,35 @@ def main():
         "records": evidence,
     }
     text = json.dumps(scrub(out), ensure_ascii=False, indent=1)
-    counters = {"ses": 0, "msg": 0, "prt": 0}
-    text = re.sub(r"ses_[A-Za-z0-9_-]{12,}", lambda m: (counters.__setitem__("ses", counters["ses"] + 1) or f"SES_ANON_{counters['ses']}"), text)
-    text = re.sub(r"msg_[A-Za-z0-9_-]{16,}", lambda m: (counters.__setitem__("msg", counters["msg"] + 1) or f"MSG_ANON_{counters['msg']}"), text)
-    text = re.sub(r"prt_[A-Za-z0-9_-]{12,}", lambda m: (counters.__setitem__("prt", counters["prt"] + 1) or f"PRT_ANON_{counters['prt']}"), text)
+    # Stable anonymization: one label per UNIQUE native ID, so the same ID
+    # always maps to the same label wherever it appears (evidence links stay
+    # correlated) and distinct IDs never merge onto one label.
+    label_counters = {"SES": 0, "MSG": 0, "PRT": 0}
+    stable_id_map = {}
+
+    def stable_repl(match, prefix):
+        native = match.group(0)
+        if native not in stable_id_map:
+            label_counters[prefix] += 1
+            stable_id_map[native] = f"{prefix}_ANON_{label_counters[prefix]}"
+        return stable_id_map[native]
+
+    text = re.sub(r"ses_[A-Za-z0-9_-]{12,}", lambda m: stable_repl(m, "SES"), text)
+    text = re.sub(r"msg_[A-Za-z0-9_-]{16,}", lambda m: stable_repl(m, "MSG"), text)
+    text = re.sub(r"prt_[A-Za-z0-9_-]{12,}", lambda m: stable_repl(m, "PRT"), text)
+    labels_assigned = sorted(stable_id_map.values())
+    if len(labels_assigned) != len(set(labels_assigned)):
+        print("ANON MAPPING CHECK FAILED: duplicate labels for distinct IDs")
+        raise SystemExit(1)
     artifact = here / "capability-evidence.json"
     artifact.write_text(text)
-    print("records:", len(evidence), "failures:", len(failures), "anon_labels:", counters)
+    print("records:", len(evidence), "failures:", len(failures), "stable_anon_ids:", len(stable_id_map), "per_kind:", label_counters)
     for message in failures:
         print("FAIL:", message)
 
-    # ── artifact self-check: no native-looking IDs may survive sanitization ──
+    # ── artifact self-check: no NATIVE-FORMAT IDs survive sanitization.
+    # Short artificial markers (msg_cap_*, probe-*) are probe-chosen labels,
+    # not native IDs, and are expected to remain.
     leftover_text = artifact.read_text()
     leftovers = {
         "ses": len(re.findall(r"ses_[A-Za-z0-9_-]{12,}", leftover_text)),
@@ -368,11 +386,11 @@ def main():
         "prt": len(re.findall(r"prt_[A-Za-z0-9_-]{12,}", leftover_text)),
     }
     if any(leftovers.values()):
-        print("ARTIFACT CHECK FAILED:", leftovers)
+        print("ARTIFACT CHECK FAILED (native-format IDs remain):", leftovers)
         raise SystemExit(1)
     if failures:
         raise SystemExit(1)
-    print("artifact check: no native IDs remain; all history assertions passed")
+    print("artifact check: no native-format IDs remain; stable mapping is injective; all history assertions passed")
 
 
 if __name__ == "__main__":

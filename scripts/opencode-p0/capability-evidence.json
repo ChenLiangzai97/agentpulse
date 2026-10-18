@@ -3,9 +3,9 @@
  "captured_at": "2026-10-18",
  "model_a_after_switch": {
   "id": "SES_A",
-  "slug": "brave-engine",
+  "slug": "curious-planet",
   "projectID": "global",
-  "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+  "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
   "path": "",
   "summary": {
    "additions": 0,
@@ -30,15 +30,15 @@
   },
   "version": "1.18.35",
   "time": {
-   "created": 1792319757896,
-   "updated": 1792319758488
+   "created": 1792321469136,
+   "updated": 1792321469682
   }
  },
  "model_a_restored": {
   "id": "SES_A",
-  "slug": "brave-engine",
+  "slug": "curious-planet",
   "projectID": "global",
-  "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+  "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
   "path": "",
   "summary": {
    "additions": 0,
@@ -63,15 +63,15 @@
   },
   "version": "1.18.35",
   "time": {
-   "created": 1792319757896,
-   "updated": 1792319758497
+   "created": 1792321469136,
+   "updated": 1792321469694
   }
  },
  "model_b_default": {
   "id": "SES_B",
-  "slug": "quick-cactus",
+  "slug": "lucky-meadow",
   "projectID": "global",
-  "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+  "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
   "path": "",
   "cost": 0,
   "tokens": {
@@ -86,15 +86,15 @@
   "title": "capability probe B",
   "version": "1.18.35",
   "time": {
-   "created": 1792319758493,
-   "updated": 1792319758493
+   "created": 1792321469691,
+   "updated": 1792321469691
   }
  },
  "agent_a_after_switch": {
   "id": "SES_A",
-  "slug": "brave-engine",
+  "slug": "curious-planet",
   "projectID": "global",
-  "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+  "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
   "path": "",
   "summary": {
    "additions": 0,
@@ -119,15 +119,15 @@
   },
   "version": "1.18.35",
   "time": {
-   "created": 1792319757896,
-   "updated": 1792319758504
+   "created": 1792321469136,
+   "updated": 1792321469696
   }
  },
  "agent_a_after_bogus": {
   "id": "SES_A",
-  "slug": "brave-engine",
+  "slug": "curious-planet",
   "projectID": "global",
-  "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+  "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
   "path": "",
   "summary": {
    "additions": 0,
@@ -152,15 +152,15 @@
   },
   "version": "1.18.35",
   "time": {
-   "created": 1792319757896,
-   "updated": 1792319758507
+   "created": 1792321469136,
+   "updated": 1792321469700
   }
  },
  "summarize_session_after": {
   "id": "SES_A",
-  "slug": "brave-engine",
+  "slug": "curious-planet",
   "projectID": "global",
-  "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+  "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
   "path": "",
   "summary": {
    "additions": 0,
@@ -185,16 +185,16 @@
   },
   "version": "1.18.35",
   "time": {
-   "created": 1792319757896,
-   "updated": 1792319758577
+   "created": 1792321469136,
+   "updated": 1792321469762
   }
  },
  "session_listing": [
   {
    "id": "SES_A",
-   "slug": "brave-engine",
+   "slug": "curious-planet",
    "projectID": "global",
-   "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
    "path": "",
    "summary": {
     "additions": 0,
@@ -219,15 +219,15 @@
    },
    "version": "1.18.35",
    "time": {
-    "created": 1792319757896,
-    "updated": 1792319758510
+    "created": 1792321469136,
+    "updated": 1792321469707
    }
   },
   {
    "id": "SES_B",
-   "slug": "quick-cactus",
+   "slug": "lucky-meadow",
    "projectID": "global",
-   "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
    "path": "",
    "cost": 0,
    "tokens": {
@@ -242,15 +242,15 @@
    "title": "capability probe B",
    "version": "1.18.35",
    "time": {
-    "created": 1792319758493,
-    "updated": 1792319758493
+    "created": 1792321469691,
+    "updated": 1792321469691
    }
   },
   {
    "id": "SES_R2B",
-   "slug": "silent-harbor",
+   "slug": "shiny-circuit",
    "projectID": "global",
-   "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
    "path": "",
    "summary": {
     "additions": 0,
@@ -276,15 +276,15 @@
    },
    "version": "1.18.35",
    "time": {
-    "created": 1792319745219,
-    "updated": 1792319757800
+    "created": 1792321456645,
+    "updated": 1792321469040
    }
   },
   {
    "id": "SES_R4",
-   "slug": "curious-meadow",
+   "slug": "curious-nebula",
    "projectID": "global",
-   "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
    "path": "",
    "summary": {
     "additions": 0,
@@ -310,15 +310,15 @@
    },
    "version": "1.18.35",
    "time": {
-    "created": 1792319744725,
-    "updated": 1792319745129
+    "created": 1792321456141,
+    "updated": 1792321456556
    }
   },
   {
    "id": "SES_R3",
-   "slug": "silent-lagoon",
+   "slug": "misty-knight",
    "projectID": "global",
-   "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
    "path": "",
    "summary": {
     "additions": 0,
@@ -344,15 +344,15 @@
    },
    "version": "1.18.35",
    "time": {
-    "created": 1792319744143,
-    "updated": 1792319744640
+    "created": 1792321455548,
+    "updated": 1792321456047
    }
   },
   {
    "id": "SES_R2",
-   "slug": "gentle-circuit",
+   "slug": "brave-cactus",
    "projectID": "global",
-   "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
    "path": "",
    "summary": {
     "additions": 0,
@@ -378,15 +378,15 @@
    },
    "version": "1.18.35",
    "time": {
-    "created": 1792319743558,
-    "updated": 1792319744055
+    "created": 1792321454670,
+    "updated": 1792321455346
    }
   },
   {
    "id": "SES_R1",
-   "slug": "lucky-comet",
+   "slug": "eager-pixel",
    "projectID": "global",
-   "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
    "path": "",
    "summary": {
     "additions": 0,
@@ -412,8 +412,8 @@
    },
    "version": "1.18.35",
    "time": {
-    "created": 1792319741823,
-    "updated": 1792319743473
+    "created": 1792321453205,
+    "updated": 1792321454583
    }
   }
  ],
@@ -492,9 +492,9 @@
    },
    "response": {
     "id": "SES_R1",
-    "slug": "lucky-comet",
+    "slug": "eager-pixel",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "cost": 0,
     "tokens": {
@@ -509,8 +509,8 @@
     "title": "capability SES_R1",
     "version": "1.18.35",
     "time": {
-     "created": 1792319741823,
-     "updated": 1792319741823
+     "created": 1792321453205,
+     "updated": 1792321453205
     }
    },
    "status": 200
@@ -575,7 +575,7 @@
       "sessionID": "SES_R1",
       "role": "user",
       "time": {
-       "created": 1792319741846
+       "created": 1792321453233
       },
       "agent": "build",
       "model": {
@@ -599,8 +599,8 @@
       "sessionID": "SES_R1",
       "role": "assistant",
       "time": {
-       "created": 1792319742140,
-       "completed": 1792319742552
+       "created": 1792321453552,
+       "completed": 1792321453985
       },
       "parentID": "msg_cap_1",
       "modelID": "fixture-model",
@@ -608,8 +608,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -627,24 +627,24 @@
       {
        "id": "PRT_ANON_2",
        "sessionID": "SES_R1",
-       "messageID": "MSG_ANON_5",
+       "messageID": "MSG_ANON_4",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_3",
        "sessionID": "SES_R1",
-       "messageID": "MSG_ANON_6",
+       "messageID": "MSG_ANON_4",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319742544,
-        "end": 1792319742546
+        "start": 1792321453975,
+        "end": 1792321453978
        }
       },
       {
        "id": "PRT_ANON_4",
        "sessionID": "SES_R1",
-       "messageID": "MSG_ANON_7",
+       "messageID": "MSG_ANON_4",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -666,7 +666,7 @@
       "sessionID": "SES_R1",
       "role": "user",
       "time": {
-       "created": 1792319742789
+       "created": 1792321454044
       },
       "agent": "build",
       "model": {
@@ -686,12 +686,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_8",
+      "id": "MSG_ANON_5",
       "sessionID": "SES_R1",
       "role": "assistant",
       "time": {
-       "created": 1792319742801,
-       "completed": 1792319742843
+       "created": 1792321454049,
+       "completed": 1792321454068
       },
       "parentID": "msg_cap_2",
       "modelID": "fixture-model",
@@ -699,8 +699,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -718,24 +718,24 @@
       {
        "id": "PRT_ANON_6",
        "sessionID": "SES_R1",
-       "messageID": "MSG_ANON_9",
+       "messageID": "MSG_ANON_5",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_7",
        "sessionID": "SES_R1",
-       "messageID": "MSG_ANON_10",
+       "messageID": "MSG_ANON_5",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319742839,
-        "end": 1792319742840
+        "start": 1792321454064,
+        "end": 1792321454065
        }
       },
       {
        "id": "PRT_ANON_8",
        "sessionID": "SES_R1",
-       "messageID": "MSG_ANON_11",
+       "messageID": "MSG_ANON_5",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -757,7 +757,7 @@
       "sessionID": "SES_R1",
       "role": "user",
       "time": {
-       "created": 1792319743048
+       "created": 1792321454158
       },
       "agent": "build",
       "model": {
@@ -777,12 +777,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_12",
+      "id": "MSG_ANON_6",
       "sessionID": "SES_R1",
       "role": "assistant",
       "time": {
-       "created": 1792319743060,
-       "completed": 1792319743073
+       "created": 1792321454162,
+       "completed": 1792321454181
       },
       "parentID": "msg_cap_3",
       "modelID": "fixture-model",
@@ -790,8 +790,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -809,24 +809,24 @@
       {
        "id": "PRT_ANON_10",
        "sessionID": "SES_R1",
-       "messageID": "MSG_ANON_13",
+       "messageID": "MSG_ANON_6",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_11",
        "sessionID": "SES_R1",
-       "messageID": "MSG_ANON_14",
+       "messageID": "MSG_ANON_6",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319743069,
-        "end": 1792319743070
+        "start": 1792321454177,
+        "end": 1792321454178
        }
       },
       {
        "id": "PRT_ANON_12",
        "sessionID": "SES_R1",
-       "messageID": "MSG_ANON_15",
+       "messageID": "MSG_ANON_6",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -881,9 +881,9 @@
    },
    "response": {
     "id": "SES_R1",
-    "slug": "lucky-comet",
+    "slug": "eager-pixel",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "summary": {
      "additions": 0,
@@ -909,8 +909,8 @@
     },
     "version": "1.18.35",
     "time": {
-     "created": 1792319741823,
-     "updated": 1792319743294
+     "created": 1792321453205,
+     "updated": 1792321454406
     },
     "revert": {
      "messageID": "msg_cap_3"
@@ -970,9 +970,9 @@
    },
    "response": {
     "id": "SES_R2",
-    "slug": "gentle-circuit",
+    "slug": "brave-cactus",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "cost": 0,
     "tokens": {
@@ -987,8 +987,8 @@
     "title": "capability SES_R2",
     "version": "1.18.35",
     "time": {
-     "created": 1792319743558,
-     "updated": 1792319743558
+     "created": 1792321454670,
+     "updated": 1792321454670
     }
    },
    "status": 200
@@ -1053,7 +1053,7 @@
       "sessionID": "SES_R2",
       "role": "user",
       "time": {
-       "created": 1792319743564
+       "created": 1792321454675
       },
       "agent": "build",
       "model": {
@@ -1073,12 +1073,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_16",
+      "id": "MSG_ANON_7",
       "sessionID": "SES_R2",
       "role": "assistant",
       "time": {
-       "created": 1792319743571,
-       "completed": 1792319743592
+       "created": 1792321454681,
+       "completed": 1792321454854
       },
       "parentID": "msg_cap_6",
       "modelID": "fixture-model",
@@ -1086,8 +1086,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -1105,24 +1105,24 @@
       {
        "id": "PRT_ANON_14",
        "sessionID": "SES_R2",
-       "messageID": "MSG_ANON_17",
+       "messageID": "MSG_ANON_7",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_15",
        "sessionID": "SES_R2",
-       "messageID": "MSG_ANON_18",
+       "messageID": "MSG_ANON_7",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319743589,
-        "end": 1792319743590
+        "start": 1792321454850,
+        "end": 1792321454851
        }
       },
       {
        "id": "PRT_ANON_16",
        "sessionID": "SES_R2",
-       "messageID": "MSG_ANON_19",
+       "messageID": "MSG_ANON_7",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -1144,7 +1144,7 @@
       "sessionID": "SES_R2",
       "role": "user",
       "time": {
-       "created": 1792319743681
+       "created": 1792321454952
       },
       "agent": "build",
       "model": {
@@ -1164,12 +1164,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_20",
+      "id": "MSG_ANON_8",
       "sessionID": "SES_R2",
       "role": "assistant",
       "time": {
-       "created": 1792319743686,
-       "completed": 1792319743710
+       "created": 1792321454956,
+       "completed": 1792321454974
       },
       "parentID": "msg_cap_7",
       "modelID": "fixture-model",
@@ -1177,8 +1177,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -1196,24 +1196,24 @@
       {
        "id": "PRT_ANON_18",
        "sessionID": "SES_R2",
-       "messageID": "MSG_ANON_21",
+       "messageID": "MSG_ANON_8",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_19",
        "sessionID": "SES_R2",
-       "messageID": "MSG_ANON_22",
+       "messageID": "MSG_ANON_8",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319743706,
-        "end": 1792319743707
+        "start": 1792321454970,
+        "end": 1792321454971
        }
       },
       {
        "id": "PRT_ANON_20",
        "sessionID": "SES_R2",
-       "messageID": "MSG_ANON_23",
+       "messageID": "MSG_ANON_8",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -1235,7 +1235,7 @@
       "sessionID": "SES_R2",
       "role": "user",
       "time": {
-       "created": 1792319743795
+       "created": 1792321455072
       },
       "agent": "build",
       "model": {
@@ -1255,12 +1255,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_24",
+      "id": "MSG_ANON_9",
       "sessionID": "SES_R2",
       "role": "assistant",
       "time": {
-       "created": 1792319743800,
-       "completed": 1792319743833
+       "created": 1792321455078,
+       "completed": 1792321455148
       },
       "parentID": "msg_cap_8",
       "modelID": "fixture-model",
@@ -1268,8 +1268,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -1287,24 +1287,24 @@
       {
        "id": "PRT_ANON_22",
        "sessionID": "SES_R2",
-       "messageID": "MSG_ANON_25",
+       "messageID": "MSG_ANON_9",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_23",
        "sessionID": "SES_R2",
-       "messageID": "MSG_ANON_26",
+       "messageID": "MSG_ANON_9",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319743808,
-        "end": 1792319743809
+        "start": 1792321455094,
+        "end": 1792321455095
        }
       },
       {
        "id": "PRT_ANON_24",
        "sessionID": "SES_R2",
-       "messageID": "MSG_ANON_27",
+       "messageID": "MSG_ANON_9",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -1328,13 +1328,13 @@
    "path": "/session/SES_R2/revert",
    "method": "POST",
    "request": {
-    "messageID": "MSG_ANON_28"
+    "messageID": "MSG_ANON_9"
    },
    "response": {
     "id": "SES_R2",
-    "slug": "gentle-circuit",
+    "slug": "brave-cactus",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "summary": {
      "additions": 0,
@@ -1360,8 +1360,8 @@
     },
     "version": "1.18.35",
     "time": {
-     "created": 1792319743558,
-     "updated": 1792319743910
+     "created": 1792321454670,
+     "updated": 1792321455192
     },
     "revert": {
      "messageID": "msg_cap_8"
@@ -1421,9 +1421,9 @@
    },
    "response": {
     "id": "SES_R3",
-    "slug": "silent-lagoon",
+    "slug": "misty-knight",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "cost": 0,
     "tokens": {
@@ -1438,8 +1438,8 @@
     "title": "capability SES_R3",
     "version": "1.18.35",
     "time": {
-     "created": 1792319744143,
-     "updated": 1792319744143
+     "created": 1792321455548,
+     "updated": 1792321455548
     }
    },
    "status": 200
@@ -1504,7 +1504,7 @@
       "sessionID": "SES_R3",
       "role": "user",
       "time": {
-       "created": 1792319744147
+       "created": 1792321455558
       },
       "agent": "build",
       "model": {
@@ -1524,12 +1524,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_29",
+      "id": "MSG_ANON_10",
       "sessionID": "SES_R3",
       "role": "assistant",
       "time": {
-       "created": 1792319744152,
-       "completed": 1792319744172
+       "created": 1792321455564,
+       "completed": 1792321455582
       },
       "parentID": "msg_cap_10",
       "modelID": "fixture-model",
@@ -1537,8 +1537,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -1556,24 +1556,24 @@
       {
        "id": "PRT_ANON_26",
        "sessionID": "SES_R3",
-       "messageID": "MSG_ANON_30",
+       "messageID": "MSG_ANON_10",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_27",
        "sessionID": "SES_R3",
-       "messageID": "MSG_ANON_31",
+       "messageID": "MSG_ANON_10",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319744168,
-        "end": 1792319744169
+        "start": 1792321455579,
+        "end": 1792321455579
        }
       },
       {
        "id": "PRT_ANON_28",
        "sessionID": "SES_R3",
-       "messageID": "MSG_ANON_32",
+       "messageID": "MSG_ANON_10",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -1595,7 +1595,7 @@
       "sessionID": "SES_R3",
       "role": "user",
       "time": {
-       "created": 1792319744261
+       "created": 1792321455674
       },
       "agent": "build",
       "model": {
@@ -1615,12 +1615,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_33",
+      "id": "MSG_ANON_11",
       "sessionID": "SES_R3",
       "role": "assistant",
       "time": {
-       "created": 1792319744265,
-       "completed": 1792319744283
+       "created": 1792321455677,
+       "completed": 1792321455694
       },
       "parentID": "msg_cap_11",
       "modelID": "fixture-model",
@@ -1628,8 +1628,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -1647,24 +1647,24 @@
       {
        "id": "PRT_ANON_30",
        "sessionID": "SES_R3",
-       "messageID": "MSG_ANON_34",
+       "messageID": "MSG_ANON_11",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_31",
        "sessionID": "SES_R3",
-       "messageID": "MSG_ANON_35",
+       "messageID": "MSG_ANON_11",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319744279,
-        "end": 1792319744280
+        "start": 1792321455690,
+        "end": 1792321455691
        }
       },
       {
        "id": "PRT_ANON_32",
        "sessionID": "SES_R3",
-       "messageID": "MSG_ANON_36",
+       "messageID": "MSG_ANON_11",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -1686,7 +1686,7 @@
       "sessionID": "SES_R3",
       "role": "user",
       "time": {
-       "created": 1792319744374
+       "created": 1792321455788
       },
       "agent": "build",
       "model": {
@@ -1706,12 +1706,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_37",
+      "id": "MSG_ANON_12",
       "sessionID": "SES_R3",
       "role": "assistant",
       "time": {
-       "created": 1792319744378,
-       "completed": 1792319744390
+       "created": 1792321455791,
+       "completed": 1792321455807
       },
       "parentID": "msg_cap_12",
       "modelID": "fixture-model",
@@ -1719,8 +1719,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -1738,24 +1738,24 @@
       {
        "id": "PRT_ANON_34",
        "sessionID": "SES_R3",
-       "messageID": "MSG_ANON_38",
+       "messageID": "MSG_ANON_12",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_35",
        "sessionID": "SES_R3",
-       "messageID": "MSG_ANON_39",
+       "messageID": "MSG_ANON_12",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319744386,
-        "end": 1792319744387
+        "start": 1792321455803,
+        "end": 1792321455804
        }
       },
       {
        "id": "PRT_ANON_36",
        "sessionID": "SES_R3",
-       "messageID": "MSG_ANON_40",
+       "messageID": "MSG_ANON_12",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -1779,13 +1779,13 @@
    "path": "/session/SES_R3/revert",
    "method": "POST",
    "request": {
-    "messageID": "MSG_ANON_41"
+    "messageID": "MSG_ANON_11"
    },
    "response": {
     "id": "SES_R3",
-    "slug": "silent-lagoon",
+    "slug": "misty-knight",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "summary": {
      "additions": 0,
@@ -1811,8 +1811,8 @@
     },
     "version": "1.18.35",
     "time": {
-     "created": 1792319744143,
-     "updated": 1792319744487
+     "created": 1792321455548,
+     "updated": 1792321455904
     },
     "revert": {
      "messageID": "msg_cap_11"
@@ -1871,9 +1871,9 @@
    },
    "response": {
     "id": "SES_R4",
-    "slug": "curious-meadow",
+    "slug": "curious-nebula",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "cost": 0,
     "tokens": {
@@ -1888,8 +1888,8 @@
     "title": "capability SES_R4",
     "version": "1.18.35",
     "time": {
-     "created": 1792319744725,
-     "updated": 1792319744725
+     "created": 1792321456141,
+     "updated": 1792321456141
     }
    },
    "status": 200
@@ -1954,7 +1954,7 @@
       "sessionID": "SES_R4",
       "role": "user",
       "time": {
-       "created": 1792319744730
+       "created": 1792321456148
       },
       "agent": "build",
       "model": {
@@ -1974,12 +1974,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_42",
+      "id": "MSG_ANON_13",
       "sessionID": "SES_R4",
       "role": "assistant",
       "time": {
-       "created": 1792319744758,
-       "completed": 1792319744781
+       "created": 1792321456179,
+       "completed": 1792321456209
       },
       "parentID": "msg_cap_14",
       "modelID": "fixture-model",
@@ -1987,8 +1987,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -2006,24 +2006,24 @@
       {
        "id": "PRT_ANON_38",
        "sessionID": "SES_R4",
-       "messageID": "MSG_ANON_43",
+       "messageID": "MSG_ANON_13",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_39",
        "sessionID": "SES_R4",
-       "messageID": "MSG_ANON_44",
+       "messageID": "MSG_ANON_13",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319744778,
-        "end": 1792319744779
+        "start": 1792321456206,
+        "end": 1792321456207
        }
       },
       {
        "id": "PRT_ANON_40",
        "sessionID": "SES_R4",
-       "messageID": "MSG_ANON_45",
+       "messageID": "MSG_ANON_13",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -2045,7 +2045,7 @@
       "sessionID": "SES_R4",
       "role": "user",
       "time": {
-       "created": 1792319744874
+       "created": 1792321456297
       },
       "agent": "build",
       "model": {
@@ -2065,12 +2065,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_46",
+      "id": "MSG_ANON_14",
       "sessionID": "SES_R4",
       "role": "assistant",
       "time": {
-       "created": 1792319744878,
-       "completed": 1792319744889
+       "created": 1792321456301,
+       "completed": 1792321456318
       },
       "parentID": "msg_cap_15",
       "modelID": "fixture-model",
@@ -2078,8 +2078,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -2097,24 +2097,24 @@
       {
        "id": "PRT_ANON_42",
        "sessionID": "SES_R4",
-       "messageID": "MSG_ANON_47",
+       "messageID": "MSG_ANON_14",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_43",
        "sessionID": "SES_R4",
-       "messageID": "MSG_ANON_48",
+       "messageID": "MSG_ANON_14",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319744885,
-        "end": 1792319744886
+        "start": 1792321456314,
+        "end": 1792321456315
        }
       },
       {
        "id": "PRT_ANON_44",
        "sessionID": "SES_R4",
-       "messageID": "MSG_ANON_49",
+       "messageID": "MSG_ANON_14",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -2136,7 +2136,7 @@
       "sessionID": "SES_R4",
       "role": "user",
       "time": {
-       "created": 1792319744987
+       "created": 1792321456414
       },
       "agent": "build",
       "model": {
@@ -2156,12 +2156,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_50",
+      "id": "MSG_ANON_15",
       "sessionID": "SES_R4",
       "role": "assistant",
       "time": {
-       "created": 1792319744990,
-       "completed": 1792319745002
+       "created": 1792321456418,
+       "completed": 1792321456434
       },
       "parentID": "msg_cap_16",
       "modelID": "fixture-model",
@@ -2169,8 +2169,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -2188,24 +2188,24 @@
       {
        "id": "PRT_ANON_46",
        "sessionID": "SES_R4",
-       "messageID": "MSG_ANON_51",
+       "messageID": "MSG_ANON_15",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_47",
        "sessionID": "SES_R4",
-       "messageID": "MSG_ANON_52",
+       "messageID": "MSG_ANON_15",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319744998,
-        "end": 1792319744999
+        "start": 1792321456430,
+        "end": 1792321456431
        }
       },
       {
        "id": "PRT_ANON_48",
        "sessionID": "SES_R4",
-       "messageID": "MSG_ANON_53",
+       "messageID": "MSG_ANON_15",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -2233,9 +2233,9 @@
    },
    "response": {
     "id": "SES_R4",
-    "slug": "curious-meadow",
+    "slug": "curious-nebula",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "summary": {
      "additions": 0,
@@ -2261,8 +2261,8 @@
     },
     "version": "1.18.35",
     "time": {
-     "created": 1792319744725,
-     "updated": 1792319745100
+     "created": 1792321456141,
+     "updated": 1792321456527
     },
     "revert": {
      "messageID": "msg_cap_16"
@@ -2277,9 +2277,9 @@
    "request": null,
    "response": {
     "id": "SES_R4",
-    "slug": "curious-meadow",
+    "slug": "curious-nebula",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "summary": {
      "additions": 0,
@@ -2305,8 +2305,8 @@
     },
     "version": "1.18.35",
     "time": {
-     "created": 1792319744725,
-     "updated": 1792319745103
+     "created": 1792321456141,
+     "updated": 1792321456530
     }
    },
    "status": 200
@@ -2347,9 +2347,9 @@
    },
    "response": {
     "id": "SES_R2B",
-    "slug": "silent-harbor",
+    "slug": "shiny-circuit",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "cost": 0,
     "tokens": {
@@ -2364,8 +2364,8 @@
     "title": "capability SES_R2B",
     "version": "1.18.35",
     "time": {
-     "created": 1792319745219,
-     "updated": 1792319745219
+     "created": 1792321456645,
+     "updated": 1792321456645
     }
    },
    "status": 200
@@ -2430,7 +2430,7 @@
       "sessionID": "SES_R2B",
       "role": "user",
       "time": {
-       "created": 1792319745223
+       "created": 1792321456650
       },
       "agent": "build",
       "model": {
@@ -2450,12 +2450,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_54",
+      "id": "MSG_ANON_16",
       "sessionID": "SES_R2B",
       "role": "assistant",
       "time": {
-       "created": 1792319745228,
-       "completed": 1792319745244
+       "created": 1792321456655,
+       "completed": 1792321456673
       },
       "parentID": "msg_cap_18",
       "modelID": "fixture-model",
@@ -2463,8 +2463,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -2482,24 +2482,24 @@
       {
        "id": "PRT_ANON_50",
        "sessionID": "SES_R2B",
-       "messageID": "MSG_ANON_55",
+       "messageID": "MSG_ANON_16",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_51",
        "sessionID": "SES_R2B",
-       "messageID": "MSG_ANON_56",
+       "messageID": "MSG_ANON_16",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319745241,
-        "end": 1792319745242
+        "start": 1792321456669,
+        "end": 1792321456670
        }
       },
       {
        "id": "PRT_ANON_52",
        "sessionID": "SES_R2B",
-       "messageID": "MSG_ANON_57",
+       "messageID": "MSG_ANON_16",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -2521,7 +2521,7 @@
       "sessionID": "SES_R2B",
       "role": "user",
       "time": {
-       "created": 1792319745337
+       "created": 1792321456769
       },
       "agent": "build",
       "model": {
@@ -2541,12 +2541,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_58",
+      "id": "MSG_ANON_17",
       "sessionID": "SES_R2B",
       "role": "assistant",
       "time": {
-       "created": 1792319745341,
-       "completed": 1792319745358
+       "created": 1792321456774,
+       "completed": 1792321456793
       },
       "parentID": "msg_cap_19",
       "modelID": "fixture-model",
@@ -2554,8 +2554,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -2573,24 +2573,24 @@
       {
        "id": "PRT_ANON_54",
        "sessionID": "SES_R2B",
-       "messageID": "MSG_ANON_59",
+       "messageID": "MSG_ANON_17",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_55",
        "sessionID": "SES_R2B",
-       "messageID": "MSG_ANON_60",
+       "messageID": "MSG_ANON_17",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319745355,
-        "end": 1792319745356
+        "start": 1792321456789,
+        "end": 1792321456790
        }
       },
       {
        "id": "PRT_ANON_56",
        "sessionID": "SES_R2B",
-       "messageID": "MSG_ANON_61",
+       "messageID": "MSG_ANON_17",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -2612,7 +2612,7 @@
       "sessionID": "SES_R2B",
       "role": "user",
       "time": {
-       "created": 1792319745450
+       "created": 1792321456887
       },
       "agent": "build",
       "model": {
@@ -2632,12 +2632,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_62",
+      "id": "MSG_ANON_18",
       "sessionID": "SES_R2B",
       "role": "assistant",
       "time": {
-       "created": 1792319745454,
-       "completed": 1792319745466
+       "created": 1792321456893,
+       "completed": 1792321456914
       },
       "parentID": "msg_cap_20",
       "modelID": "fixture-model",
@@ -2645,8 +2645,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -2664,24 +2664,24 @@
       {
        "id": "PRT_ANON_58",
        "sessionID": "SES_R2B",
-       "messageID": "MSG_ANON_63",
+       "messageID": "MSG_ANON_18",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_59",
        "sessionID": "SES_R2B",
-       "messageID": "MSG_ANON_64",
+       "messageID": "MSG_ANON_18",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319745463,
-        "end": 1792319745464
+        "start": 1792321456910,
+        "end": 1792321456911
        }
       },
       {
        "id": "PRT_ANON_60",
        "sessionID": "SES_R2B",
-       "messageID": "MSG_ANON_65",
+       "messageID": "MSG_ANON_18",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -2709,9 +2709,9 @@
    },
    "response": {
     "id": "SES_R2B",
-    "slug": "silent-harbor",
+    "slug": "shiny-circuit",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "summary": {
      "additions": 0,
@@ -2737,8 +2737,8 @@
     },
     "version": "1.18.35",
     "time": {
-     "created": 1792319745219,
-     "updated": 1792319745564
+     "created": 1792321456645,
+     "updated": 1792321457005
     },
     "revert": {
      "messageID": "msg_cap_20"
@@ -2770,7 +2770,7 @@
     "prompt_response": null,
     "message_count": 6,
     "session_status": null,
-    "server_log_tail": "opencode server listening on http://127.0.0.1:42951 | "
+    "server_log_tail": "opencode server listening on http://127.0.0.1:45945 | "
    }
   },
   {
@@ -2780,9 +2780,9 @@
    "request": null,
    "response": {
     "id": "SES_R2B",
-    "slug": "silent-harbor",
+    "slug": "shiny-circuit",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "summary": {
      "additions": 0,
@@ -2808,8 +2808,8 @@
     },
     "version": "1.18.35",
     "time": {
-     "created": 1792319745219,
-     "updated": 1792319745626
+     "created": 1792321456645,
+     "updated": 1792321457063
     }
    },
    "status": 200
@@ -2850,9 +2850,9 @@
    },
    "response": {
     "id": "SES_R3",
-    "slug": "silent-lagoon",
+    "slug": "misty-knight",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "summary": {
      "additions": 0,
@@ -2878,8 +2878,8 @@
     },
     "version": "1.18.35",
     "time": {
-     "created": 1792319744143,
-     "updated": 1792319744640
+     "created": 1792321455548,
+     "updated": 1792321456047
     }
    },
    "status": 200
@@ -2893,9 +2893,9 @@
    },
    "response": {
     "id": "SES_A",
-    "slug": "brave-engine",
+    "slug": "curious-planet",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "cost": 0,
     "tokens": {
@@ -2910,8 +2910,8 @@
     "title": "capability probe A",
     "version": "1.18.35",
     "time": {
-     "created": 1792319757896,
-     "updated": 1792319757896
+     "created": 1792321469136,
+     "updated": 1792321469136
     }
    },
    "status": 200
@@ -2984,9 +2984,9 @@
    "request": null,
    "response": {
     "id": "SES_A",
-    "slug": "brave-engine",
+    "slug": "curious-planet",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "summary": {
      "additions": 0,
@@ -3011,8 +3011,8 @@
     },
     "version": "1.18.35",
     "time": {
-     "created": 1792319757896,
-     "updated": 1792319758488
+     "created": 1792321469136,
+     "updated": 1792321469682
     }
    },
    "status": 200
@@ -3026,9 +3026,9 @@
    },
    "response": {
     "id": "SES_B",
-    "slug": "quick-cactus",
+    "slug": "lucky-meadow",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "cost": 0,
     "tokens": {
@@ -3043,8 +3043,8 @@
     "title": "capability probe B",
     "version": "1.18.35",
     "time": {
-     "created": 1792319758493,
-     "updated": 1792319758493
+     "created": 1792321469691,
+     "updated": 1792321469691
     }
    },
    "status": 200
@@ -3056,9 +3056,9 @@
    "request": null,
    "response": {
     "id": "SES_B",
-    "slug": "quick-cactus",
+    "slug": "lucky-meadow",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "cost": 0,
     "tokens": {
@@ -3073,8 +3073,8 @@
     "title": "capability probe B",
     "version": "1.18.35",
     "time": {
-     "created": 1792319758493,
-     "updated": 1792319758493
+     "created": 1792321469691,
+     "updated": 1792321469691
     }
    },
    "status": 200
@@ -3099,9 +3099,9 @@
    "request": null,
    "response": {
     "id": "SES_A",
-    "slug": "brave-engine",
+    "slug": "curious-planet",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "summary": {
      "additions": 0,
@@ -3126,8 +3126,8 @@
     },
     "version": "1.18.35",
     "time": {
-     "created": 1792319757896,
-     "updated": 1792319758497
+     "created": 1792321469136,
+     "updated": 1792321469694
     }
    },
    "status": 200
@@ -3149,9 +3149,9 @@
    "request": null,
    "response": {
     "id": "SES_A",
-    "slug": "brave-engine",
+    "slug": "curious-planet",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "summary": {
      "additions": 0,
@@ -3176,8 +3176,8 @@
     },
     "version": "1.18.35",
     "time": {
-     "created": 1792319757896,
-     "updated": 1792319758504
+     "created": 1792321469136,
+     "updated": 1792321469696
     }
    },
    "status": 200
@@ -3199,9 +3199,9 @@
    "request": null,
    "response": {
     "id": "SES_A",
-    "slug": "brave-engine",
+    "slug": "curious-planet",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "summary": {
      "additions": 0,
@@ -3226,8 +3226,8 @@
     },
     "version": "1.18.35",
     "time": {
-     "created": 1792319757896,
-     "updated": 1792319758507
+     "created": 1792321469136,
+     "updated": 1792321469700
     }
    },
    "status": 200
@@ -3279,9 +3279,9 @@
    "response": [
     {
      "id": "SES_A",
-     "slug": "brave-engine",
+     "slug": "curious-planet",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -3306,15 +3306,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319757896,
-      "updated": 1792319758510
+      "created": 1792321469136,
+      "updated": 1792321469707
      }
     },
     {
      "id": "SES_B",
-     "slug": "quick-cactus",
+     "slug": "lucky-meadow",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "cost": 0,
      "tokens": {
@@ -3329,15 +3329,15 @@
      "title": "capability probe B",
      "version": "1.18.35",
      "time": {
-      "created": 1792319758493,
-      "updated": 1792319758493
+      "created": 1792321469691,
+      "updated": 1792321469691
      }
     },
     {
      "id": "SES_R2B",
-     "slug": "silent-harbor",
+     "slug": "shiny-circuit",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -3363,15 +3363,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319745219,
-      "updated": 1792319757800
+      "created": 1792321456645,
+      "updated": 1792321469040
      }
     },
     {
      "id": "SES_R4",
-     "slug": "curious-meadow",
+     "slug": "curious-nebula",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -3397,15 +3397,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319744725,
-      "updated": 1792319745129
+      "created": 1792321456141,
+      "updated": 1792321456556
      }
     },
     {
      "id": "SES_R3",
-     "slug": "silent-lagoon",
+     "slug": "misty-knight",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -3431,15 +3431,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319744143,
-      "updated": 1792319744640
+      "created": 1792321455548,
+      "updated": 1792321456047
      }
     },
     {
      "id": "SES_R2",
-     "slug": "gentle-circuit",
+     "slug": "brave-cactus",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -3465,15 +3465,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319743558,
-      "updated": 1792319744055
+      "created": 1792321454670,
+      "updated": 1792321455346
      }
     },
     {
      "id": "SES_R1",
-     "slug": "lucky-comet",
+     "slug": "eager-pixel",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -3499,8 +3499,8 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319741823,
-      "updated": 1792319743473
+      "created": 1792321453205,
+      "updated": 1792321454583
      }
     }
    ],
@@ -3528,7 +3528,7 @@
       "sessionID": "SES_A",
       "role": "user",
       "time": {
-       "created": 1792319757900
+       "created": 1792321469139
       },
       "agent": "build",
       "model": {
@@ -3548,12 +3548,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_66",
+      "id": "MSG_ANON_1",
       "sessionID": "SES_A",
       "role": "assistant",
       "time": {
-       "created": 1792319757905,
-       "completed": 1792319757921
+       "created": 1792321469144,
+       "completed": 1792321469161
       },
       "parentID": "msg_cap_23",
       "modelID": "fixture-model",
@@ -3561,8 +3561,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -3580,24 +3580,24 @@
       {
        "id": "PRT_ANON_62",
        "sessionID": "SES_A",
-       "messageID": "MSG_ANON_67",
+       "messageID": "MSG_ANON_1",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_63",
        "sessionID": "SES_A",
-       "messageID": "MSG_ANON_68",
+       "messageID": "MSG_ANON_1",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319757918,
-        "end": 1792319757919
+        "start": 1792321469158,
+        "end": 1792321469159
        }
       },
       {
        "id": "PRT_ANON_64",
        "sessionID": "SES_A",
-       "messageID": "MSG_ANON_69",
+       "messageID": "MSG_ANON_1",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -3619,7 +3619,7 @@
       "sessionID": "SES_A",
       "role": "user",
       "time": {
-       "created": 1792319758013
+       "created": 1792321469252
       },
       "agent": "build",
       "model": {
@@ -3639,12 +3639,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_70",
+      "id": "MSG_ANON_2",
       "sessionID": "SES_A",
       "role": "assistant",
       "time": {
-       "created": 1792319758017,
-       "completed": 1792319758037
+       "created": 1792321469256,
+       "completed": 1792321469267
       },
       "parentID": "msg_cap_24",
       "modelID": "fixture-model",
@@ -3652,8 +3652,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -3671,24 +3671,24 @@
       {
        "id": "PRT_ANON_66",
        "sessionID": "SES_A",
-       "messageID": "MSG_ANON_71",
+       "messageID": "MSG_ANON_2",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_67",
        "sessionID": "SES_A",
-       "messageID": "MSG_ANON_72",
+       "messageID": "MSG_ANON_2",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319758033,
-        "end": 1792319758034
+        "start": 1792321469264,
+        "end": 1792321469265
        }
       },
       {
        "id": "PRT_ANON_68",
        "sessionID": "SES_A",
-       "messageID": "MSG_ANON_73",
+       "messageID": "MSG_ANON_2",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -3710,7 +3710,7 @@
       "sessionID": "SES_A",
       "role": "user",
       "time": {
-       "created": 1792319758126
+       "created": 1792321469365
       },
       "agent": "build",
       "model": {
@@ -3730,12 +3730,12 @@
     },
     {
      "info": {
-      "id": "MSG_ANON_74",
+      "id": "MSG_ANON_3",
       "sessionID": "SES_A",
       "role": "assistant",
       "time": {
-       "created": 1792319758130,
-       "completed": 1792319758142
+       "created": 1792321469369,
+       "completed": 1792321469381
       },
       "parentID": "msg_cap_25",
       "modelID": "fixture-model",
@@ -3743,8 +3743,8 @@
       "mode": "build",
       "agent": "build",
       "path": {
-       "cwd": "/tmp/ap-opencode-p0-vq0vaa62/project",
-       "root": "/tmp/ap-opencode-p0-vq0vaa62/project"
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
       },
       "cost": 0,
       "tokens": {
@@ -3762,24 +3762,24 @@
       {
        "id": "PRT_ANON_70",
        "sessionID": "SES_A",
-       "messageID": "MSG_ANON_75",
+       "messageID": "MSG_ANON_3",
        "type": "step-start"
       },
       {
        "id": "PRT_ANON_71",
        "sessionID": "SES_A",
-       "messageID": "MSG_ANON_76",
+       "messageID": "MSG_ANON_3",
        "type": "text",
        "text": "P0_DONE",
        "time": {
-        "start": 1792319758138,
-        "end": 1792319758139
+        "start": 1792321469377,
+        "end": 1792321469378
        }
       },
       {
        "id": "PRT_ANON_72",
        "sessionID": "SES_A",
-       "messageID": "MSG_ANON_77",
+       "messageID": "MSG_ANON_3",
        "type": "step-finish",
        "reason": "stop",
        "cost": 0,
@@ -3816,9 +3816,9 @@
    "response": [
     {
      "id": "SES_A",
-     "slug": "brave-engine",
+     "slug": "curious-planet",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -3843,15 +3843,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319757896,
-      "updated": 1792319758510
+      "created": 1792321469136,
+      "updated": 1792321469707
      }
     },
     {
      "id": "SES_B",
-     "slug": "quick-cactus",
+     "slug": "lucky-meadow",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "cost": 0,
      "tokens": {
@@ -3866,15 +3866,15 @@
      "title": "capability probe B",
      "version": "1.18.35",
      "time": {
-      "created": 1792319758493,
-      "updated": 1792319758493
+      "created": 1792321469691,
+      "updated": 1792321469691
      }
     },
     {
      "id": "SES_R2B",
-     "slug": "silent-harbor",
+     "slug": "shiny-circuit",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -3900,15 +3900,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319745219,
-      "updated": 1792319757800
+      "created": 1792321456645,
+      "updated": 1792321469040
      }
     },
     {
      "id": "SES_R4",
-     "slug": "curious-meadow",
+     "slug": "curious-nebula",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -3934,15 +3934,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319744725,
-      "updated": 1792319745129
+      "created": 1792321456141,
+      "updated": 1792321456556
      }
     },
     {
      "id": "SES_R3",
-     "slug": "silent-lagoon",
+     "slug": "misty-knight",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -3968,15 +3968,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319744143,
-      "updated": 1792319744640
+      "created": 1792321455548,
+      "updated": 1792321456047
      }
     },
     {
      "id": "SES_R2",
-     "slug": "gentle-circuit",
+     "slug": "brave-cactus",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -4002,15 +4002,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319743558,
-      "updated": 1792319744055
+      "created": 1792321454670,
+      "updated": 1792321455346
      }
     },
     {
      "id": "SES_R1",
-     "slug": "lucky-comet",
+     "slug": "eager-pixel",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -4036,8 +4036,8 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319741823,
-      "updated": 1792319743473
+      "created": 1792321453205,
+      "updated": 1792321454583
      }
     }
    ],
@@ -4093,7 +4093,7 @@
     "name": "UnknownError",
     "data": {
      "message": "Unexpected server error. Check server logs for details.",
-     "ref": "err_78aebe23"
+     "ref": "err_376ddb19"
     }
    },
    "status": 500
@@ -4110,7 +4110,7 @@
     "name": "UnknownError",
     "data": {
      "message": "Unexpected server error. Check server logs for details.",
-     "ref": "err_3b371834"
+     "ref": "err_95c755ae"
     }
    },
    "status": 500
@@ -4127,7 +4127,7 @@
     "name": "UnknownError",
     "data": {
      "message": "Unexpected server error. Check server logs for details.",
-     "ref": "err_44b9ea0d"
+     "ref": "err_306c1895"
     }
    },
    "status": 500
@@ -4144,7 +4144,7 @@
     "name": "UnknownError",
     "data": {
      "message": "Unexpected server error. Check server logs for details.",
-     "ref": "err_790e3f1b"
+     "ref": "err_0d4eb8d1"
     }
    },
    "status": 500
@@ -4161,7 +4161,7 @@
     "name": "UnknownError",
     "data": {
      "message": "Unexpected server error. Check server logs for details.",
-     "ref": "err_d0b85a9d"
+     "ref": "err_f4ee596f"
     }
    },
    "status": 500
@@ -4178,7 +4178,7 @@
     "name": "UnknownError",
     "data": {
      "message": "Unexpected server error. Check server logs for details.",
-     "ref": "err_d871fdd6"
+     "ref": "err_4573acea"
     }
    },
    "status": 500
@@ -4195,7 +4195,7 @@
     "name": "UnknownError",
     "data": {
      "message": "Unexpected server error. Check server logs for details.",
-     "ref": "err_313a85b1"
+     "ref": "err_a8dd4e98"
     }
    },
    "status": 500
@@ -4212,7 +4212,7 @@
     "name": "UnknownError",
     "data": {
      "message": "Unexpected server error. Check server logs for details.",
-     "ref": "err_a0503fc1"
+     "ref": "err_8e25cfa3"
     }
    },
    "status": 500
@@ -4229,7 +4229,7 @@
     "name": "UnknownError",
     "data": {
      "message": "Unexpected server error. Check server logs for details.",
-     "ref": "err_658ee8b0"
+     "ref": "err_760bce2d"
     }
    },
    "status": 500
@@ -4246,7 +4246,7 @@
     "name": "UnknownError",
     "data": {
      "message": "Unexpected server error. Check server logs for details.",
-     "ref": "err_ef26bdb0"
+     "ref": "err_5caa2aa9"
     }
    },
    "status": 500
@@ -4259,9 +4259,9 @@
    "response": [
     {
      "id": "SES_A",
-     "slug": "brave-engine",
+     "slug": "curious-planet",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -4286,15 +4286,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319757896,
-      "updated": 1792319758510
+      "created": 1792321469136,
+      "updated": 1792321469707
      }
     },
     {
      "id": "SES_B",
-     "slug": "quick-cactus",
+     "slug": "lucky-meadow",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "cost": 0,
      "tokens": {
@@ -4309,15 +4309,15 @@
      "title": "capability probe B",
      "version": "1.18.35",
      "time": {
-      "created": 1792319758493,
-      "updated": 1792319758493
+      "created": 1792321469691,
+      "updated": 1792321469691
      }
     },
     {
      "id": "SES_R2B",
-     "slug": "silent-harbor",
+     "slug": "shiny-circuit",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -4343,15 +4343,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319745219,
-      "updated": 1792319757800
+      "created": 1792321456645,
+      "updated": 1792321469040
      }
     },
     {
      "id": "SES_R4",
-     "slug": "curious-meadow",
+     "slug": "curious-nebula",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -4377,15 +4377,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319744725,
-      "updated": 1792319745129
+      "created": 1792321456141,
+      "updated": 1792321456556
      }
     },
     {
      "id": "SES_R3",
-     "slug": "silent-lagoon",
+     "slug": "misty-knight",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -4411,15 +4411,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319744143,
-      "updated": 1792319744640
+      "created": 1792321455548,
+      "updated": 1792321456047
      }
     },
     {
      "id": "SES_R2",
-     "slug": "gentle-circuit",
+     "slug": "brave-cactus",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -4445,15 +4445,15 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319743558,
-      "updated": 1792319744055
+      "created": 1792321454670,
+      "updated": 1792321455346
      }
     },
     {
      "id": "SES_R1",
-     "slug": "lucky-comet",
+     "slug": "eager-pixel",
      "projectID": "global",
-     "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
      "path": "",
      "summary": {
       "additions": 0,
@@ -4479,8 +4479,8 @@
      },
      "version": "1.18.35",
      "time": {
-      "created": 1792319741823,
-      "updated": 1792319743473
+      "created": 1792321453205,
+      "updated": 1792321454583
      }
     }
    ],
@@ -4514,9 +4514,9 @@
    "request": null,
    "response": {
     "id": "SES_A",
-    "slug": "brave-engine",
+    "slug": "curious-planet",
     "projectID": "global",
-    "directory": "/tmp/ap-opencode-p0-vq0vaa62/project",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
     "path": "",
     "summary": {
      "additions": 0,
@@ -4541,8 +4541,8 @@
     },
     "version": "1.18.35",
     "time": {
-     "created": 1792319757896,
-     "updated": 1792319758577
+     "created": 1792321469136,
+     "updated": 1792321469762
     }
    },
    "status": 200

@@ -44,11 +44,11 @@
 
 - **/undo** ↔ 服务端 `POST /session/{id}/revert {messageID}` + `POST /session/{id}/unrevert`（2026-10-18 二次修订：初版的上下文结论证据不足已撤回，本版全部断言基于带唯一标记的历史断言——检查模型实收消息正文，断言失败探针非零退出）：
   - revert 将**指定消息本身及其后全部**内容从模型上下文排除。用户消息锚点与助手消息锚点均已验证：revert@turn3-user 后模型只见 turn1/2；revert@turn3-assistant 后 turn1/2 与（被替换重发的）turn3 用户消息可见；revert@turn2-assistant 后只见 turn1。
-  - **撤销后继续对话必须以相同 messageID 重发**（TUI undo+edit 的替换流）：revert 后携带**新** messageID 的 prompt_async 返回 200 但**永不完成**（12 秒内无消息落库、无模型调用、服务日志无错）。该"停滞"prompt 并未丢弃：unrevert 后其文本出现在模型上下文中（排队补投）。
+  - **撤销后继续对话的实测可行路径是以相同 messageID 重发**（TUI undo+edit 的替换流）。revert 后携带**新** messageID 的 prompt_async 返回 200 但在**本测试窗口（12 秒）内停滞**：无消息落库、无模型调用、服务日志无错；是否"永不完成"未证实（未做更长窗口/取消/断线恢复实验），也**未证明同 messageID 重发是唯一合法路径**。停滞 prompt 并未丢弃：unrevert 后其文本出现在模型上下文中（排队补投）。
   - **干净的 unrevert 恢复被撤内容**：revert 后立即 unrevert，被撤 turn 回到模型上下文。但**先发生停滞 prompt 再 unrevert**时：新 prompt 恢复可发、停滞 prompt 补投，被撤内容**不**回到上下文（边界事实，两次独立场景复现）。
   - 伪 messageID → **200 静默**（无校验、无变化）。
   - `/api/session/{id}/revert/stage|commit|clear` 分期端点存在；stage 对不在当前上下文的消息返回 404 `MessageNotFoundError`。
-  - **产品约束**：网页 /undo 必须实现为「revert + 同 messageID 重发（编辑）」，且在 revert 与重发之间不接受新 messageID 消息（会停滞并干扰 unrevert 恢复）；/undo 产品化前仍需原生源码确认停滞机制。
+  - **候选适配方案（未定稿）**：网页 /undo 的一个候选实现是「revert + 同 messageID 重发（编辑）」，并在 revert 与重发之间不接受新 messageID 消息（会停滞并干扰 unrevert 恢复）。该方案待原生源码确认停滞机制、以及重复请求/取消/断线恢复验证后再定；/undo 维持不产品化，不扩大 P1 范围。
 - **/compact** ↔ `POST /api/session/{id}/compact`：本版本实测 **503 "Session compact is not available yet"**（服务未提供，与鉴权无关）。网页暂不可映射 /compact。
 - **会话级模型切换**：`POST /api/session/{id}/model`，ModelRef 必填 `{id, providerID}`（`providerID/modelID` 形态 400 `Missing key ["model"]["id"]`）。成功后 `GET /session` 的 `model` 字段持久为 `{id, providerID, variant}`，**另一会话不受影响**（并行会话保持原值）。与 prompt_async 携带模型的会话内粘滞互为补充。
 - **会话级 agent 切换**：`POST /api/session/{id}/agent {agent}` → 200，但**无任何校验**：不存在的 agent 同样被写入并持久（GET /session 可见 `agent: "no-such-agent"`）。网页若做会话级 /agent 粘滞必须自行按目录校验，不能依赖原生拒绝。
