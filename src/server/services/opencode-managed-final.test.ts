@@ -124,7 +124,7 @@ test("interrupt/stop invalidates instance state, interactions and in-flight acti
 			sessionId: "managed",
 			actionType: "prompt",
 			status: "running",
-			payload: { prompt: "in flight" },
+			metadata: { prompt: "in flight" },
 			createdAt: new Date().toISOString(),
 			updatedAt: new Date().toISOString(),
 		})
@@ -204,7 +204,7 @@ test("hook and status channels cannot write protected managed namespaces", async
 	expect(
 		await processStatusUpdate({
 			session_id: "managed:opencode-child:sub1",
-			status: "working",
+			status: "implementing",
 		}),
 	).toBe(false);
 	const [session] = await getDb().select().from(sessions).where(eq(sessions.sessionId, "managed"));
