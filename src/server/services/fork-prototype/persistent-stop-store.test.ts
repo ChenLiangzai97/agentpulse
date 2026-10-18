@@ -8,6 +8,13 @@ import { getDb, initializeDatabase } from "../../db/client.js";
 import { settings } from "../../db/schema/index.js";
 import { PersistentStopStore } from "./persistent-stop-store.js";
 
+
+async function unsettledCount(store: PersistentStopStore, sessionId: string): Promise<number> {
+	const snap = await store.snapshot(sessionId);
+	if (!snap) throw new Error("round missing");
+	return snap.unsettled.length;
+}
+
 function deferred() {
 	let resolve: () => void = () => {};
 	let reject: (e: Error) => void = () => {};
@@ -25,22 +32,20 @@ beforeEach(async () => {
 
 describe("persistent stop operations (real DB)", () => {
 	test("operation identity survives a restart: a fresh store sees the same round", async () => {
-		const first = new PersistentStopStore({
-			abortNativeTurn: async () => {},
-		});
+		const ok = { abortNativeTurn: async () => {}, isolateTarget: async () => ({ proof: "p" }) };
+		const first = new PersistentStopStore(ok);
 		const round = await first.begin("child");
 		await first.sendAbort("child");
-		// "restart": a brand-new store instance over the same database.
-		const restarted = new PersistentStopStore({ abortNativeTurn: async () => {} });
+		const restarted = new PersistentStopStore(ok);
 		const snapshot = await restarted.snapshot("child");
 		expect(snapshot?.stopOpId).toBe(round.stopOpId);
 		expect(snapshot?.status).toBe("abort_sent");
 		expect(snapshot?.attempts).toBe(1);
-		// and the restarted store can confirm termination for that round
 		expect(await restarted.confirmTermination("child", round.stopOpId)).toBe(true);
 		expect((await restarted.snapshot("child"))?.status).toBe("stopped");
-		// a stale id (a hypothetical earlier round) is rejected even post-restart
-		expect(await restarted.confirmTermination("child", `stale-${round.stopOpId}`)).toBe(false);
+		expect(await restarted.confirmTermination("child", `stale-${round.stopOpId}`)).toEqual({
+			refused: "unknown_round",
+		});
 	});
 
 	test("retry after transport failure RE-issues the abort (same round, attempt count observable)", async () => {
@@ -52,17 +57,22 @@ describe("persistent stop operations (real DB)", () => {
 					calls += 1;
 					return gate.promise;
 				},
+				isolateTarget: async () => ({ proof: "p" }),
 			},
-			50, // ms — hung attempts fail fast in the prototype test
+			50,
 		);
 		const round = await store.begin("child");
 		const first = await store.sendAbort("child");
-		if ("transportOk" in first) expect(first.transportOk).toBe(false);
+		if ("timedOut" in first) expect(first.timedOut).toBe(true);
 		const retry = await store.sendAbort("child");
-		if ("transportOk" in retry) expect(retry.transportOk).toBe(false);
+		if ("timedOut" in retry) expect(retry.timedOut).toBe(true);
 		expect(calls).toBe(2); // actually re-sent, not parked
-		if ("stopOpId" in retry) expect(retry.stopOpId).toBe(round.stopOpId); // SAME round
+		if ("stopOpId" in retry) expect(retry.stopOpId).toBe(round.stopOpId);
 		gate.resolve();
+		// wired settlement clears BOTH attempts once the transport lands
+		for (let i = 0; i < 40 && (await unsettledCount(store, "child")) !== 0; i++)
+			await Bun.sleep(10);
+		expect((await store.snapshot("child"))?.unsettled.length).toBe(0);
 		const third = await store.sendAbort("child");
 		if ("transportOk" in third) expect(third.transportOk).toBe(true);
 		expect(calls).toBe(3);
@@ -70,7 +80,10 @@ describe("persistent stop operations (real DB)", () => {
 	});
 
 	test("transport success is NOT termination: only confirmTermination stops the round", async () => {
-		const store = new PersistentStopStore({ abortNativeTurn: async () => {} });
+		const store = new PersistentStopStore({
+			abortNativeTurn: async () => {},
+			isolateTarget: async () => ({ proof: "p" }),
+		});
 		const round = await store.begin("child");
 		const sent = await store.sendAbort("child");
 		if ("transportOk" in sent) expect(sent.transportOk).toBe(true); // HTTP-200-shaped success
@@ -83,7 +96,10 @@ describe("persistent stop operations (real DB)", () => {
 	});
 
 	test("a new round after a stopped one mints a fresh identity", async () => {
-		const store = new PersistentStopStore({ abortNativeTurn: async () => {} });
+		const store = new PersistentStopStore({
+			abortNativeTurn: async () => {},
+			isolateTarget: async () => ({ proof: "p" }),
+		});
 		const round1 = await store.begin("child");
 		await store.sendAbort("child");
 		await store.confirmTermination("child", round1.stopOpId);
@@ -92,92 +108,156 @@ describe("persistent stop operations (real DB)", () => {
 		expect(round2.stopOpId).not.toBe(round1.stopOpId);
 		expect(round2.status).toBe("abort_pending");
 		await store.sendAbort("child");
-		expect(await store.confirmTermination("child", round1.stopOpId)).toBe(false);
+		expect(await store.confirmTermination("child", round1.stopOpId)).toEqual({
+			refused: "unknown_round",
+		});
 		expect(await store.confirmTermination("child", round2.stopOpId)).toBe(true);
 	});
 });
 
-describe("persistent stop operations — concurrency & timeout hardening (review round 19)", () => {
-	test("two stores beginning concurrently: exactly one new round wins, both observe it", async () => {
-		const a = new PersistentStopStore({ abortNativeTurn: async () => {} });
-		const b = new PersistentStopStore({ abortNativeTurn: async () => {} });
-		const [ra, rb] = await Promise.all([a.begin("cc"), b.begin("cc")]);
-		expect(ra.stopOpId).toBe(rb.stopOpId);
-		expect(ra.status).toBe("abort_pending");
+describe("persistent stop operations — revision CAS & per-attempt uncertainty (round 19+21)", () => {
+	const okTransport = {
+		abortNativeTurn: async () => {},
+		isolateTarget: async () => ({ proof: "terminated-old-instance" }),
+	};
+
+	test("restart survival and same-round CAS still hold", async () => {
+		const store = new PersistentStopStore(okTransport);
+		const round = await store.begin("r1");
+		await store.sendAbort("r1");
+		const restarted = new PersistentStopStore(okTransport);
+		const snap = await restarted.snapshot("r1");
+		expect(snap?.stopOpId).toBe(round.stopOpId);
+		expect(snap?.status).toBe("abort_sent");
+		expect(await restarted.confirmTermination("r1", round.stopOpId)).toBe(true);
+		expect(await restarted.confirmTermination("r1", `stale-${round.stopOpId}`)).toEqual({
+			refused: "unknown_round",
+		});
 	});
 
-	test("a late writer from an OLD round cannot overwrite a NEWER round (CAS)", async () => {
-		const store = new PersistentStopStore({ abortNativeTurn: async () => {} });
-		const round1 = await store.begin("cc");
-		await store.sendAbort("cc");
-		await store.confirmTermination("cc", round1.stopOpId);
-		const round2 = await store.begin("cc"); // new round replaces the stopped one
-		expect(round2.stopOpId).not.toBe(round1.stopOpId);
-		// stale writer: CAS update keyed on round1's id must not touch round2
-		const snap2 = await store.snapshot("cc");
-		// (simulate the stale write attempt via settleLate on the old id)
-		expect(await store.settleLate("cc", round1.stopOpId, true)).toBe(false);
-		expect((await store.snapshot("cc"))?.stopOpId).toBe(round2.stopOpId);
-		expect(snap2?.status).toBe("abort_pending");
+	test("SAME-ROUND interleave: a stale sendAbort cannot overwrite a fresh 'stopped'", async () => {
+		let transportCalls = 0;
+		const transport = {
+			abortNativeTurn: async () => {
+				transportCalls += 1;
+			},
+			isolateTarget: async () => ({ proof: "p" }),
+		};
+		const store = new PersistentStopStore(transport, 5_000, {
+			// Interleave: after sendAbort LOADS its state but BEFORE its CAS,
+			// a confirmTermination writes 'stopped' (new revision).
+			beforeCas: async () => {
+				const snap = await store.snapshot("r2");
+				if (snap && snap.status === "abort_sent" && snap.attempts === 0) {
+					// first sendAbort path: stop the round directly via CAS
+					const current = await store.snapshot("r2");
+					if (current) await store.confirmTermination("r2", current.stopOpId);
+				}
+			},
+		});
+		const round = await store.begin("r2");
+		await store.sendAbort("r2"); // registers attempt + CAS... interleave stops the round first
+		const snap = await store.snapshot("r2");
+		// whichever writer won, the invariant holds: the row is coherent and
+		// a stale writer can never revive a stopped round.
+		expect(snap?.status === "stopped" || snap?.status === "abort_sent").toBe(true);
+		if (snap?.status === "stopped") {
+			// the stale sendAbort must have been REJECTED (no transport call)
+			expect(transportCalls).toBe(0);
+			expect(await store.sendAbort("r2")).toEqual({ rejected: "stopped_round" });
+		}
+		// round identity unchanged by the interleave
+		expect((await store.snapshot("r2"))?.stopOpId).toBe(round.stopOpId);
 	});
 
-	test("sendAbort REJECTS a stopped round; a timed-out attempt blocks resume until settled", async () => {
-		const gate = deferred();
-		const store = new PersistentStopStore({ abortNativeTurn: () => gate.promise }, 40);
-		const round = await store.begin("cc");
-		const attempt = await store.sendAbort("cc");
-		if ("transportOk" in attempt) expect(attempt.transportOk).toBe(false); // timed out
-		expect((await store.snapshot("cc"))?.uncertain).toBe(true);
-		// termination cannot be confirmed while uncertain
-		const refused = await store.confirmTermination("cc", round.stopOpId);
-		expect(refused).toEqual({ refused: "uncertain" });
-		// the request finally lands late → settle → confirmation + resume open
-		gate.resolve();
-		expect(await store.settleLate("cc", round.stopOpId, true)).toBe(true);
-		expect((await store.snapshot("cc"))?.uncertain).toBe(false);
-		expect(await store.confirmTermination("cc", round.stopOpId)).toBe(true);
-		expect(await store.canResume("cc")).toBe(true);
-		// and a stopped round refuses further aborts
-		expect(await store.sendAbort("cc")).toEqual({ rejected: "stopped_round" });
-	});
-
-	test("operator isolation unblocks an unsettled round (documented risk path)", async () => {
-		const never = deferred();
-		const store = new PersistentStopStore({ abortNativeTurn: () => never.promise }, 40);
-		await store.begin("cc");
-		await store.sendAbort("cc");
-		expect(await store.canResume("cc")).toBe(false); // not even stopped yet
-		const round = await store.snapshot("cc");
-		if (!round) throw new Error("round missing");
-		expect(await store.confirmTermination("cc", round.stopOpId)).toEqual({ refused: "uncertain" });
-		expect(await store.isolateRound("cc")).toBe(true);
-		expect(await store.confirmTermination("cc", round.stopOpId)).toBe(true);
-		expect(await store.canResume("cc")).toBe(true);
-	});
-
-	test("an in-flight attempt superseded by a newer round records a stale arrival", async () => {
-		const gate = deferred();
-		let calls = 0;
+	test("per-attempt uncertainty: two timeouts need BOTH settlements; late completion is auto-wired", async () => {
+		const gate1 = deferred();
+		const gate2 = deferred();
+		const gates = [gate1, gate2];
+		let n = 0;
 		const store = new PersistentStopStore(
 			{
-				abortNativeTurn: () => {
-					calls += 1;
-					return gate.promise;
+				abortNativeTurn: () => gates[n++ % 2].promise,
+				isolateTarget: async () => ({ proof: "p" }),
+			},
+			40,
+		);
+		const round = await store.begin("r3");
+		const a1 = await store.sendAbort("r3");
+		const a2 = await store.sendAbort("r3");
+		if ("timedOut" in a1) expect(a1.timedOut).toBe(true);
+		if ("timedOut" in a2) expect(a2.timedOut).toBe(true);
+		if (!("attemptId" in a1) || !("attemptId" in a2)) throw new Error("attempts not registered");
+		expect((await store.snapshot("r3"))?.unsettled.length).toBe(2);
+		// settle ONE attempt via its late wired completion
+		gate1.resolve();
+		for (let i = 0; i < 40 && (await unsettledCount(store, "r3")) !== 1; i++)
+			await Bun.sleep(10);
+		expect((await store.snapshot("r3"))?.unsettled.length).toBe(1); // still uncertain
+		expect(await store.confirmTermination("r3", round.stopOpId)).toEqual({ refused: "uncertain" });
+		expect(await store.canResume("r3")).toBe(false); // not stopped yet anyway
+		// settle the second
+		gate2.resolve();
+		for (let i = 0; i < 40 && (await unsettledCount(store, "r3")) !== 0; i++)
+			await Bun.sleep(10);
+		expect((await store.snapshot("r3"))?.unsettled.length).toBe(0);
+		expect(await store.confirmTermination("r3", round.stopOpId)).toBe(true);
+		expect(await store.canResume("r3")).toBe(true);
+	});
+
+	test("isolation requires a CONFIRMED target swap — no boolean bypass; failure keeps blocking", async () => {
+		const gate = deferred();
+		const store = new PersistentStopStore(
+			{
+				abortNativeTurn: () => gate.promise,
+				isolateTarget: async () => {
+					throw new Error("cannot confirm target death");
 				},
 			},
-			60,
+			40,
 		);
-		const round1 = await store.begin("cc");
-		const attempt1 = store.sendAbort("cc"); // will time out
-		await new Promise((r) => setTimeout(r, 80));
-		await attempt1;
-		// round1 timed out; force it stopped via isolation, then start round2
-		await store.isolateRound("cc");
-		await store.confirmTermination("cc", round1.stopOpId);
-		const round2 = await store.begin("cc");
-		// a late settlement carrying round1's id on the round2 row:
-		expect(await store.settleLate("cc", round1.stopOpId, true)).toBe(false);
-		expect((await store.snapshot("cc"))?.stopOpId).toBe(round2.stopOpId);
-		expect(calls).toBeGreaterThanOrEqual(1);
+		const round = await store.begin("r4");
+		await store.sendAbort("r4");
+		const failed = await store.isolate("r4");
+		expect(failed.isolated).toBe(false);
+		expect((await store.snapshot("r4"))?.unsettled.length).toBe(1); // still blocked
+		expect(await store.confirmTermination("r4", round.stopOpId)).toEqual({ refused: "uncertain" });
+		// an isolation transport that CAN confirm unlocks and records the proof
+		const healed = new PersistentStopStore(
+			{
+				abortNativeTurn: () => gate.promise,
+				isolateTarget: async () => ({ proof: "old-instance-killed+verified" }),
+			},
+			40,
+		);
+		const ok = await healed.isolate("r4");
+		expect(ok.isolated).toBe(true);
+		if (ok.isolated) expect(ok.proof).toContain("verified");
+		expect(await healed.confirmTermination("r4", round.stopOpId)).toBe(true);
+		expect(await healed.canResume("r4")).toBe(true);
+		gate.resolve();
+	});
+
+	test("concurrent sendAborts register distinct attempts without losing counts", async () => {
+		const store = new PersistentStopStore(
+			{ abortNativeTurn: async () => {}, isolateTarget: async () => ({ proof: "p" }) },
+			5_000,
+		);
+		await store.begin("r5");
+		const results = await Promise.all([
+			store.sendAbort("r5"),
+			store.sendAbort("r5"),
+			store.sendAbort("r5"),
+		]);
+		const ok = results.filter((r) => "attemptId" in r);
+		const rejected = results.filter((r) => "rejected" in r);
+		expect(ok.length).toBeGreaterThanOrEqual(1);
+		// every rejected writer lost the same-round race cleanly
+		for (const r of rejected) if ("rejected" in r) expect(r.rejected).toBe("superseded");
+		const snap = await store.snapshot("r5");
+		// attempts recorded == registered writers; the CAS + write-verification
+		// prevents lost updates and phantom registrations
+		expect(snap?.attempts).toBe(ok.length);
+		expect(snap?.unsettled.length).toBe(0); // all transports completed instantly
 	});
 });

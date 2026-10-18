@@ -1,38 +1,48 @@
 /**
  * Isolated prototype (NOT wired to the main path): persistent stop operations
- * per docs/OPENCODE_FORK_DESIGN.md §D — concurrency-hardened revision.
+ * per docs/OPENCODE_FORK_DESIGN.md §D — revision-CAS revision.
  *
- * Review round 19 fixes baked in:
- *  - operation identity is UNIQUE (crypto random) and ownership is decided by
- *    a successful INSERT (or a conditional UPDATE of a stopped round), never
- *    by a clock read; same-millisecond rounds cannot collide;
- *  - every mutation is a conditional UPDATE keyed on the row's CURRENT
- *    stopOpId (portable CAS via jsonExtractText), so a late writer from an
- *    old round can never overwrite a newer round, nor write 'stopped' back
- *    to 'abort_sent';
- *  - sendAbort REJECTS stopped rounds; a timed-out attempt leaves the round
- *    'uncertain' (the underlying native request cannot be cancelled) and
- *    RESUME IS BLOCKED until the round is explicitly isolated or the attempt
- *    settles; late settlements of superseded rounds are counted observably;
- *  - transport success (HTTP-200-shaped) is still NOT termination: only
- *    confirmTermination — carrying the round id — stops the round.
+ * Review round 21 fixes:
+ *  - every CAS matches (stopOpId AND revision): a same-round stale writer
+ *    (sendAbort that read an older state) can no longer write 'stopped' back
+ *    to 'abort_sent', fire an abort, or lose attempts/uncertainty updates;
+ *  - uncertainty is tracked PER ATTEMPT ( unsettled: attemptId[] ), not as a
+ *    round boolean: two timed-out attempts need BOTH settlements; the
+ *    underlying transport promise is wired so its eventual completion (or
+ *    failure) settles its attempt automatically, whenever it lands;
+ *  - there is NO boolean-only unblock: clearing uncertainty requires the
+ *    transport's isolateTarget to CONFIRM the old target can no longer
+ *    affect the session (proof recorded); a failed isolation keeps the
+ *    round blocked.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../db/client.js";
 import { settings } from "../../db/schema/index.js";
-import { jsonExtractText } from "../../db/sql-helpers.js";
 
 export interface PersistedStopOp {
 	stopOpId: string;
+	/** Monotonic per-row revision — the within-round CAS token. */
+	revision: number;
 	sessionId: string;
 	status: "abort_pending" | "abort_sent" | "stopped";
 	attempts: number;
-	/** At least one transport attempt timed out and has not settled. */
-	uncertain: boolean;
+	/** Attempt ids whose transport outcome is not yet known. */
+	unsettled: string[];
 	/** Late settlements that arrived after the round was superseded. */
 	staleArrivals: number;
+	isolationProof?: string | null;
 	requestHash?: string | null;
+}
+
+export interface StopTransport {
+	abortNativeTurn: (sessionId: string) => Promise<void>;
+	/**
+	 * Must CONFIRM the old abort target can no longer affect this session
+	 * (terminate-and-confirm, or replacement target) and return a proof.
+	 * Throwing keeps the round blocked — there is no boolean bypass.
+	 */
+	isolateTarget: (sessionId: string, stopOpId: string) => Promise<{ proof: string }>;
 }
 
 const KEY = (sessionId: string) => `forkproto.stopop.${sessionId}`;
@@ -45,40 +55,53 @@ async function load(sessionId: string): Promise<PersistedStopOp | null> {
 	return row ? (row.value as PersistedStopOp) : null;
 }
 
-/** CAS: mutate the row ONLY while it still shows `expectedOpId`. */
-async function casUpdate(
-	sessionId: string,
-	expectedOpId: string,
-	next: PersistedStopOp,
-): Promise<boolean> {
+/** Revision CAS: mutate ONLY while the row still shows (stopOpId, revision). */
+async function casUpdate(expected: PersistedStopOp, next: PersistedStopOp): Promise<boolean> {
 	const rows = await getDb()
 		.update(settings)
 		.set({ value: next })
 		.where(
 			and(
-				eq(settings.key, KEY(sessionId)),
-				eq(jsonExtractText(settings.value, "$.stopOpId"), expectedOpId),
+				eq(settings.key, KEY(expected.sessionId)),
+				eq(sql`json_extract(${settings.value}, '$.stopOpId')`, expected.stopOpId),
+				eq(sql`json_extract(${settings.value}, '$.revision')`, expected.revision),
 			),
 		)
 		.returning({ key: settings.key });
 	return rows.length > 0;
 }
 
+/** Post-write verification keyed on a writer-UNIQUE marker (the attempt id):
+ * under interleaved builders the returning() signal alone proved unreliable
+ * in this driver, and revision alone cannot distinguish two writers that
+ * computed the same next revision from the same observed state. */
+async function writeLanded(
+	sessionId: string,
+	marker: string,
+	pick: (row: PersistedStopOp) => string[],
+): Promise<boolean> {
+	const after = await load(sessionId);
+	return after !== null && pick(after).includes(marker);
+}
+
 export class PersistentStopStore {
 	constructor(
-		private readonly transport: { abortNativeTurn: (sessionId: string) => Promise<void> },
+		private readonly transport: StopTransport,
 		private readonly attemptTimeoutMs = 5_000,
+		/** Test-only interleaving hook: runs between a mutation's load and CAS. */
+		private readonly testHooks: { beforeCas?: () => Promise<void> } = {},
 	) {}
 
-	/** Starts a new round, or re-observes the in-flight one (any store, any restart). */
 	async begin(sessionId: string, requestHash?: string): Promise<PersistedStopOp> {
 		const candidate: PersistedStopOp = {
 			stopOpId: `stop-${randomUUID()}`,
+			revision: 1,
 			sessionId,
 			status: "abort_pending",
 			attempts: 0,
-			uncertain: false,
+			unsettled: [],
 			staleArrivals: 0,
+			isolationProof: null,
 			requestHash: requestHash ?? null,
 		};
 		await getDb()
@@ -87,9 +110,8 @@ export class PersistentStopStore {
 			.onConflictDoNothing({ target: settings.key });
 		const existing = await load(sessionId);
 		if (existing && existing.status !== "stopped") return existing;
-		// Only one writer can flip a stopped row to a new round (CAS).
 		if (existing && existing.status === "stopped") {
-			const won = await casUpdate(sessionId, existing.stopOpId, candidate);
+			const won = await casUpdate(existing, { ...candidate, revision: existing.revision + 1 });
 			if (won) return candidate;
 			const racer = await load(sessionId);
 			if (racer && racer.status !== "stopped") return racer;
@@ -97,30 +119,43 @@ export class PersistentStopStore {
 		return (await load(sessionId)) ?? candidate;
 	}
 
-	/**
-	 * Issues (or RE-issues) the abort for the round. Rejects stopped rounds.
-	 * A timed-out attempt marks the round uncertain — the native request may
-	 * still land, so resume stays blocked until it settles or is isolated.
-	 */
 	async sendAbort(
 		sessionId: string,
 	): Promise<
-		{ stopOpId: string; transportOk: boolean } | { rejected: "no_stop_round" | "stopped_round" }
+		| { stopOpId: string; attemptId: string; transportOk: boolean; timedOut: boolean }
+		| { rejected: "no_stop_round" | "stopped_round" | "superseded" }
 	> {
-		const op = await load(sessionId);
-		if (!op) return { rejected: "no_stop_round" };
-		if (op.status === "stopped") return { rejected: "stopped_round" };
-		const next: PersistedStopOp = { ...op, attempts: op.attempts + 1, status: "abort_sent" };
-		const accepted = await casUpdate(sessionId, op.stopOpId, next);
+		const observed = await load(sessionId);
+		if (!observed) return { rejected: "no_stop_round" };
+		if (observed.status === "stopped") return { rejected: "stopped_round" };
+		const attemptId = `att-${randomUUID()}`;
+		const registered: PersistedStopOp = {
+			...observed,
+			attempts: observed.attempts + 1,
+			status: "abort_sent",
+			unsettled: [...observed.unsettled, attemptId],
+		};
+		await this.testHooks.beforeCas?.();
+		const accepted =
+			(await casUpdate(observed, registered)) &&
+			(await writeLanded(sessionId, attemptId, (row) => row.unsettled));
 		if (!accepted) {
-			// A newer round (or a concurrent writer) won; this attempt belongs
-			// to a superseded round — do not touch the transport.
-			return { rejected: "stopped_round" };
+			// The row moved underneath us (same-round writer or a new round):
+			// this attempt is NOT registered — never touch the transport.
+			const now = await load(sessionId);
+			return { rejected: now?.status === "stopped" ? "stopped_round" : "superseded" };
 		}
+		// Wire the eventual settlement of THIS attempt regardless of the race
+		// outcome — a late completion settles whenever it lands.
+		const transport = this.transport.abortNativeTurn(sessionId);
+		const wired = transport.then(
+			() => this.settleAttempt(sessionId, registered.stopOpId, attemptId, true),
+			() => this.settleAttempt(sessionId, registered.stopOpId, attemptId, false),
+		);
 		let timedOut = false;
 		try {
 			await Promise.race([
-				this.transport.abortNativeTurn(sessionId),
+				transport,
 				new Promise<never>((_, reject) =>
 					setTimeout(() => {
 						timedOut = true;
@@ -128,72 +163,98 @@ export class PersistentStopStore {
 					}, this.attemptTimeoutMs),
 				),
 			]);
-			await this.settle(sessionId, next.stopOpId, { transportOk: true });
-			return { stopOpId: next.stopOpId, transportOk: true };
+			await wired;
+			return { stopOpId: registered.stopOpId, attemptId, transportOk: true, timedOut: false };
 		} catch {
-			const current = await load(sessionId);
-			if (!current || current.stopOpId !== next.stopOpId) {
-				// Superseded while in flight: record the late arrival observably.
-				if (current) {
-					await casUpdate(sessionId, current.stopOpId, {
-						...current,
-						staleArrivals: current.staleArrivals + 1,
-					});
-				}
-				return { rejected: "stopped_round" };
+			if (timedOut) {
+				// The attempt stays unsettled; the wired settlement will clear
+				// it when the transport eventually completes.
+				return { stopOpId: registered.stopOpId, attemptId, transportOk: false, timedOut: true };
 			}
-			await this.settle(sessionId, next.stopOpId, { transportOk: false, timedOut });
-			return { stopOpId: next.stopOpId, transportOk: false };
+			await wired; // transport failed promptly — settled as failed
+			return { stopOpId: registered.stopOpId, attemptId, transportOk: false, timedOut: false };
 		}
 	}
 
-	/** Records a transport attempt's outcome; timed-out attempts keep uncertainty. */
-	private async settle(
+	/** Removes ONE attempt from the unsettled set (idempotent, CAS-guarded). */
+	async settleAttempt(
 		sessionId: string,
 		stopOpId: string,
-		outcome: { transportOk: boolean; timedOut?: boolean },
-	): Promise<void> {
-		const current = await load(sessionId);
-		if (!current || current.stopOpId !== stopOpId) return;
-		const uncertain = outcome.timedOut ? true : current.uncertain;
-		await casUpdate(sessionId, stopOpId, { ...current, uncertain });
+		attemptId: string,
+		_transportOk: boolean,
+	): Promise<boolean> {
+		for (let tries = 0; tries < 3; tries++) {
+			const current = await load(sessionId);
+			if (!current || current.stopOpId !== stopOpId) return false;
+			if (!current.unsettled.includes(attemptId)) return true; // already settled
+			const next: PersistedStopOp = {
+				...current,
+				revision: current.revision + 1,
+				unsettled: current.unsettled.filter((id) => id !== attemptId),
+			};
+			if (await casUpdate(current, next)) return true;
+		}
+		return false;
 	}
 
-	/** Late settlement of a PREVIOUSLY timed-out attempt (the request finally landed or failed). */
-	async settleLate(sessionId: string, stopOpId: string, transportOk: boolean): Promise<boolean> {
-		const current = await load(sessionId);
-		if (!current || current.stopOpId !== stopOpId) return false;
-		await casUpdate(sessionId, stopOpId, { ...current, uncertain: false });
-		return transportOk;
-	}
-
-	/**
-	 * TERMINATION confirmation — the only path to 'stopped'. Carries the
-	 * round id; refuses uncertain rounds until settled or isolated.
-	 */
+	/** TERMINATION confirmation — refused while ANY attempt is unsettled. */
 	async confirmTermination(
 		sessionId: string,
 		stopOpId: string,
-	): Promise<boolean | { refused: "uncertain" }> {
-		const op = await load(sessionId);
-		if (!op || op.stopOpId !== stopOpId) return false;
-		if (op.uncertain) return { refused: "uncertain" };
-		if (op.status === "stopped") return true;
-		const won = await casUpdate(sessionId, stopOpId, { ...op, status: "stopped" });
-		return won;
+	): Promise<boolean | { refused: "uncertain" | "unknown_round" }> {
+		for (let tries = 0; tries < 3; tries++) {
+			const current = await load(sessionId);
+			if (!current || current.stopOpId !== stopOpId) return { refused: "unknown_round" };
+			if (current.unsettled.length > 0) return { refused: "uncertain" };
+			if (current.status === "stopped") return true;
+			const next: PersistedStopOp = {
+				...current,
+				revision: current.revision + 1,
+				status: "stopped",
+			};
+			if (await casUpdate(current, next)) return true;
+		}
+		return false;
 	}
 
-	/** Resume gate: a round may only resume when stopped AND nothing is uncertain. */
+	/** Resume gate: stopped AND every attempt settled. */
 	async canResume(sessionId: string): Promise<boolean> {
 		const op = await load(sessionId);
-		return Boolean(op && op.status === "stopped" && !op.uncertain);
+		return Boolean(op && op.status === "stopped" && op.unsettled.length === 0);
 	}
 
-	/** Operator action: explicitly isolate an unsettled attempt (documented risk). */
-	async isolateRound(sessionId: string): Promise<boolean> {
-		const op = await load(sessionId);
-		if (!op) return false;
-		return casUpdate(sessionId, op.stopOpId, { ...op, uncertain: false });
+	/**
+	 * Isolation REPLACES the old boolean bypass: the transport must CONFIRM
+	 * the old abort target can no longer affect the session; the proof is
+	 * recorded and only then are the unsettled attempts cleared. A failed or
+	 * refused isolation keeps the round blocked.
+	 */
+	async isolate(
+		sessionId: string,
+	): Promise<{ isolated: boolean; proof?: string; reason?: string }> {
+		const current = await load(sessionId);
+		if (!current) return { isolated: false, reason: "no_round" };
+		if (current.unsettled.length === 0)
+			return { isolated: true, proof: current.isolationProof ?? "nothing-to-isolate" };
+		try {
+			const { proof } = await this.transport.isolateTarget(sessionId, current.stopOpId);
+			const latest = await load(sessionId);
+			if (!latest || latest.stopOpId !== current.stopOpId)
+				return { isolated: false, reason: "superseded" };
+			const next: PersistedStopOp = {
+				...latest,
+				revision: latest.revision + 1,
+				unsettled: [],
+				isolationProof: proof,
+			};
+			if (await casUpdate(latest, next)) return { isolated: true, proof };
+			return { isolated: false, reason: "concurrent_write" };
+		} catch (error) {
+			return {
+				isolated: false,
+				reason: error instanceof Error ? error.message : "isolation_failed",
+			};
+		}
 	}
 
 	async snapshot(sessionId: string): Promise<PersistedStopOp | null> {
