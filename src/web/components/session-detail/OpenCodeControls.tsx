@@ -228,8 +228,8 @@ export function OpenCodeControls({
 		);
 		if (known) {
 			const [providerID, ...modelParts] = (pendingModel ?? "").split("/");
-			const sentSession = sessionIdRef.current;
-			const sentVersion = usePromptDraftStore.getState().currentVersion(sentSession);
+			// Await the server: the command text is only cleared on SUCCESS —
+			// a failed command keeps the input so the user can retry/edit.
 			void send({
 				kind: "opencode_command",
 				command: known.name,
@@ -239,24 +239,31 @@ export function OpenCodeControls({
 					: {}),
 				...(pendingAgent ? { agent: pendingAgent } : {}),
 			});
-			clearSentDraft(sentSession, sentVersion);
 			return;
 		}
 		toast.error(t("opencodeCmd.unknown").replace("{name}", name));
 	}
-	/** Clears the input/draft for a COMPLETED send, only if it still belongs to
-	 * the same session and the user did not rewrite the draft meanwhile. */
-	function clearSentDraft(sentSession: string, sentVersion: number) {
-		if (sessionIdRef.current === sentSession) setPrompt("");
-		usePromptDraftStore.getState().clearDraftIfUntouched(sentSession, sentVersion);
+	/** Clears the input/draft for a COMPLETED send — only when the viewer
+	 * epoch, session identity AND draft version all still match the capture
+	 * taken when the send started. A rewritten draft keeps both the input
+	 * and the stored text; a stale cross-session/cross-viewer callback is a
+	 * no-op. */
+	function clearSentDraft(sentSession: string, sentVersion: number, sentGeneration: number) {
+		if (sessionIdRef.current !== sentSession) return;
+		const store = usePromptDraftStore.getState();
+		if (!store.canClearSent(sentSession, sentVersion, sentGeneration)) return;
+		store.clearDraft(sentSession);
+		setPrompt("");
 	}
 	async function send(body: Record<string, unknown>) {
 		const sentSession = sessionIdRef.current;
 		const sentVersion = usePromptDraftStore.getState().currentVersion(sentSession);
+		const sentGeneration = usePromptDraftStore.getState().currentGeneration();
 		setBusy(true);
 		try {
 			await api.openCodeAction(session.sessionId, body);
-			if (body.kind === "prompt") clearSentDraft(sentSession, sentVersion);
+			if (body.kind === "prompt" || body.kind === "opencode_command")
+				clearSentDraft(sentSession, sentVersion, sentGeneration);
 			if (body.interactionId)
 				setItems((old) => old.filter((item) => item.id !== body.interactionId));
 			await onChanged();

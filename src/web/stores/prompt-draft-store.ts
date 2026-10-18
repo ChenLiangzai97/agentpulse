@@ -15,14 +15,25 @@ import { useUserStore } from "./user-store.js";
 interface PromptDraftState {
 	drafts: Record<string, string>;
 	order: string[];
-	/** Monotonic per-session edit counter — runtime only, never persisted. */
+	/**
+	 * Monotonic per-session edit counter — runtime only, never persisted, and
+	 * NEVER reset across viewer switches, so a stale callback's (session,
+	 * version) pair can never collide with a different viewer's counters.
+	 */
 	versions: Record<string, number>;
+	/** Viewer epoch: bumped whenever the viewer is adopted or forgotten. */
+	generation: number;
 	setDraft: (sessionId: string, text: string) => void;
 	getDraft: (sessionId: string) => string;
 	currentVersion: (sessionId: string) => number;
+	currentGeneration: () => number;
 	clearDraft: (sessionId: string) => void;
-	/** Clears only if the draft has not been edited since `version`. */
-	clearDraftIfUntouched: (sessionId: string, version: number) => boolean;
+	/**
+	 * Full send-completion guard: the input/draft may be cleared only when
+	 * the viewer epoch, the session identity AND the draft version all still
+	 * match what was captured when the send started.
+	 */
+	canClearSent: (sessionId: string, version: number, generation: number) => boolean;
 }
 
 const STORAGE_BASE = "agentpulse.promptDrafts";
@@ -64,8 +75,12 @@ export const usePromptDraftStore = create<PromptDraftState>((set, get) => ({
 	drafts: {},
 	order: [],
 	versions: {},
+	generation: 0,
 	setDraft: (sessionId, text) => {
 		if (!sessionId) return;
+		// Unknown viewer: writes are disabled entirely — nothing may leak
+		// into (or read from) the previous person's storage key.
+		if (storageKey === null) return;
 		const clipped = text.length > MAX_DRAFT_LENGTH ? text.slice(0, MAX_DRAFT_LENGTH) : text;
 		set((state) => {
 			const drafts = { ...state.drafts, [sessionId]: clipped };
@@ -81,6 +96,7 @@ export const usePromptDraftStore = create<PromptDraftState>((set, get) => ({
 	},
 	getDraft: (sessionId) => get().drafts[sessionId] ?? "",
 	currentVersion: (sessionId) => get().versions[sessionId] ?? 0,
+	currentGeneration: () => get().generation,
 	clearDraft: (sessionId) =>
 		set((state) => {
 			if (!(sessionId in state.drafts)) return state;
@@ -90,9 +106,9 @@ export const usePromptDraftStore = create<PromptDraftState>((set, get) => ({
 			save(drafts, order);
 			return { drafts, order };
 		}),
-	clearDraftIfUntouched: (sessionId, version) => {
+	canClearSent: (sessionId, version, generation) => {
+		if (get().generation !== generation) return false;
 		if (get().versions[sessionId] !== version) return false;
-		get().clearDraft(sessionId);
 		return true;
 	},
 }));
@@ -103,17 +119,30 @@ function adoptViewer() {
 	const { loaded, userId } = useUserStore.getState();
 	if (!loaded) {
 		adoptedFor = null;
-		// Nobody is known: drop the previous person's drafts from memory; their
-		// saved drafts stay in storage for their next visit.
-		if (Object.keys(usePromptDraftStore.getState().drafts).length > 0)
-			usePromptDraftStore.setState({ drafts: {}, order: [] });
+		// Nobody is known: stop writing (storageKey=null disables setDraft),
+		// drop the previous person's drafts from memory (their saved drafts
+		// stay in storage for their next visit), and start a new viewer epoch
+		// so in-flight callbacks from the previous epoch are all invalidated.
+		storageKey = null;
+		if (
+			Object.keys(usePromptDraftStore.getState().drafts).length > 0 ||
+			usePromptDraftStore.getState().generation === 0
+		)
+			usePromptDraftStore.setState((state) => ({
+				drafts: {},
+				order: [],
+				generation: state.generation + 1,
+			}));
+		else usePromptDraftStore.setState((state) => ({ generation: state.generation + 1 }));
 		return;
 	}
 	if (adoptedFor && adoptedFor.userId === userId) return;
 	adoptedFor = { userId };
 	storageKey = keyFor(userId);
 	const { drafts, order } = read(storageKey);
-	usePromptDraftStore.setState({ drafts, order, versions: {} });
+	// Versions intentionally carry over (never reset): a stale callback must
+	// fail on the generation check alone, not on a recycled version counter.
+	usePromptDraftStore.setState((state) => ({ drafts, order, generation: state.generation + 1 }));
 }
 useUserStore.subscribe(adoptViewer);
 adoptViewer();

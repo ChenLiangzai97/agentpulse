@@ -52,22 +52,67 @@ describe("prompt draft store", () => {
 		expect(files.get("agentpulse.promptDrafts.A")).toBeTruthy();
 	});
 
-	test("version guard: an in-flight send clears only the draft it sent", () => {
+	test("send guard: rewrite during send blocks the clear; matching capture clears", () => {
 		reloadAs("A");
 		usePromptDraftStore.getState().setDraft("s1", "v1 content");
 		const versionAtSend = usePromptDraftStore.getState().currentVersion("s1");
+		const generationAtSend = usePromptDraftStore.getState().currentGeneration();
 		// user rewrites the draft while the send is running
 		usePromptDraftStore.getState().setDraft("s1", "rewritten during send");
-		expect(usePromptDraftStore.getState().clearDraftIfUntouched("s1", versionAtSend)).toBe(false);
+		expect(usePromptDraftStore.getState().canClearSent("s1", versionAtSend, generationAtSend)).toBe(
+			false,
+		);
 		expect(usePromptDraftStore.getState().getDraft("s1")).toBe("rewritten during send");
-		// clearing with the CURRENT version succeeds
-		const now = usePromptDraftStore.getState().currentVersion("s1");
-		expect(usePromptDraftStore.getState().clearDraftIfUntouched("s1", now)).toBe(true);
+		// clearing with the CURRENT capture succeeds
+		const nowVersion = usePromptDraftStore.getState().currentVersion("s1");
+		expect(usePromptDraftStore.getState().canClearSent("s1", nowVersion, generationAtSend)).toBe(
+			true,
+		);
+		usePromptDraftStore.getState().clearDraft("s1");
 		expect(usePromptDraftStore.getState().getDraft("s1")).toBe("");
 		// A's clear never touches B
 		usePromptDraftStore.getState().setDraft("sB", "B stays");
 		usePromptDraftStore.getState().clearDraft("s1");
 		expect(usePromptDraftStore.getState().getDraft("sB")).toBe("B stays");
+	});
+
+	test("viewer generation: a stale callback from a previous epoch is rejected", () => {
+		reloadAs("A");
+		usePromptDraftStore.getState().setDraft("s1", "A drafts");
+		const staleVersion = usePromptDraftStore.getState().currentVersion("s1");
+		const staleGeneration = usePromptDraftStore.getState().currentGeneration();
+		// the viewer switches (or signs out) while A's send is in flight
+		useUserStore.setState({ userId: "B", loaded: true } as never);
+		// B builds the SAME (session, version) pair — the epoch must still reject it
+		usePromptDraftStore.getState().setDraft("s1", "B drafts");
+		const bVersion = usePromptDraftStore.getState().currentVersion("s1");
+		expect(bVersion).toBe(staleVersion + 1);
+		expect(usePromptDraftStore.getState().canClearSent("s1", staleVersion, staleGeneration)).toBe(
+			false,
+		);
+		// even a matching version under the stale generation is rejected
+		expect(usePromptDraftStore.getState().canClearSent("s1", bVersion, staleGeneration)).toBe(
+			false,
+		);
+		// the CURRENT generation with the current capture clears
+		expect(
+			usePromptDraftStore
+				.getState()
+				.canClearSent("s1", bVersion, usePromptDraftStore.getState().currentGeneration()),
+		).toBe(true);
+	});
+
+	test("unknown viewer: writes are disabled and nothing leaks to a previous key", () => {
+		reloadAs("A");
+		usePromptDraftStore.getState().setDraft("s1", "A's last draft");
+		useUserStore.setState({ userId: null, loaded: false } as never);
+		// typing while nobody is known is a no-op (no memory, no disk write)
+		usePromptDraftStore.getState().setDraft("s1", "should vanish");
+		expect(usePromptDraftStore.getState().getDraft("s1")).toBe("");
+		expect((files.get("agentpulse.promptDrafts.A") ?? "").includes("should vanish")).toBe(false);
+		// A's saved draft is intact for their next visit
+		reloadAs("A");
+		expect(usePromptDraftStore.getState().getDraft("s1")).toBe("A's last draft");
 	});
 
 	test("drafts are capped in length and count; cap equals the input's maxLength", () => {
