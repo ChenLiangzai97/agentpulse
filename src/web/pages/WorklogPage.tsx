@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
 	DEFAULT_WORKLOG_CONFIG,
@@ -7,6 +7,7 @@ import {
 } from "../../shared/worklog.js";
 import { MarkdownContent } from "../components/MarkdownContent.js";
 import { api } from "../lib/api.js";
+import { createStaleLoadGuard } from "../lib/latest-only.js";
 
 export function WorklogPage() {
 	const [config, setConfig] = useState<WorklogConfig>(DEFAULT_WORKLOG_CONFIG);
@@ -21,6 +22,9 @@ export function WorklogPage() {
 	const [preview, setPreview] = useState<Awaited<ReturnType<typeof api.getWorklogPreview>> | null>(
 		null,
 	);
+	// Stale-response guard: a slow preview request for an earlier date must
+	// never overwrite the currently selected one (A→B with A resolving last).
+	const previewGuard = useMemo(() => createStaleLoadGuard(setPreview), []);
 	const [editing, setEditing] = useState(false);
 	const [draft, setDraft] = useState("");
 	const refresh = useCallback(() => api.getWorklogs().then((r) => setRuns(r.runs)), []);
@@ -46,10 +50,7 @@ export function WorklogPage() {
 		try {
 			await fn();
 			await refresh();
-			void api
-				.getWorklogPreview(date)
-				.then(setPreview)
-				.catch(() => {});
+			void previewGuard.load(() => api.getWorklogPreview(date));
 		} catch (e) {
 			setError(e instanceof Error ? e.message : "操作失败");
 		} finally {
@@ -61,11 +62,8 @@ export function WorklogPage() {
 	const current = runs.find((r) => `${r.timezone}/${r.date}` === selected) ?? runs[0];
 	useEffect(() => {
 		setPreview(null);
-		void api
-			.getWorklogPreview(date)
-			.then(setPreview)
-			.catch(() => {});
-	}, [date]);
+		void previewGuard.load(() => api.getWorklogPreview(date));
+	}, [date, previewGuard]);
 	return (
 		<div className="mx-auto max-w-5xl space-y-6 p-6">
 			<div>

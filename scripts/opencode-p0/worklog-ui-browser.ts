@@ -1,6 +1,6 @@
+import { mkdirSync } from "node:fs";
 /** Worklog dual-view browser evidence (real chrome via playwright). */
 import { chromium } from "playwright";
-import { mkdirSync } from "node:fs";
 
 const BASE = "http://127.0.0.1:3100";
 const OUT = "/home/ch/project/work_station/agentpulse/scripts/opencode-p0/worklog-ui-evidence";
@@ -23,16 +23,35 @@ try {
 	check(previewText.includes("会话工作台开发"), "scope preview lists seeded session A");
 	check(previewText.includes("日志双视图开发"), "scope preview lists seeded session B");
 	check(/\b1\b.*\b1\b.*\b1\b/.test(previewText), "scope preview shows event counts");
+	// Isolation: ONLY the two seeded sessions; no real hostnames may appear.
+	const previewRows = await page.locator("[aria-label='范围预览'] tbody tr").count();
+	check(previewRows === 2, `preview contains exactly the 2 seeded sessions (got ${previewRows})`);
+	check(!/ch-[A-Z0-9-]+/.test(previewText), "no real hostname in preview");
 	await page.screenshot({ path: `${OUT}/1-scope-preview.png`, fullPage: true });
 	// 2. open the generated run and inspect dual views
-	await page.getByRole("button", { name: /2026-10-16/ }).first().click();
+	await page
+		.getByRole("button", { name: /2026-10-16/ })
+		.first()
+		.click();
 	await page.getByRole("tab", { name: /团队日报/ }).waitFor({ timeout: 10_000 });
-	check((await page.locator("article").innerText()).includes("## 成果") || (await page.locator("article").innerText()).includes("成果"), "team draft markdown rendered");
+	const teamText = await page.locator("article").innerText();
+	for (const section of ["成果", "进行中", "阻塞", "下一步"]) {
+		check(teamText.includes(section), `team draft has section ${section}`);
+	}
 	await page.screenshot({ path: `${OUT}/2-team-view.png`, fullPage: true });
 	// 3. personal view with evidence back-references
 	await page.getByRole("tab", { name: /个人回顾/ }).click();
 	const personalText = await page.locator("article").innerText();
-	check(personalText.includes("事件 #"), "personal view carries evidence back-references");
+	// Evidence back-link must be a real, clickable deep link to the event.
+	const evidenceLink = page.locator("article a", { hasText: /^事件 #/ }).first();
+	check((await evidenceLink.count()) > 0, "personal view renders evidence links");
+	const [popup] = await Promise.all([
+		page.context().waitForEvent("page", { timeout: 10_000 }),
+		evidenceLink.click(),
+	]);
+	await popup.waitForURL(/\/sessions\/e2e-main\?tab=activity#event-\d+/, { timeout: 10_000 });
+	check(true, `evidence link navigated to ${popup.url()}`);
+	await popup.close();
 	check(personalText.includes("目标与指令"), "personal view labels fact categories");
 	check(personalText.includes("助手自述"), "claims stay separated from results");
 	await page.screenshot({ path: `${OUT}/3-personal-view.png`, fullPage: true });
@@ -47,8 +66,25 @@ try {
 	await textarea.fill(`${await textarea.inputValue()}\n## 人工补充\n- 浏览器验收补充说明`);
 	await page.getByRole("button", { name: /保存为人工版本并采用/ }).click();
 	await page.getByRole("tab", { name: /人工编辑/ }).waitFor({ timeout: 10_000 });
-	check((await page.locator("article").innerText()).includes("人工补充"), "manual edit saved and rendered");
-	check(await page.getByRole("tab", { name: /已采用/ }).count() > 0, "manual version marked adopted");
+	check(
+		(await page.locator("article").innerText()).includes("人工补充"),
+		"manual edit saved and rendered",
+	);
+	check(
+		(await page.getByRole("tab", { name: /已采用/ }).count()) > 0,
+		"manual version marked adopted",
+	);
+	// Persistence: reload the page — the manual version survives server-side.
+	await page.reload({ waitUntil: "networkidle" });
+	await page
+		.getByRole("button", { name: /2026-10-16/ })
+		.first()
+		.click();
+	await page.getByRole("tab", { name: /人工编辑/ }).waitFor({ timeout: 10_000 });
+	check(
+		(await page.locator("article").innerText()).includes("人工补充"),
+		"manual edit persists after reload",
+	);
 	await page.screenshot({ path: `${OUT}/5-manual-edit.png`, fullPage: true });
 } finally {
 	await browser.close();

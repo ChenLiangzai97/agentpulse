@@ -479,7 +479,7 @@ describe("deterministic renders (fixed fact set)", () => {
 		expect(md).toContain("# 个人回顾 · 2026-10-17");
 		expect(md).toContain(FACT_CATEGORY_LABELS_ZH.agent_claim);
 		expect(md).toContain(FACT_CATEGORY_LABELS_ZH.verified_result);
-		expect(md).toContain("（事件 #14，已验证）");
+		expect(md).toContain("[事件 #14](/sessions/s-1?tab=activity#event-14)，已验证");
 		expect(md.indexOf(FACT_CATEGORY_LABELS_ZH.user_goal)).toBeLessThan(
 			md.indexOf(FACT_CATEGORY_LABELS_ZH.verified_result),
 		);

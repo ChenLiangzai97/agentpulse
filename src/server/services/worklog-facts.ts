@@ -309,10 +309,14 @@ export function renderPersonalReview(input: {
 			const group = facts.filter((f) => f.category === category);
 			if (!group.length) continue;
 			lines.push(`### ${FACT_CATEGORY_LABELS_ZH[category]}`);
-			for (const fact of group)
+			for (const fact of group) {
+				// Clickable evidence back-link (AGEN-69 scheme): opens the
+				// session's activity tab and flashes the exact event.
+				const href = `/sessions/${encodeURIComponent(fact.sessionId)}?tab=activity#event-${fact.evidenceEventId}`;
 				lines.push(
-					`- ${fact.text}（事件 #${fact.evidenceEventId}${fact.confidence === "verified" ? "，已验证" : ""}）`,
+					`- ${fact.text}（[事件 #${fact.evidenceEventId}](${href})${fact.confidence === "verified" ? "，已验证" : ""}）`,
 				);
+			}
 		}
 		sections.push(lines.join("\n"));
 	}
