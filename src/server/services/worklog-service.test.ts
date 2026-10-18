@@ -343,16 +343,19 @@ test("running or failed tools cannot be laundered into verified results", async 
 	expect((run.facts ?? []).every((f) => f.confidence === "stated")).toBe(true);
 });
 
-test("tool evidence backs verified results and occurrence times bind to source events", async () => {
+test("tool output never auto-verifies; occurrence times bind to source events", async () => {
 	await seed("toolev", "2026-01-01 05:00:00", "请运行回归");
 	await seed("toolev", "2026-01-01 05:30:00", "bash", "tool_event", {
 		eventType: "PostToolUse",
 		toolResponse: "20 passed, 0 failed",
 	});
 	const run = await runWorklog("2026-01-01");
-	const verified = (run.facts ?? []).filter((f) => f.category === "verified_result");
-	expect(verified).toHaveLength(1);
-	expect(verified[0]?.confidence).toBe("verified");
+	// Completed, passing-looking tool output is real evidence the USER can
+	// inspect, but the generic pipeline grants no verified_result without a
+	// trusted verifier marker — the fact stays a plain execution.
+	expect((run.facts ?? []).some((f) => f.category === "verified_result")).toBe(false);
+	expect((run.facts ?? []).some((f) => f.category === "tool_action")).toBe(true);
+	expect((run.facts ?? []).every((f) => f.confidence === "stated")).toBe(true);
 	const rows = await getDb()
 		.select({ id: events.id, createdAt: events.createdAt })
 		.from(events)

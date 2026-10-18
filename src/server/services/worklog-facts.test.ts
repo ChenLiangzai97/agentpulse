@@ -22,7 +22,7 @@ function event(
 	category: string,
 	content: string,
 	createdAt = "2026-10-18 02:00:00",
-	extra?: Partial<Pick<ChunkEvent, "eventType" | "toolResponse">>,
+	extra?: Partial<Pick<ChunkEvent, "eventType" | "toolResponse" | "verifiedPass">>,
 ): ChunkEvent {
 	return { id, category, content, createdAt, ...extra };
 }
@@ -211,31 +211,61 @@ describe("conservative copy dedup", () => {
 });
 
 describe("evidence-type classification constraints", () => {
-	test("verified_result backed only by an assistant message is downgraded to agent_claim", () => {
+	test("the generic pipeline never grants verified_result — ordinary output is not proof of success", () => {
 		const raw = JSON.stringify({
 			facts: [
 				{ category: "verified_result", text: "自称测试全过", evidenceEventId: 5 },
-				{ category: "verified_result", text: "测试输出 20/20 通过", evidenceEventId: 7 },
+				{ category: "verified_result", text: "读取了文件并声称验证", evidenceEventId: 7 },
 			],
 		});
 		const parsed = parseFacts(
 			raw,
 			ctx("s", [
 				event(5, "assistant_message", "我认为完成了"),
+				// Completed bash tool whose output is a plain file listing — it does
+				// not match any failure pattern, but it is NOT verification either.
 				event(7, "tool_event", "bash", "2026-10-18 02:00:00", {
 					eventType: "PostToolUse",
-					toolResponse: "20 passed, 0 failed",
+					toolResponse: "README.md  package.json  src/  tests/",
 				}),
 			]),
 		);
 		expect(parsed.parseFailed).toBe(false);
-		expect(parsed.downgraded).toBe(1);
-		const categories = parsed.facts.map((f) => f.category).sort();
-		expect(categories).toEqual(["agent_claim", "verified_result"]);
-		const verified = parsed.facts.find((f) => f.category === "verified_result");
-		const claim = parsed.facts.find((f) => f.category === "agent_claim");
-		expect(verified?.confidence).toBe("verified");
-		expect(claim?.confidence).toBe("stated");
+		expect(parsed.downgraded).toBe(2);
+		// Assistant citation → claim; tool citation → plain execution.
+		expect(parsed.facts.map((f) => f.category).sort()).toEqual(["agent_claim", "tool_action"]);
+		expect(parsed.facts.every((f) => f.confidence === "stated")).toBe(true);
+	});
+
+	test("only a trusted verifier marker on a completed tool can yield verified_result", () => {
+		const raw = JSON.stringify({
+			facts: [{ category: "verified_result", text: "回归 20/20 通过", evidenceEventId: 7 }],
+		});
+		const ok = parseFacts(
+			raw,
+			ctx("s", [
+				event(7, "tool_event", "bash", "2026-10-18 02:00:00", {
+					eventType: "PostToolUse",
+					toolResponse: "20 passed, 0 failed",
+					verifiedPass: true,
+				}),
+			]),
+		);
+		expect(ok.facts[0].category).toBe("verified_result");
+		expect(ok.facts[0].confidence).toBe("verified");
+		// The marker alone is not enough: a failing or non-completed tool with
+		// the marker still cannot verify.
+		const failing = parseFacts(
+			raw,
+			ctx("s", [
+				event(7, "tool_event", "bash", "2026-10-18 02:00:00", {
+					eventType: "PostToolUse",
+					toolResponse: "3 failed, 47 passed",
+					verifiedPass: true,
+				}),
+			]),
+		);
+		expect(failing.facts[0].category).toBe("tool_action");
 	});
 
 	test("RUNNING tools falsely labeled verified become tool_action", () => {
@@ -323,7 +353,8 @@ describe("evidence-type classification constraints", () => {
 			);
 			expect(parsed.facts[0].category).toBe("tool_action");
 		}
-		// "0 failed" is a PASSING shape and must NOT be rejected.
+		// Passing-shaped output STILL does not verify on its own (round 6:
+		// not-matching-the-deny-list is not proof of success).
 		const pass = parseFacts(
 			JSON.stringify({
 				facts: [{ category: "verified_result", text: "全部通过", evidenceEventId: 7 }],
@@ -335,7 +366,7 @@ describe("evidence-type classification constraints", () => {
 				}),
 			]),
 		);
-		expect(pass.facts[0].category).toBe("verified_result");
+		expect(pass.facts[0].category).toBe("tool_action");
 	});
 
 	test("user_goal cited on an assistant message becomes agent_claim; tool_action needs tool_event", () => {

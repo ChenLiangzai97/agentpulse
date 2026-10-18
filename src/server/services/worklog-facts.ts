@@ -99,7 +99,7 @@ export const FACT_EXTRACTION_SYSTEM_PROMPT = `你负责从 Agent 会话记录中
 只输出 JSON：{"facts":[{"category":"user_goal|agent_claim|tool_action|verified_result|open_item","text":"一句话事实（中文，≤200字）","evidenceEventId":<对应事件id>,"projectHint":<可选项目线索>}]}
 规则：
 - user_goal 只能引用 prompt 行；agent_claim 只能引用 assistant_message 行（助手自称完成但无验证证据）。
-- tool_event 行带有状态：status=completed 且含输出、status=running/pending（运行中）、status=error（失败）。tool_action 可引用任何工具行；verified_result 只能引用"status=completed 且输出确为验证性结果（如测试/命令输出通过）"的工具行——运行中或失败的工具绝不是验证结果。
+- tool_event 行带有状态：status=completed 且含输出、status=running/pending（运行中）、status=error（失败）。tool_action 可引用任何工具行。verified_result 只有当工具行带有受信 [verified] 标记（由独立验证器写入，当前不会出现）时才允许；普通输出（哪怕是测试输出）不足以支撑 verified_result，请一律使用 tool_action，由用户查看原始证据自行核验。
 - 引用类型或工具状态不符会被服务端降级，不会照单全收。
 - 严禁编造；每条事实必须对应一个输入事件 id；同一事件可以抽多条不同事实。
 - 不抽取寒暄、重复调试与隐藏运行上下文。`;
@@ -169,10 +169,16 @@ function downgrade(category: FactCategory, event: ChunkEvent): FactCategory {
 		if (category === "user_goal") return "agent_claim";
 		return "user_goal";
 	}
-	// Right evidence kind: verified results additionally need an explicitly
-	// completed tool whose output does not look failing — running, failed,
-	// unknown-lifecycle, quiet and failure-output tools stay plain executions.
-	if (category === "verified_result" && toolEvidenceGrade(event) !== "completed_output")
+	// CONSERVATIVE VERIFICATION GATE (review round 6): output that merely
+	// fails to match the failure deny-list is NOT proof of success — a file
+	// listing or an untranslated error passes that filter too. The generic
+	// pipeline therefore NEVER grants "verified result": only a trusted
+	// structured pass marker from a future verifier (verifiedPass) can, and
+	// nothing sets it yet. Everything else stays a plain execution.
+	if (
+		category === "verified_result" &&
+		!(event.verifiedPass && toolEvidenceGrade(event) === "completed_output")
+	)
 		return "tool_action";
 	return category;
 }
@@ -187,6 +193,12 @@ export interface ChunkEvent {
 	eventType?: string | null;
 	/** Recorded tool output/error text, when the event is a tool event. */
 	toolResponse?: string | null;
+	/**
+	 * Trusted structured pass marker. ONLY future verifier integrations may
+	 * set this (never the model, never generic tool state). While nothing
+	 * sets it, the generic pipeline cannot grant "verified result" at all.
+	 */
+	verifiedPass?: boolean;
 }
 
 export interface ExtractionSessionContext {
@@ -255,8 +267,8 @@ export function parseFacts(raw: unknown, ctx: ExtractionSessionContext): ParsedF
 			text,
 			evidenceEventId: event.id,
 			projectHint: candidate.projectHint ? candidate.projectHint.slice(0, 120) : null,
-			// Only a surviving verified_result (completed tool WITH output) is
-			// ever marked verified — the model cannot grant this label.
+			// Only a verifier-backed verified_result is ever marked verified —
+			// the model cannot grant this label, and today nothing can.
 			confidence: category === "verified_result" ? "verified" : "stated",
 			contentKey,
 			lineageRoot,
