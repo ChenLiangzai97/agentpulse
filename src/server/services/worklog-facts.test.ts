@@ -22,8 +22,9 @@ function event(
 	category: string,
 	content: string,
 	createdAt = "2026-10-18 02:00:00",
+	extra?: Partial<Pick<ChunkEvent, "eventType" | "toolResponse">>,
 ): ChunkEvent {
-	return { id, category, content, createdAt };
+	return { id, category, content, createdAt, ...extra };
 }
 
 function ctx(sessionId: string, events: ChunkEvent[]) {
@@ -47,68 +48,106 @@ function fact(
 		confidence: overrides.confidence ?? "stated",
 		contentKey: overrides.contentKey ?? hashContent(`${overrides.category}:${overrides.text}`),
 		lineageRoot: overrides.lineageRoot ?? lineageRootOf(overrides.sessionId),
-		eventContentKey: overrides.eventContentKey ?? hashContent(overrides.text),
+		copyOf: overrides.copyOf ?? null,
 		...overrides,
 	} as WorklogFact;
 }
 
-describe("fork-copy dedup is lineage-scoped", () => {
-	test("copies inside one lineage root count once; first occurrence wins", () => {
-		const parent = fact({
+describe("conservative copy dedup", () => {
+	test("facts without a proven copy mapping are always kept", () => {
+		const a = fact({
 			sessionId: "s-parent",
-			lineageRoot: "s-parent",
 			category: "verified_result",
-			text: "修复了登录 403，回归测试通过",
+			text: "同样的工作",
 			evidenceEventId: 11,
-			eventContentKey: "copy-abc",
 		});
 		const child = fact({
 			sessionId: "s-parent:opencode-child:ses_x",
-			lineageRoot: "s-parent",
 			category: "verified_result",
-			text: "修复了登录 403，回归测试通过",
+			text: "同样的工作",
 			evidenceEventId: 52,
-			eventContentKey: "copy-abc",
 		});
-		const kept = dedupeFacts([parent, child]);
+		const other = fact({
+			sessionId: "hostB-proj",
+			category: "verified_result",
+			text: "同样的工作",
+			evidenceEventId: 61,
+		});
+		// Same text, shared lineage, different sessions — no PROOF of copying.
+		expect(dedupeFacts([a, child, other])).toHaveLength(3);
+	});
+
+	test("several distinct facts from ONE event are all kept", () => {
+		const fromSameEvent = [
+			fact({ sessionId: "s", category: "tool_action", text: "执行了回归", evidenceEventId: 7 }),
+			fact({
+				sessionId: "s",
+				category: "verified_result",
+				text: "回归 20/20 通过",
+				evidenceEventId: 7,
+			}),
+			fact({ sessionId: "s", category: "open_item", text: "覆盖率未达标", evidenceEventId: 7 }),
+		];
+		expect(dedupeFacts(fromSameEvent)).toHaveLength(3);
+	});
+
+	test("re-running the identical command keeps every execution", () => {
+		const first = fact({
+			sessionId: "s",
+			category: "tool_action",
+			text: "执行 make test",
+			evidenceEventId: 3,
+		});
+		const second = fact({
+			sessionId: "s",
+			category: "tool_action",
+			text: "执行 make test",
+			evidenceEventId: 9,
+		});
+		expect(dedupeFacts([first, second])).toHaveLength(2);
+	});
+
+	test("sibling branches independently producing the same text are not merged", () => {
+		const branchA = fact({
+			sessionId: "root:opencode-child:ses_a",
+			category: "user_goal",
+			text: "各自完成了同样措辞的目标",
+			evidenceEventId: 4,
+		});
+		const branchB = fact({
+			sessionId: "root:opencode-child:ses_b",
+			category: "user_goal",
+			text: "各自完成了同样措辞的目标",
+			evidenceEventId: 8,
+		});
+		expect(dedupeFacts([branchA, branchB])).toHaveLength(2);
+	});
+
+	test("a PROVEN copy mapping (copyOf) collapses duplicates onto the original", () => {
+		const original = fact({
+			sessionId: "s-parent",
+			category: "tool_action",
+			text: "构建通过",
+			evidenceEventId: 5,
+			copyOf: null,
+		});
+		const copy1 = fact({
+			sessionId: "s-parent:opencode-child:ses_x",
+			category: "tool_action",
+			text: "构建通过",
+			evidenceEventId: 15,
+			copyOf: "s-parent:5",
+		});
+		const copy2 = fact({
+			sessionId: "s-parent:opencode-child:ses_y",
+			category: "tool_action",
+			text: "构建通过",
+			evidenceEventId: 22,
+			copyOf: "s-parent:5",
+		});
+		const kept = dedupeFacts([original, copy1, copy2]);
 		expect(kept).toHaveLength(1);
 		expect(kept[0].sessionId).toBe("s-parent");
-	});
-
-	test("unrelated sessions doing the same work are NOT merged", () => {
-		const a = fact({
-			sessionId: "hostA-project",
-			lineageRoot: "hostA-project",
-			category: "verified_result",
-			text: "完成了同样的迁移",
-			eventContentKey: "same",
-		});
-		const b = fact({
-			sessionId: "hostB-project",
-			lineageRoot: "hostB-project",
-			category: "verified_result",
-			text: "完成了同样的迁移",
-			eventContentKey: "same",
-		});
-		expect(dedupeFacts([a, b])).toHaveLength(2);
-	});
-
-	test("same lineage but different source content stays separate", () => {
-		const a = fact({
-			sessionId: "s:opencode-child:x",
-			lineageRoot: "s",
-			category: "user_goal",
-			text: "目标 A",
-			eventContentKey: "ea",
-		});
-		const b = fact({
-			sessionId: "s",
-			lineageRoot: "s",
-			category: "user_goal",
-			text: "目标 B",
-			eventContentKey: "eb",
-		});
-		expect(dedupeFacts([a, b])).toHaveLength(2);
 	});
 
 	test("lineageRootOf strips nested child segments", () => {
@@ -130,13 +169,70 @@ describe("evidence-type classification constraints", () => {
 			raw,
 			ctx("s", [
 				event(5, "assistant_message", "我认为完成了"),
-				event(7, "tool_event", "20 passed, 0 failed"),
+				event(7, "tool_event", "bash", "2026-10-18 02:00:00", {
+					eventType: "PostToolUse",
+					toolResponse: "20 passed, 0 failed",
+				}),
 			]),
 		);
 		expect(parsed.parseFailed).toBe(false);
 		expect(parsed.downgraded).toBe(1);
 		const categories = parsed.facts.map((f) => f.category).sort();
 		expect(categories).toEqual(["agent_claim", "verified_result"]);
+		const verified = parsed.facts.find((f) => f.category === "verified_result");
+		const claim = parsed.facts.find((f) => f.category === "agent_claim");
+		expect(verified?.confidence).toBe("verified");
+		expect(claim?.confidence).toBe("stated");
+	});
+
+	test("RUNNING tools falsely labeled verified become tool_action", () => {
+		const raw = JSON.stringify({
+			facts: [
+				{ category: "verified_result", text: "测试通过了（其实在运行中）", evidenceEventId: 7 },
+			],
+		});
+		const parsed = parseFacts(
+			raw,
+			ctx("s", [
+				event(7, "tool_event", "bash", "2026-10-18 02:00:00", { eventType: "PreToolUse" }),
+			]),
+		);
+		expect(parsed.facts[0].category).toBe("tool_action");
+		expect(parsed.facts[0].confidence).toBe("stated");
+		expect(parsed.downgraded).toBe(1);
+	});
+
+	test("FAILED tools falsely labeled verified become tool_action", () => {
+		const raw = JSON.stringify({
+			facts: [{ category: "verified_result", text: "构建成功（实际失败）", evidenceEventId: 8 }],
+		});
+		const parsed = parseFacts(
+			raw,
+			ctx("s", [
+				event(8, "tool_event", "bash", "2026-10-18 02:00:00", {
+					eventType: "PostToolUseFailure",
+					toolResponse: "exit 1: 3 tests failed",
+				}),
+			]),
+		);
+		expect(parsed.facts[0].category).toBe("tool_action");
+		expect(parsed.facts[0].confidence).toBe("stated");
+	});
+
+	test("completed tools WITHOUT output cannot be verified either", () => {
+		const raw = JSON.stringify({
+			facts: [{ category: "verified_result", text: "悄悄完成了", evidenceEventId: 9 }],
+		});
+		const parsed = parseFacts(
+			raw,
+			ctx("s", [
+				event(9, "tool_event", "edit", "2026-10-18 02:00:00", {
+					eventType: "PostToolUse",
+					toolResponse: "",
+				}),
+			]),
+		);
+		expect(parsed.facts[0].category).toBe("tool_action");
 	});
 
 	test("user_goal cited on an assistant message becomes agent_claim; tool_action needs tool_event", () => {
@@ -149,7 +245,13 @@ describe("evidence-type classification constraints", () => {
 		});
 		const parsed = parseFacts(
 			raw,
-			ctx("s", [event(5, "assistant_message", "…"), event(7, "tool_event", "build ok")]),
+			ctx("s", [
+				event(5, "assistant_message", "…"),
+				event(7, "tool_event", "bash", "2026-10-18 02:00:00", {
+					eventType: "PostToolUse",
+					toolResponse: "build ok",
+				}),
+			]),
 		);
 		expect(parsed.facts.map((f) => f.category)).toEqual([
 			"agent_claim",
@@ -188,7 +290,7 @@ describe("server-derived occurrence time and identity", () => {
 			ctx("s", [event(9, "prompt", "目标内容", "2026-10-17 09:30:00")]),
 		);
 		expect(parsed.facts[0].occurredAt).toBe("2026-10-17 09:30:00");
-		expect(parsed.facts[0].eventContentKey).toBe(hashContent("目标内容"));
+		expect(parsed.facts[0].copyOf).toBeNull();
 		expect(parsed.facts[0].lineageRoot).toBe("s");
 	});
 

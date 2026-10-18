@@ -51,8 +51,12 @@ export interface WorklogFact {
 	contentKey: string;
 	/** Root session of the lineage (`:opencode-child:` segments stripped). */
 	lineageRoot: string;
-	/** Server-derived hash of the cited SOURCE event content — fork copies match exactly. */
-	eventContentKey: string;
+	/**
+	 * Trusted copy reference (e.g. `sessionId:eventId` of the original event
+	 * this one was copied from), set only by ingestion paths that PROVE the
+	 * copy. Null when no copy mapping exists — such facts are always kept.
+	 */
+	copyOf: string | null;
 }
 
 /** Versioned output storage: regeneration appends, never overwrites. */

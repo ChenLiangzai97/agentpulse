@@ -9,14 +9,14 @@
 - `WorklogFact`：`id / sessionId / host / occurredAt(源事件发生时间) / category / text(脱敏截断) / evidenceEventId(证据事件 id) / projectHint / confidence / contentKey / lineageRoot(血缘根) / eventContentKey(源事件内容哈希)`。
 - 五类事实严格区分：`user_goal`（用户目标）、`agent_claim`（助手自述，未经核实）、`tool_action`（实际执行）、`verified_result`（有验证证据）、`open_item`（未完成/待办）。
 - **服务端权威字段（2026-10-18 第四轮评审修订）**：`occurredAt`、`eventContentKey`、`lineageRoot`、`id/contentKey` 全部由被引用的源事件派生，模型无法指定；采集范围扩展到 `tool_event`（真实工具证据进入分片）。
-- **分类受证据类型约束**：`verified_result`/`tool_action` 只能引用 tool_event 行，`agent_claim` 只能引用 assistant_message 行，`user_goal` 只能引用 prompt 行；不符时服务端强制降级（如助手消息上的"已验证"→`agent_claim`），降级计入 factMeta.downgraded。助手自述不能仅凭模型标签升级为验证成果。
-- **fork 继承去重（血缘限定）**：仅当两事实的 `lineageRoot` 相同（`:opencode-child:` 后缀剥离后的根会话）且源事件内容哈希一致时才算历史拷贝，保留首见；不同主机/项目独立完成的相同工作不合并。
+- **分类受证据类型与工具状态双重约束（第五轮评审修订）**：`verified_result`/`tool_action` 只能引用 tool_event 行，`agent_claim` 只能引用 assistant_message 行，`user_goal` 只能引用 prompt 行；且 `verified_result` 额外要求该工具事件**机械化分级为 completed_output**（eventType=PostToolUse 且 toolResponse 非空）——运行中（PreToolUse）、失败（PostToolUseFailure）、无输出的完成工具一律降级为 `tool_action`。`confidence=verified` 仅授予存活的 verified_result，模型无法凭标签授予。降级计入 factMeta.downgraded。
+- **fork 去重改为保守保留（第五轮评审修订）**：内容相同 + 血缘命名不构成继承证明。去重仅在存在**可信复制映射**（`copyOf` 指向原始事件 `sessionId:eventId`，由能证明拷贝的采集路径写入）时发生，同组保留首见；当前无任何采集路径写入 copyOf，因此一律保留——同一事件多条事实、同会话重复执行相同命令、同父不同分支独立产生的相同内容均不删除。待 P1 受管 fork 落地记录事件级拷贝映射后再启用真实去重。
 - **不可信输出防线**：模型输出为 JSON；`evidenceEventId` 必须落在该分片真实事件集合内，否则整条丢弃并计数；`text` 截断 400 字；**解析失败显式失败**（runWorklog 抛错、run 状态 failed），不再伪装为空日志。
 - **个人回顾**：纯确定性渲染（无模型调用）——按会话分组、五类分节、证据以 `事件 #id` 可回溯、`agent_claim` 与 `verified_result` 标签隔离，防止"自述完成"被读成"业务完成"。
 - **团队日报草稿**：确定性事实摘要（去证据噪音、类别标签、已验证标记）+ 单次模型调用按「成果/进行中/阻塞/下一步」四节产出；系统提示明确禁止把自述写成成果。
 - **版本化**：`appendVersion` 只追加不覆盖；`source: facts|manual` 区分生成稿与人工编辑稿。
 
-测试（第四轮后 28 用例）：`worklog-facts.test.ts` 14 用例——血缘限定去重（同根拷贝合并/无关会话同文不合并/同根不同内容不合并/嵌套 child 剥离）、证据类型约束（助手消息上的 verified 降级、user_goal 错引降级、越界证据拒绝）、服务端派生时间（模型 1970 假时间被忽略）、解析失败显式化、确定性双渲染、版本追加；`worklog-service.test.ts` 14 用例——含对抗 stub（HOSTILE 标记伪造 verified+confidence）、工具证据支撑 verified、时间绑定源事件、解析失败 run=failed、血缘去重服务级回归。
+测试（第五轮后 34 用例）：`worklog-facts.test.ts` 19 用例——保守去重（无映射一律保留/单事件多事实/重复命令保留/同父兄弟分支不合并/copyOf 映射组合并/嵌套 child 剥离）、证据约束（助手消息 verified 降级、**运行中工具伪标 verified→tool_action、失败工具伪标 verified→tool_action、无输出完成工具不可 verified**、user_goal 错引降级、越界证据拒绝、confidence=verified 仅限存活 verified）、服务端派生时间、解析失败显式化、确定性双渲染、版本追加；`worklog-service.test.ts` 15 用例——含对抗 stub（HOSTILE 伪造 verified+confidence）、**运行中/失败工具服务级对抗**、工具输出支撑 verified（confidence=verified）、时间绑定源事件、解析失败 run=failed、保守保留服务级回归。
 
 **测试环境注意**：模型 stub 走 loopback（127.0.0.1），代理环境变量会把请求路由到代理导致 502。复跑命令：
 

@@ -318,6 +318,8 @@ export async function runWorklog(
 							category: events.category,
 							content: events.content,
 							createdAt: events.createdAt,
+							eventType: events.eventType,
+							toolResponse: events.toolResponse,
 						})
 						.from(events)
 						.where(
@@ -333,7 +335,19 @@ export async function runWorklog(
 						.limit(100);
 					if (!batch.length) break;
 					for (const event of batch) {
-						const text = `[#${event.id}] ${event.category}: ${event.content ?? ""}\n`;
+						// Tool lines surface the mechanical status and an output
+						// excerpt so extraction can cite real verification output.
+						const toolSuffix =
+							event.category === "tool_event"
+								? ` [status=${
+										event.eventType === "PreToolUse"
+											? "running"
+											: event.eventType === "PostToolUseFailure"
+												? "error"
+												: "completed"
+									}] ${event.toolResponse?.slice(0, 400) ?? ""}`
+								: "";
+						const text = `[#${event.id}] ${event.category}: ${event.content ?? ""}${toolSuffix}\n`;
 						for (let offset = 0; offset < text.length; offset += 12000) {
 							const part = text.slice(offset, offset + 12000);
 							if (chunk.length + part.length > 16000) await extract();
@@ -344,6 +358,8 @@ export async function runWorklog(
 							category: event.category ?? "unknown",
 							createdAt: event.createdAt,
 							content: event.content,
+							eventType: event.eventType,
+							toolResponse: event.toolResponse,
 						});
 						after = event.id;
 					}

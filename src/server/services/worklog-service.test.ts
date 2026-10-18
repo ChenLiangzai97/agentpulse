@@ -116,14 +116,28 @@ beforeEach(async () => {
 	release = null;
 });
 afterAll(() => stub.stop(true));
-async function seed(id: string, at: string, content: string, category = "prompt") {
+async function seed(
+	id: string,
+	at: string,
+	content: string,
+	category = "prompt",
+	tool?: { eventType?: string; toolResponse?: string },
+) {
 	await getDb()
 		.insert(sessions)
 		.values({ sessionId: id, agentType: "codex_cli", displayName: id })
 		.onConflictDoNothing();
 	await getDb()
 		.insert(events)
-		.values({ sessionId: id, eventType: "test", category, content, createdAt: at, rawPayload: {} });
+		.values({
+			sessionId: id,
+			eventType: tool?.eventType ?? "test",
+			category,
+			content,
+			createdAt: at,
+			toolResponse: tool?.toolResponse ?? null,
+			rawPayload: {},
+		});
 }
 async function waitUntil(fn: () => boolean) {
 	for (let i = 0; i < 200; i++) {
@@ -280,10 +294,11 @@ test("scheduler follows the configured timezone, catches up complete days and ne
 	expect(deliveries).toHaveLength(1);
 });
 
-test("fork copies dedupe only inside a lineage; unrelated same-text work stays separate", async () => {
+test("without a proven copy mapping, same-text work is conservatively kept", async () => {
 	await seed("parent", "2026-01-01 05:00:00", "完成了迁移脚本并验证");
 	await seed("parent", "2026-01-01 05:30:00", "迁移全部通过", "assistant_message");
-	// A managed child session (lineage convention) ingests content-copied turns.
+	// A managed child session ingests identical content — but content equality
+	// plus lineage naming is NOT proof of copying, so nothing is dropped yet.
 	await seed("parent:opencode-child:ses_t", "2026-01-01 07:00:00", "完成了迁移脚本并验证");
 	await seed(
 		"parent:opencode-child:ses_t",
@@ -291,22 +306,13 @@ test("fork copies dedupe only inside a lineage; unrelated same-text work stays s
 		"迁移全部通过",
 		"assistant_message",
 	);
-	// Unrelated sessions on other hosts/projects did the same text of work.
+	// Unrelated sessions doing the same work.
 	await seed("hostA-proj", "2026-01-01 08:00:00", "完成了迁移脚本并验证");
 	await seed("hostB-proj", "2026-01-01 09:00:00", "完成了迁移脚本并验证");
 	const run = await runWorklog("2026-01-01");
 	expect(run.sessionIds).toHaveLength(4);
-	// parent(2) collapses with its child copies; the two unrelated sessions
-	// keep their own facts: 2 + 1 + 1 = 4, exactly 2 fork copies deduped.
-	expect(run.facts).toHaveLength(4);
-	expect(run.factMeta?.deduped).toBe(2);
-	// Copies collapse onto the FIRST occurrence (the parent session).
-	for (const fact of run.facts ?? []) {
-		if (fact.text.includes("迁移全部通过")) expect(fact.sessionId).toBe("parent");
-	}
-	const unrelated = (run.facts ?? []).filter((f) => f.sessionId.startsWith("host"));
-	expect(unrelated).toHaveLength(2);
-	expect(new Set(unrelated.map((f) => f.sessionId)).size).toBe(2);
+	expect(run.facts).toHaveLength(6);
+	expect(run.factMeta?.deduped).toBe(0);
 });
 
 test("a hostile model cannot launder assistant claims into verified results", async () => {
@@ -321,12 +327,32 @@ test("a hostile model cannot launder assistant claims into verified results", as
 	expect((run.facts ?? []).every((f) => f.confidence !== "verified")).toBe(true);
 });
 
+test("running or failed tools cannot be laundered into verified results", async () => {
+	await seed("toolstate", "2026-01-01 05:00:00", "HOSTILE_MARKER 开始验证");
+	await seed("toolstate", "2026-01-01 05:10:00", "bash", "tool_event", { eventType: "PreToolUse" });
+	await seed("toolstate", "2026-01-01 05:20:00", "bash", "tool_event", {
+		eventType: "PostToolUseFailure",
+		toolResponse: "exit 1: suite failed",
+	});
+	const run = await runWorklog("2026-01-01");
+	// The stub labels every tool line verified_result; the server must return
+	// plain tool executions with stated confidence.
+	expect((run.facts ?? []).some((f) => f.category === "verified_result")).toBe(false);
+	expect((run.facts ?? []).some((f) => f.category === "tool_action")).toBe(true);
+	expect(run.factMeta?.downgraded).toBe(2);
+	expect((run.facts ?? []).every((f) => f.confidence === "stated")).toBe(true);
+});
+
 test("tool evidence backs verified results and occurrence times bind to source events", async () => {
 	await seed("toolev", "2026-01-01 05:00:00", "请运行回归");
-	await seed("toolev", "2026-01-01 05:30:00", "20 passed, 0 failed", "tool_event");
+	await seed("toolev", "2026-01-01 05:30:00", "bash", "tool_event", {
+		eventType: "PostToolUse",
+		toolResponse: "20 passed, 0 failed",
+	});
 	const run = await runWorklog("2026-01-01");
 	const verified = (run.facts ?? []).filter((f) => f.category === "verified_result");
 	expect(verified).toHaveLength(1);
+	expect(verified[0]?.confidence).toBe("verified");
 	const rows = await getDb()
 		.select({ id: events.id, createdAt: events.createdAt })
 		.from(events)
