@@ -68,3 +68,94 @@ test("a team member's manage key cannot aggregate instance-wide logs", async () 
 		expect(response.status).toBe(403);
 	}
 });
+
+test("run detail exposes dual views and adopt switches the export version", async () => {
+	const { key } = await createApiKey("worklog-detail", ["manage"]);
+	// Inject a completed run the way the service persists it.
+	const versionPersonal = {
+		versionId: "v1-personal-test",
+		kind: "personal" as const,
+		markdown: "# 个人回顾\n- 目标：完成 X（事件 #1）",
+		createdAt: "2026-01-02T00:05:00.000Z",
+		generator: { model: "m", source: "facts" as const },
+	};
+	const versionTeam = {
+		versionId: "v2-team-test",
+		kind: "team" as const,
+		markdown: "## 成果\n- 完成 X",
+		createdAt: "2026-01-02T00:05:01.000Z",
+		generator: { model: "m", source: "facts" as const },
+	};
+	await upsertSetting(
+		"worklog.config",
+		{
+			enabled: false,
+			timezone: "Asia/Shanghai",
+			time: "00:05",
+			providerId: "p",
+			model: "m",
+			documentUrl: "",
+			documentId: "",
+		},
+		{ allowProtected: true },
+	);
+	await upsertSetting(
+		"worklog.run.Asia/Shanghai.2026-01-01",
+		{
+			date: "2026-01-01",
+			timezone: "Asia/Shanghai",
+			status: "ready",
+			markdown: versionTeam.markdown,
+			sessionIds: ["s1"],
+			error: null,
+			updatedAt: "2026-01-02T00:05:02.000Z",
+			facts: [
+				{
+					id: "f1",
+					sessionId: "s1",
+					host: null,
+					occurredAt: "2026-01-01T01:00:00.000Z",
+					category: "user_goal",
+					text: "完成 X",
+					evidenceEventId: 1,
+					projectHint: null,
+					confidence: "stated",
+					contentKey: "k1",
+				},
+			],
+			factMeta: { model: "m", extractedAt: "2026-01-02T00:05:00.000Z", rejected: 0, deduped: 0 },
+			versions: [versionPersonal, versionTeam],
+			adoptedVersionId: versionTeam.versionId,
+		},
+		{ allowProtected: true },
+	);
+	const detail = await app.request("/api/v1/worklog/runs/2026-01-01", {
+		headers: jsonHeaders(key),
+	});
+	expect(detail.status).toBe(200);
+	const body = (await detail.json()) as {
+		run: { versions: unknown[]; facts: unknown[]; adoptedVersionId: string };
+	};
+	expect(body.run.versions).toHaveLength(2);
+	expect(body.run.facts).toHaveLength(1);
+	expect(body.run.adoptedVersionId).toBe("v2-team-test");
+	const adopt = await app.request("/api/v1/worklog/runs/2026-01-01/adopt", {
+		method: "POST",
+		headers: jsonHeaders(key),
+		body: JSON.stringify({ versionId: "v1-personal-test" }),
+	});
+	expect(adopt.status).toBe(200);
+	const adopted = (await adopt.json()) as { run: { markdown: string; adoptedVersionId: string } };
+	expect(adopted.run.adoptedVersionId).toBe("v1-personal-test");
+	expect(adopted.run.markdown).toContain("# 个人回顾");
+	const badAdopt = await app.request("/api/v1/worklog/runs/2026-01-01/adopt", {
+		method: "POST",
+		headers: jsonHeaders(key),
+		body: JSON.stringify({ versionId: "v9-missing" }),
+	});
+	expect(badAdopt.status).toBe(404);
+	const missing = await app.request("/api/v1/worklog/runs/2026-01-05", {
+		headers: jsonHeaders(key),
+	});
+	expect(missing.status).toBe(404);
+});

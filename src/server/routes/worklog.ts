@@ -3,9 +3,11 @@ import { requireAuth } from "../auth/middleware.js";
 import { getRequestActor, requireOperatorScope } from "../auth/route-scope-policy.js";
 import { NotOwnerError, assertCanEditSessionNotes } from "../services/authorization.js";
 import {
+	adoptWorklogVersion,
 	discardWorklog,
 	getWorklogConfig,
 	getWorklogIncluded,
+	getWorklogRun,
 	listWorklogs,
 	queueWorklog,
 	saveWorklogConfig,
@@ -51,6 +53,30 @@ worklogRouter.post("/worklog/runs", async (c) => {
 		return c.json({ error: error instanceof Error ? error.message : "Unable to queue" }, 409);
 	}
 });
+worklogRouter.get("/worklog/runs/:date", async (c) => {
+	const date = c.req.param("date");
+	try {
+		const run = await getWorklogRun(date);
+		if (!run) return c.json({ error: "not_found" }, 404);
+		return c.json({ run });
+	} catch (error) {
+		return c.json({ error: error instanceof Error ? error.message : "invalid_date" }, 400);
+	}
+});
+
+worklogRouter.post("/worklog/runs/:date/adopt", async (c) => {
+	const date = c.req.param("date");
+	const body = (await c.req.json().catch(() => null)) as { versionId?: unknown } | null;
+	if (!body || typeof body.versionId !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(body.versionId))
+		return c.json({ error: "invalid_version" }, 400);
+	try {
+		return c.json({ run: await adoptWorklogVersion(date, body.versionId) });
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "adopt_failed";
+		return c.json({ error: message }, 404);
+	}
+});
+
 worklogRouter.delete("/worklog/runs/:date", async (c) => {
 	try {
 		await discardWorklog(c.req.param("date"));

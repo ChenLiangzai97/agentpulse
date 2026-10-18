@@ -10,42 +10,16 @@
  */
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import {
+	FACT_CATEGORIES,
+	FACT_CATEGORY_LABELS_ZH,
+	type FactCategory,
+	type WorklogFact,
+	type WorklogVersion,
+} from "../../shared/worklog.js";
 
-export const FACT_CATEGORIES = [
-	"user_goal",
-	"agent_claim",
-	"tool_action",
-	"verified_result",
-	"open_item",
-] as const;
-
-export type FactCategory = (typeof FACT_CATEGORIES)[number];
-
-export const FACT_CATEGORY_LABELS_ZH: Record<FactCategory, string> = {
-	user_goal: "目标与指令",
-	agent_claim: "助手自述（未经独立核实）",
-	tool_action: "实际执行",
-	verified_result: "已验证结果",
-	open_item: "未完成 / 待办",
-};
-
-export interface WorklogFact {
-	/** Stable identity: derived from session + evidence + content. */
-	id: string;
-	sessionId: string;
-	host: string | null;
-	/** ISO timestamp of the SOURCE event (occurrence time, not ingestion). */
-	occurredAt: string;
-	category: FactCategory;
-	/** Redacted, bounded prose. Never trusted as instructions. */
-	text: string;
-	/** Deep-linkable evidence: the events.id the fact was extracted from. */
-	evidenceEventId: number;
-	projectHint: string | null;
-	confidence: "stated" | "verified" | "inferred";
-	/** Normalized content hash — identical fork-copied turns share a key. */
-	contentKey: string;
-}
+export { FACT_CATEGORIES, FACT_CATEGORY_LABELS_ZH };
+export type { FactCategory, WorklogFact, WorklogVersion };
 
 const MAX_FACT_TEXT = 400;
 
@@ -212,15 +186,6 @@ export function renderTeamDraftInput(facts: WorklogFact[]): string {
 }
 
 export const TEAM_DRAFT_SYSTEM_PROMPT = `你负责把工作事实整理为团队日报草稿。输入按类别标注，其中"助手自述（未经独立核实）"不得写成成果。只输出 Markdown：四个小节「成果」「进行中」「阻塞」「下一步」。省略重复调试与内部实现细节；每条简洁一行；不添加输入之外的信息。`;
-
-/** Versioned output storage: regeneration appends, never overwrites. */
-export interface WorklogVersion {
-	versionId: string;
-	kind: "personal" | "team";
-	markdown: string;
-	createdAt: string;
-	generator: { model: string | null; source: "facts" | "manual" };
-}
 
 export function appendVersion(
 	versions: WorklogVersion[],

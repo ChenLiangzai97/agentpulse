@@ -356,6 +356,13 @@ export const api = {
 			body: JSON.stringify(config),
 		}),
 	getWorklogs: () => request<{ runs: WorklogRun[] }>("/worklog/runs"),
+	getWorklogRun: (date: string) =>
+		request<{ run: WorklogRun }>(`/worklog/runs/${encodeURIComponent(date)}`),
+	adoptWorklogVersion: (date: string, versionId: string) =>
+		request<{ run: WorklogRun }>(`/worklog/runs/${encodeURIComponent(date)}/adopt`, {
+			method: "POST",
+			body: JSON.stringify({ versionId }),
+		}),
 	runWorklog: (date: string, deliver: boolean) =>
 		request("/worklog/runs", { method: "POST", body: JSON.stringify({ date, deliver }) }),
 	discardWorklog: (date: string) =>

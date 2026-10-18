@@ -17,6 +17,7 @@ export function WorklogPage() {
 	const [loaded, setLoaded] = useState(false);
 	const [error, setError] = useState("");
 	const [selected, setSelected] = useState<string | null>(null);
+	const [viewVersionId, setViewVersionId] = useState<string | null>(null);
 	const refresh = useCallback(() => api.getWorklogs().then((r) => setRuns(r.runs)), []);
 	useEffect(() => {
 		void api
@@ -212,7 +213,62 @@ export function WorklogPage() {
 							</p>
 						)}
 						{current.status === "generating" && <p>正在总结会话，稍后自动刷新…</p>}
-						<MarkdownContent content={current.markdown} />
+						{current.factMeta && (
+							<p className="mb-3 text-xs text-muted-foreground">
+								事实 {current.facts?.length ?? 0} 条 · 去重 {current.factMeta.deduped} ·
+								无效引用丢弃 {current.factMeta.rejected} · 抽取模型 {current.factMeta.model}
+							</p>
+						)}
+						{(current.versions?.length ?? 0) > 1 && (
+							<div className="mb-3 flex flex-wrap gap-2" role="tablist" aria-label="视图版本">
+								{current.versions?.map((version) => (
+									<button
+										type="button"
+										role="tab"
+										aria-selected={
+											(viewVersionId ?? current.adoptedVersionId) === version.versionId
+										}
+										key={version.versionId}
+										className={`rounded border px-2 py-1 text-xs ${
+											(viewVersionId ?? current.adoptedVersionId) === version.versionId
+												? "border-primary bg-primary/10"
+												: ""
+										}`}
+										onClick={() => setViewVersionId(version.versionId)}
+									>
+										{version.kind === "personal" ? "个人回顾" : "团队日报"}
+										{version.generator.source === "manual" ? "（人工编辑）" : ""} ·{" "}
+										{new Date(version.createdAt).toLocaleTimeString()}
+										{current.adoptedVersionId === version.versionId ? " · 已采用" : ""}
+									</button>
+								))}
+							</div>
+						)}
+						<MarkdownContent
+							content={
+								current.versions?.find(
+									(v) => v.versionId === (viewVersionId ?? current.adoptedVersionId),
+								)?.markdown ?? current.markdown
+							}
+						/>
+						{current.status !== "delivered" &&
+							current.status !== "generating" &&
+							viewVersionId &&
+							viewVersionId !== current.adoptedVersionId && (
+								<button
+									type="button"
+									className="mt-4 rounded border px-3 py-1 text-sm"
+									disabled={busy}
+									onClick={() =>
+										runAction(async () => {
+											await api.adoptWorklogVersion(current.date, viewVersionId);
+											toast.success("已采用该版本用于导出");
+										})
+									}
+								>
+									采用此版本用于导出
+								</button>
+							)}
 						{current.status !== "delivered" && current.status !== "generating" && (
 							<button
 								type="button"

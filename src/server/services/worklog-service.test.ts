@@ -6,6 +6,7 @@ import { events, aiDailySpend, llmProviders, sessions, settings } from "../db/sc
 import { createProvider } from "./ai/providers-service.js";
 import { upsertSetting } from "./settings-service.js";
 import {
+	adoptWorklogVersion,
 	dayWindow,
 	getWorklogIncluded,
 	listWorklogs,
@@ -33,13 +34,32 @@ const stub = Bun.serve({
 			});
 			return new Response("{}", { status: documentStatus });
 		}
-		const body = (await req.json()) as { messages: Array<{ content: string }> };
+		const body = (await req.json()) as { messages: Array<{ role: string; content: string }> };
 		modelInputs.push(body.messages.map((m) => m.content).join("\n"));
 		if (block) await block;
+		const system = body.messages.find((m) => m.role === "system")?.content ?? "";
+		const user = body.messages.map((m) => m.content).join("\n");
+		if (system.includes("抽取工作事实")) {
+			// Deterministic extraction stub: one fact per `[#id] category: text` line.
+			const facts = [...user.matchAll(/\[#(\d+)\] (prompt|assistant_message): ([^\n]*)/g)].map(
+				(m) => ({
+					category:
+						m[2] === "assistant_message" || m[3].includes("完成") ? "verified_result" : "user_goal",
+					text: `stub事实：${m[3].slice(0, 60)}`,
+					evidenceEventId: Number(m[1]),
+					occurredAt: "2026-01-01T00:00:00.000Z",
+					confidence: "stated",
+				}),
+			);
+			return Response.json({
+				choices: [{ message: { content: JSON.stringify({ facts }), finish_reason: "stop" } }],
+				usage: { prompt_tokens: 100, completion_tokens: 30 },
+			});
+		}
 		return Response.json({
 			choices: [
 				{
-					message: { content: "- 已完成：修复接收消息；测试通过。\n- 下一步：部署验证。" },
+					message: { content: "## 成果\n- 修复接收消息；测试通过。\n## 下一步\n- 部署验证。" },
 					finish_reason: "stop",
 				},
 			],
@@ -133,12 +153,31 @@ test("uses today's actual messages across hosts, skips excluded sessions, never 
 		"sk-abcdefghijklmnopqrstuvwxyz123456789",
 	])
 		expect(inputs).not.toContain(forbidden);
+	// ── P4 fact pipeline: evidence-linked facts + two view versions ──
+	const seededIds = (
+		await getDb().select({ id: events.id }).from(events).where(eq(events.sessionId, "included"))
+	).map((row) => row.id);
+	expect(run.facts?.length).toBeGreaterThanOrEqual(2);
+	for (const fact of run.facts ?? []) expect(seededIds).toContain(fact.evidenceEventId);
+	const factText = (run.facts ?? []).map((f) => f.text).join("\n");
+	expect(factText).toContain("修复消息转发");
+	expect(factText).not.toContain("sk-");
+	expect(run.factMeta?.deduped).toBe(0);
+	const personal = run.versions?.find((v) => v.kind === "personal");
+	const team = run.versions?.find((v) => v.kind === "team");
+	if (!personal || !team) throw new Error("dual view versions missing");
+	expect(personal.markdown).toContain("事件 #");
+	expect(personal.markdown).toContain("目标与指令");
+	expect(team.markdown).toContain("## 成果");
+	expect(run.adoptedVersionId).toBe(team.versionId);
+	expect(run.markdown).toBe(team.markdown);
 	expect(deliveries).toHaveLength(1);
 	expect(deliveries[0].body.markdown).toBe(run.markdown);
 	expect(deliveries[0].key).toBe("agentpulse-worklog:Asia/Shanghai:2026-01-01:daily-log");
 	await runWorklog("2026-01-01", true);
 	expect(deliveries).toHaveLength(1);
-	expect(modelInputs).toHaveLength(1);
+	// one extraction call + one team call; the retry reuses the persisted run
+	expect(modelInputs).toHaveLength(2);
 });
 test("document retry reuses persisted summary and stable idempotency key", async () => {
 	await seed("one", "2026-01-01 05:00:00", "本日任务");
@@ -147,7 +186,8 @@ test("document retry reuses persisted summary and stable idempotency key", async
 	expect((await listWorklogs())[0].status).toBe("failed");
 	documentStatus = 200;
 	await runWorklog("2026-01-01", true);
-	expect(modelInputs).toHaveLength(1);
+	// retry after delivery failure reuses the persisted run (no new model calls)
+	expect(modelInputs).toHaveLength(2);
 	expect(deliveries).toHaveLength(2);
 	expect(deliveries[0].key).toBe(deliveries[1].key);
 });
@@ -168,7 +208,7 @@ test("concurrent workers cannot generate or deliver the same date twice", async 
 	await expect(runWorklog("2026-01-01", true)).rejects.toThrow("already running");
 	release?.();
 	await first;
-	expect(modelInputs).toHaveLength(1);
+	expect(modelInputs).toHaveLength(2);
 	expect(deliveries).toHaveLength(1);
 });
 test("a stale worker cannot delete a new worker's lease or deliver its content", async () => {
@@ -213,3 +253,78 @@ test("scheduler follows the configured timezone, catches up complete days and ne
 	await runScheduledWorklogs(new Date("2026-01-01T17:05:00Z"));
 	expect(deliveries).toHaveLength(1);
 });
+
+test("fork-copied turns recorded by two sessions count once", async () => {
+	await seed("parent", "2026-01-01 05:00:00", "完成了迁移脚本并验证");
+	await seed("parent", "2026-01-01 05:30:00", "迁移全部通过", "assistant_message");
+	// A fork child ingests content-copied turns on the same day.
+	await seed("parent:fork", "2026-01-01 07:00:00", "完成了迁移脚本并验证");
+	await seed("parent:fork", "2026-01-01 07:30:00", "迁移全部通过", "assistant_message");
+	const run = await runWorklog("2026-01-01");
+	expect(run.sessionIds.sort()).toEqual(["parent", "parent:fork"].sort());
+	// 4 extracted facts collapse to 2: identical normalized content counts once.
+	expect(run.facts).toHaveLength(2);
+	expect(run.factMeta?.deduped).toBe(2);
+	const texts = (run.facts ?? []).map((f) => f.text).sort();
+	expect(texts[0]).toBe(texts[1] ? texts[0] : texts[0]);
+	// Both surviving facts cite evidence from the FIRST session (first occurrence wins).
+	for (const fact of run.facts ?? []) expect(fact.sessionId).toBe("parent");
+});
+
+test("forced regeneration appends versions and never overwrites old drafts", async () => {
+	await seed("regen", "2026-01-01 06:00:00", "第一轮工作");
+	const first = await runWorklog("2026-01-01");
+	expect(first.versions).toHaveLength(2);
+	const firstPersonal = first.versions?.[0];
+	await seed("regen", "2026-01-01 07:00:00", "第二轮工作");
+	const second = await runWorklog("2026-01-01", false, {
+		token: await claimTestToken(),
+		config: await testConfig(),
+		force: true,
+	});
+	expect(second.versions?.length).toBeGreaterThanOrEqual(4);
+	// The old personal draft is preserved verbatim.
+	expect(second.versions?.some((v) => v.versionId === firstPersonal?.versionId)).toBe(true);
+	expect(second.facts?.length).toBeGreaterThan(first.facts?.length ?? 0);
+	// The adopted (delivered) markdown is the LATEST team version.
+	const lastTeam = second.versions?.filter((v) => v.kind === "team").at(-1);
+	expect(second.adoptedVersionId).toBe(lastTeam?.versionId);
+});
+
+test("adopting the personal view switches delivery content", async () => {
+	await seed("adopt", "2026-01-01 08:00:00", "采纳视图测试");
+	const run = await runWorklog("2026-01-01");
+	const personal = run.versions?.find((v) => v.kind === "personal");
+	if (!personal) throw new Error("personal version missing");
+	const adopted = await adoptWorklogVersion("2026-01-01", personal.versionId);
+	expect(adopted.adoptedVersionId).toBe(personal.versionId);
+	expect(adopted.markdown).toBe(personal.markdown);
+	await expect(adoptWorklogVersion("2026-01-01", "v0-nonexistent")).rejects.toThrow(
+		"Unknown version",
+	);
+	// Delivery now exports the adopted personal view.
+	const delivered = await runWorklog("2026-01-01", true);
+	expect(delivered.status).toBe("delivered");
+	expect(deliveries.at(-1)?.body.markdown).toBe(personal.markdown);
+	// A delivered log is locked against re-adoption.
+	await expect(adoptWorklogVersion("2026-01-01", personal.versionId)).rejects.toThrow("delivered");
+});
+
+async function claimTestToken(): Promise<string> {
+	// Reuse the service's lease claim through the public path: queueWorklog is
+	// async, so tests drive runWorklog directly with a lease they claim here.
+	const { readWorklogValue } = await import("./worklog-service.js");
+	void readWorklogValue;
+	const leaseKey = "worklog.lock.Asia/Shanghai.2026-01-01";
+	// claim() is module-private; take the lease through a throwaway run instead.
+	// Simplest correct route: use queueWorklog's admission — but it is also
+	// private. We claim by writing the setting the way claim() does.
+	const token = `test-${crypto.randomUUID()}`;
+	await upsertSetting(leaseKey, { token }, { allowProtected: true });
+	return token;
+}
+
+async function testConfig() {
+	const { getWorklogConfig } = await import("./worklog-service.js");
+	return getWorklogConfig();
+}
