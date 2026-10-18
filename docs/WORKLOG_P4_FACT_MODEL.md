@@ -6,15 +6,25 @@
 
 一条抽取管线产出持久事实（`worklog-facts.ts`），两种呈现共享同一事实集：
 
-- `WorklogFact`：`id / sessionId / host / occurredAt(源事件发生时间) / category / text(脱敏截断) / evidenceEventId(证据事件 id) / projectHint / confidence(stated|verified|inferred) / contentKey(归一化内容哈希)`。
+- `WorklogFact`：`id / sessionId / host / occurredAt(源事件发生时间) / category / text(脱敏截断) / evidenceEventId(证据事件 id) / projectHint / confidence / contentKey / lineageRoot(血缘根) / eventContentKey(源事件内容哈希)`。
 - 五类事实严格区分：`user_goal`（用户目标）、`agent_claim`（助手自述，未经核实）、`tool_action`（实际执行）、`verified_result`（有验证证据）、`open_item`（未完成/待办）。
-- **fork 继承去重**：跨会话同日 contentKey 相同的事实视为历史拷贝，只计一次（首见优先）。类别参与哈希，同类同文才算拷贝。
-- **不可信输出防线**：模型输出为 JSON；`evidenceEventId` 必须落在该分片真实事件 id 集合内，否则整条丢弃并计数；`text` 截断 400 字；`id/contentKey` 服务端派生，模型不能指定身份；解析容错包裹 JSON 的散文。
+- **服务端权威字段（2026-10-18 第四轮评审修订）**：`occurredAt`、`eventContentKey`、`lineageRoot`、`id/contentKey` 全部由被引用的源事件派生，模型无法指定；采集范围扩展到 `tool_event`（真实工具证据进入分片）。
+- **分类受证据类型约束**：`verified_result`/`tool_action` 只能引用 tool_event 行，`agent_claim` 只能引用 assistant_message 行，`user_goal` 只能引用 prompt 行；不符时服务端强制降级（如助手消息上的"已验证"→`agent_claim`），降级计入 factMeta.downgraded。助手自述不能仅凭模型标签升级为验证成果。
+- **fork 继承去重（血缘限定）**：仅当两事实的 `lineageRoot` 相同（`:opencode-child:` 后缀剥离后的根会话）且源事件内容哈希一致时才算历史拷贝，保留首见；不同主机/项目独立完成的相同工作不合并。
+- **不可信输出防线**：模型输出为 JSON；`evidenceEventId` 必须落在该分片真实事件集合内，否则整条丢弃并计数；`text` 截断 400 字；**解析失败显式失败**（runWorklog 抛错、run 状态 failed），不再伪装为空日志。
 - **个人回顾**：纯确定性渲染（无模型调用）——按会话分组、五类分节、证据以 `事件 #id` 可回溯、`agent_claim` 与 `verified_result` 标签隔离，防止"自述完成"被读成"业务完成"。
 - **团队日报草稿**：确定性事实摘要（去证据噪音、类别标签、已验证标记）+ 单次模型调用按「成果/进行中/阻塞/下一步」四节产出；系统提示明确禁止把自述写成成果。
 - **版本化**：`appendVersion` 只追加不覆盖；`source: facts|manual` 区分生成稿与人工编辑稿。
 
-测试：`worklog-facts.test.ts` 9 用例——去重（归一化等价/类别区分）、不可信输出（越界证据丢弃、散文包裹解析、超长截断、空文本拒绝）、固定事实集的确定性双渲染断言、版本追加保留旧稿。
+测试（第四轮后 28 用例）：`worklog-facts.test.ts` 14 用例——血缘限定去重（同根拷贝合并/无关会话同文不合并/同根不同内容不合并/嵌套 child 剥离）、证据类型约束（助手消息上的 verified 降级、user_goal 错引降级、越界证据拒绝）、服务端派生时间（模型 1970 假时间被忽略）、解析失败显式化、确定性双渲染、版本追加；`worklog-service.test.ts` 14 用例——含对抗 stub（HOSTILE 标记伪造 verified+confidence）、工具证据支撑 verified、时间绑定源事件、解析失败 run=failed、血缘去重服务级回归。
+
+**测试环境注意**：模型 stub 走 loopback（127.0.0.1），代理环境变量会把请求路由到代理导致 502。复跑命令：
+
+```bash
+cd /home/ch/project/work_station/agentpulse
+env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy \
+  bun test src/server/services/worklog-service.test.ts src/server/services/worklog-facts.test.ts src/server/routes/worklog.test.ts
+```
 
 ## 管线集成（2026-10-18 第三轮）
 

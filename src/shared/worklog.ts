@@ -47,8 +47,12 @@ export interface WorklogFact {
 	evidenceEventId: number;
 	projectHint: string | null;
 	confidence: "stated" | "verified" | "inferred";
-	/** Normalized content hash — identical fork-copied turns share a key. */
+	/** Normalized content hash of (final category, text). */
 	contentKey: string;
+	/** Root session of the lineage (`:opencode-child:` segments stripped). */
+	lineageRoot: string;
+	/** Server-derived hash of the cited SOURCE event content — fork copies match exactly. */
+	eventContentKey: string;
 }
 
 /** Versioned output storage: regeneration appends, never overwrites. */
@@ -76,6 +80,7 @@ export interface WorklogRun {
 		extractedAt: string;
 		rejected: number;
 		deduped: number;
+		downgraded: number;
 	} | null;
 	/** Append-only view versions: personal review + team drafts (+ manual edits). */
 	versions?: WorklogVersion[];

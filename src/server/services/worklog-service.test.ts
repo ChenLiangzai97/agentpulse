@@ -40,17 +40,33 @@ const stub = Bun.serve({
 		const system = body.messages.find((m) => m.role === "system")?.content ?? "";
 		const user = body.messages.map((m) => m.content).join("\n");
 		if (system.includes("抽取工作事实")) {
-			// Deterministic extraction stub: one fact per `[#id] category: text` line.
-			const facts = [...user.matchAll(/\[#(\d+)\] (prompt|assistant_message): ([^\n]*)/g)].map(
-				(m) => ({
-					category:
-						m[2] === "assistant_message" || m[3].includes("完成") ? "verified_result" : "user_goal",
-					text: `stub事实：${m[3].slice(0, 60)}`,
-					evidenceEventId: Number(m[1]),
-					occurredAt: "2026-01-01T00:00:00.000Z",
-					confidence: "stated",
-				}),
-			);
+			if (user.includes("PARSE_FAIL_MARKER")) {
+				return Response.json({
+					choices: [{ message: { content: "今天心情不错，无法输出", finish_reason: "stop" } }],
+					usage: { prompt_tokens: 1, completion_tokens: 1 },
+				});
+			}
+			// Adversarial-ish deterministic stub: honest categories per line kind,
+			// but always claims a fabricated occurredAt the server must ignore,
+			// and upgrades assistant lines to verified_result when the input
+			// carries the HOSTILE marker (server must downgrade).
+			const hostile = user.includes("HOSTILE_MARKER");
+			const facts = [
+				...user.matchAll(/\[#(\d+)\] (prompt|assistant_message|tool_event): ([^\n]*)/g),
+			].map((m) => ({
+				category:
+					m[2] === "tool_event"
+						? "verified_result"
+						: hostile && m[2] === "assistant_message"
+							? "verified_result"
+							: m[2] === "assistant_message"
+								? "agent_claim"
+								: "user_goal",
+				text: `stub事实：${m[3].slice(0, 60)}`,
+				evidenceEventId: Number(m[1]),
+				occurredAt: "1970-01-01T00:00:00.000Z",
+				confidence: hostile ? "verified" : "stated",
+			}));
 			return Response.json({
 				choices: [{ message: { content: JSON.stringify({ facts }), finish_reason: "stop" } }],
 				usage: { prompt_tokens: 100, completion_tokens: 30 },
@@ -154,15 +170,25 @@ test("uses today's actual messages across hosts, skips excluded sessions, never 
 	])
 		expect(inputs).not.toContain(forbidden);
 	// ── P4 fact pipeline: evidence-linked facts + two view versions ──
-	const seededIds = (
-		await getDb().select({ id: events.id }).from(events).where(eq(events.sessionId, "included"))
-	).map((row) => row.id);
+	const seededRows = await getDb()
+		.select({ id: events.id, createdAt: events.createdAt })
+		.from(events)
+		.where(eq(events.sessionId, "included"));
+	const seededIds = seededRows.map((row) => row.id);
 	expect(run.facts?.length).toBeGreaterThanOrEqual(2);
 	for (const fact of run.facts ?? []) expect(seededIds).toContain(fact.evidenceEventId);
 	const factText = (run.facts ?? []).map((f) => f.text).join("\n");
 	expect(factText).toContain("修复消息转发");
 	expect(factText).not.toContain("sk-");
 	expect(run.factMeta?.deduped).toBe(0);
+	// No tool evidence was seeded, so nothing may claim to be verified.
+	expect((run.facts ?? []).some((f) => f.category === "verified_result")).toBe(false);
+	// occurrence times come from the source events, never the stub's 1970 claim
+	for (const fact of run.facts ?? []) {
+		const row = seededRows.find((r) => r.id === fact.evidenceEventId);
+		if (!row) throw new Error("fact cites unknown event");
+		expect(fact.occurredAt).toBe(row.createdAt);
+	}
 	const personal = run.versions?.find((v) => v.kind === "personal");
 	const team = run.versions?.find((v) => v.kind === "team");
 	if (!personal || !team) throw new Error("dual view versions missing");
@@ -254,21 +280,70 @@ test("scheduler follows the configured timezone, catches up complete days and ne
 	expect(deliveries).toHaveLength(1);
 });
 
-test("fork-copied turns recorded by two sessions count once", async () => {
+test("fork copies dedupe only inside a lineage; unrelated same-text work stays separate", async () => {
 	await seed("parent", "2026-01-01 05:00:00", "完成了迁移脚本并验证");
 	await seed("parent", "2026-01-01 05:30:00", "迁移全部通过", "assistant_message");
-	// A fork child ingests content-copied turns on the same day.
-	await seed("parent:fork", "2026-01-01 07:00:00", "完成了迁移脚本并验证");
-	await seed("parent:fork", "2026-01-01 07:30:00", "迁移全部通过", "assistant_message");
+	// A managed child session (lineage convention) ingests content-copied turns.
+	await seed("parent:opencode-child:ses_t", "2026-01-01 07:00:00", "完成了迁移脚本并验证");
+	await seed(
+		"parent:opencode-child:ses_t",
+		"2026-01-01 07:30:00",
+		"迁移全部通过",
+		"assistant_message",
+	);
+	// Unrelated sessions on other hosts/projects did the same text of work.
+	await seed("hostA-proj", "2026-01-01 08:00:00", "完成了迁移脚本并验证");
+	await seed("hostB-proj", "2026-01-01 09:00:00", "完成了迁移脚本并验证");
 	const run = await runWorklog("2026-01-01");
-	expect(run.sessionIds.sort()).toEqual(["parent", "parent:fork"].sort());
-	// 4 extracted facts collapse to 2: identical normalized content counts once.
-	expect(run.facts).toHaveLength(2);
+	expect(run.sessionIds).toHaveLength(4);
+	// parent(2) collapses with its child copies; the two unrelated sessions
+	// keep their own facts: 2 + 1 + 1 = 4, exactly 2 fork copies deduped.
+	expect(run.facts).toHaveLength(4);
 	expect(run.factMeta?.deduped).toBe(2);
-	const texts = (run.facts ?? []).map((f) => f.text).sort();
-	expect(texts[0]).toBe(texts[1] ? texts[0] : texts[0]);
-	// Both surviving facts cite evidence from the FIRST session (first occurrence wins).
-	for (const fact of run.facts ?? []) expect(fact.sessionId).toBe("parent");
+	// Copies collapse onto the FIRST occurrence (the parent session).
+	for (const fact of run.facts ?? []) {
+		if (fact.text.includes("迁移全部通过")) expect(fact.sessionId).toBe("parent");
+	}
+	const unrelated = (run.facts ?? []).filter((f) => f.sessionId.startsWith("host"));
+	expect(unrelated).toHaveLength(2);
+	expect(new Set(unrelated.map((f) => f.sessionId)).size).toBe(2);
+});
+
+test("a hostile model cannot launder assistant claims into verified results", async () => {
+	await seed("hostile", "2026-01-01 05:00:00", "HOSTILE_MARKER 修复完成");
+	await seed("hostile", "2026-01-01 05:30:00", "我确信全部测试通过了", "assistant_message");
+	const run = await runWorklog("2026-01-01");
+	// The stub claimed verified_result + confidence verified on BOTH lines;
+	// the assistant-cited fact must come back as an unverified claim.
+	const categories = (run.facts ?? []).map((f) => f.category).sort();
+	expect(categories).toEqual(["agent_claim", "user_goal"]);
+	expect(run.factMeta?.downgraded).toBe(1);
+	expect((run.facts ?? []).every((f) => f.confidence !== "verified")).toBe(true);
+});
+
+test("tool evidence backs verified results and occurrence times bind to source events", async () => {
+	await seed("toolev", "2026-01-01 05:00:00", "请运行回归");
+	await seed("toolev", "2026-01-01 05:30:00", "20 passed, 0 failed", "tool_event");
+	const run = await runWorklog("2026-01-01");
+	const verified = (run.facts ?? []).filter((f) => f.category === "verified_result");
+	expect(verified).toHaveLength(1);
+	const rows = await getDb()
+		.select({ id: events.id, createdAt: events.createdAt })
+		.from(events)
+		.where(eq(events.sessionId, "toolev"));
+	for (const fact of run.facts ?? []) {
+		const row = rows.find((r) => r.id === fact.evidenceEventId);
+		if (!row) throw new Error("fact cites unknown event");
+		expect(fact.occurredAt).toBe(row.createdAt);
+	}
+});
+
+test("unparseable extraction output fails the run instead of producing an empty log", async () => {
+	await seed("parsefail", "2026-01-01 05:00:00", "PARSE_FAIL_MARKER 内容");
+	await expect(runWorklog("2026-01-01")).rejects.toThrow("unparseable fact extraction");
+	const [run] = (await listWorklogs()).filter((r) => r.date === "2026-01-01");
+	expect(run.status).toBe("failed");
+	expect(run.error).toContain("unparseable");
 });
 
 test("forced regeneration appends versions and never overwrites old drafts", async () => {

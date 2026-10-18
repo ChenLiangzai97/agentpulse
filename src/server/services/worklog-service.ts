@@ -20,6 +20,7 @@ import { EFFECTIVE_MACHINE } from "./effective-machine.js";
 import { upsertSetting } from "./settings-service.js";
 import { toDbTimestamp } from "./util/db-time.js";
 import {
+	type ChunkEvent,
 	FACT_EXTRACTION_SYSTEM_PROMPT,
 	TEAM_DRAFT_SYSTEM_PROMPT,
 	appendVersion,
@@ -246,13 +247,16 @@ export async function runWorklog(
 			// parseFacts drops any fact whose evidence id was not in the chunk.
 			const allFacts: WorklogFact[] = [];
 			let rejectedFacts = 0;
+			let downgradedFacts = 0;
 			let modelCalls = 0;
 			run.sessionIds = [];
 			for (const session of active) {
 				if (excluded.has(session.sessionId)) continue;
 				let after = 0;
 				let chunk = "";
-				let chunkEventIds = new Set<number>();
+				// The chunk's real events by id — the only admissible evidence
+				// for extraction (ids, timestamps and content all come from here).
+				const chunkEvents = new Map<number, ChunkEvent>();
 				const sessionFacts: WorklogFact[] = [];
 				const extract = async () => {
 					if (!chunk) return;
@@ -295,16 +299,26 @@ export async function runWorklog(
 						sessionId: session.sessionId,
 						host: session.host,
 						sessionName: session.name || session.sessionId,
-						validEventIds: chunkEventIds,
+						events: chunkEvents,
 					});
+					// A broken extraction protocol must fail loudly — an empty
+					// "successful" log would silently hide the failure.
+					if (parsed.parseFailed)
+						throw new Error("Model returned unparseable fact extraction output");
 					rejectedFacts += parsed.rejected;
+					downgradedFacts += parsed.downgraded;
 					sessionFacts.push(...parsed.facts);
 					chunk = "";
-					chunkEventIds = new Set<number>();
+					chunkEvents.clear();
 				};
 				for (;;) {
 					const batch = await getDb()
-						.select({ id: events.id, category: events.category, content: events.content })
+						.select({
+							id: events.id,
+							category: events.category,
+							content: events.content,
+							createdAt: events.createdAt,
+						})
 						.from(events)
 						.where(
 							and(
@@ -312,7 +326,7 @@ export async function runWorklog(
 								gt(events.id, after),
 								gte(events.createdAt, toDbTimestamp(window.start)),
 								lt(events.createdAt, toDbTimestamp(window.end)),
-								inArray(events.category, ["prompt", "assistant_message"]),
+								inArray(events.category, ["prompt", "assistant_message", "tool_event"]),
 							),
 						)
 						.orderBy(asc(events.id))
@@ -324,8 +338,13 @@ export async function runWorklog(
 							const part = text.slice(offset, offset + 12000);
 							if (chunk.length + part.length > 16000) await extract();
 							chunk += part;
-							chunkEventIds.add(event.id);
 						}
+						chunkEvents.set(event.id, {
+							id: event.id,
+							category: event.category ?? "unknown",
+							createdAt: event.createdAt,
+							content: event.content,
+						});
 						after = event.id;
 					}
 				}
@@ -412,6 +431,7 @@ export async function runWorklog(
 					extractedAt,
 					rejected: rejectedFacts,
 					deduped: allFacts.length - facts.length,
+					downgraded: downgradedFacts,
 				},
 				versions,
 				adoptedVersionId: teamVersion
