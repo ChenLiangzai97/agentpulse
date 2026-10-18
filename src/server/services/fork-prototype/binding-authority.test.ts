@@ -63,36 +63,30 @@ async function seedParentAndChild() {
 	await getDb()
 		.insert(sessions)
 		.values({ sessionId: "ba-parent", agentType: "opencode", cwd: "/tmp" });
-	await getDb()
-		.insert(managedSessions)
-		.values({
-			sessionId: "ba-parent",
-			launchRequestId: launch.id,
-			supervisorId: "ba-host",
-			providerSessionId: "ses_p",
-			managedState: "managed",
-		});
+	await getDb().insert(managedSessions).values({
+		sessionId: "ba-parent",
+		launchRequestId: launch.id,
+		supervisorId: "ba-host",
+		providerSessionId: "ses_p",
+		managedState: "managed",
+	});
 	await getDb()
 		.insert(sessions)
 		.values({ sessionId: "ba-child", agentType: "opencode", cwd: "/tmp" });
-	await getDb()
-		.insert(managedSessions)
-		.values({
-			sessionId: "ba-child",
-			launchRequestId: launch.id,
-			supervisorId: "ba-host",
-			providerSessionId: "ses_c",
-			managedState: "managed",
-		});
-	await getDb()
-		.insert(sessionControlBindings)
-		.values({
-			sessionId: "ba-child",
-			origin: "agentpulse_launch",
-			instanceId: instance.id,
-			nativeSessionId: "ses_c",
-			generation: 1,
-		});
+	await getDb().insert(managedSessions).values({
+		sessionId: "ba-child",
+		launchRequestId: launch.id,
+		supervisorId: "ba-host",
+		providerSessionId: "ses_c",
+		managedState: "managed",
+	});
+	await getDb().insert(sessionControlBindings).values({
+		sessionId: "ba-child",
+		origin: "agentpulse_launch",
+		instanceId: instance.id,
+		nativeSessionId: "ses_c",
+		generation: 1,
+	});
 	return { instanceId: instance.id };
 }
 

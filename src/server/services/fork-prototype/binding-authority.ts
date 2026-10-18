@@ -1,9 +1,14 @@
 /**
- * Isolated prototype (NOT wired to the main path): binding-as-authority
- * lookup per docs/OPENCODE_FORK_DESIGN.md §A1. The provider instance stays
- * the PROCESS authority (its session_id is the originating parent); a child
- * session's control authority comes from ITS binding row — instance id,
- * native session id and generation all checked against the live instance.
+ * Isolated prototype (NOT wired to the main path): binding RESOLUTION helper
+ * per docs/OPENCODE_FORK_DESIGN.md §A1 — it answers "which instance/native
+ * session/generation does this session's binding address", nothing more.
+ *
+ * THIS IS NOT AUTHORIZATION: it performs no Actor, owner, request-supervisor
+ * or scope checks. The main path MUST layer the full authorization stack
+ * (actor + ownership + supervisor identity + source validation) on top of
+ * this lookup before any control decision. The real-DB tests here prove
+ * resolution behavior only — they do NOT constitute an acceptance that
+ * child sessions are controllable.
  */
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../db/client.js";
