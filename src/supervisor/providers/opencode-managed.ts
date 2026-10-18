@@ -278,7 +278,53 @@ export function createManagedOpenCodeProvider(
 							if (Date.now() > deadline) throw new Error("opencode_prompt_wait_timeout");
 							await Bun.sleep(250);
 						}
-						await runtime.prompt(String(metadata.prompt ?? ""));
+						const model =
+							metadata.model && typeof metadata.model === "object"
+								? {
+										providerID: String((metadata.model as Record<string, unknown>).providerID ?? ""),
+										modelID: String((metadata.model as Record<string, unknown>).modelID ?? ""),
+									}
+								: undefined;
+						await runtime.prompt(String(metadata.prompt ?? ""), {
+							...(model ? { model } : {}),
+							...(typeof metadata.agent === "string" && metadata.agent
+								? { agent: metadata.agent }
+								: {}),
+						});
+						await Bun.sleep(500);
+					});
+				promptQueues.set(runtime.sessionId, next);
+				try {
+					await next;
+				} finally {
+					if (promptQueues.get(runtime.sessionId) === next) promptQueues.delete(runtime.sessionId);
+				}
+				return;
+			}
+			if (action.actionType === "opencode_command") {
+				const command = String(metadata.command ?? "");
+				if (!/^[a-zA-Z0-9_-]+$/.test(command)) throw new Error("opencode_invalid_command");
+				const epoch = interruptEpoch.get(runtime.sessionId) ?? 0;
+				const previous = promptQueues.get(runtime.sessionId) ?? Promise.resolve();
+				const next = previous
+					.catch(() => {})
+					.then(async () => {
+						const deadline = Date.now() + 15 * 60 * 1000;
+						while (true) {
+							if (!active.has(runtime.sessionId)) throw new Error("opencode_process_interrupted");
+							if (epoch !== (interruptEpoch.get(runtime.sessionId) ?? 0))
+								throw new Error("opencode_prompt_cancelled_before_delivery");
+							const status = await runtime.snapshot();
+							if (
+								(status.status as { type: string }).type === "idle" &&
+								!status.permissions.length &&
+								!status.questions.length
+							)
+								break;
+							if (Date.now() > deadline) throw new Error("opencode_prompt_wait_timeout");
+							await Bun.sleep(250);
+						}
+						await runtime.runCommand(command, metadata.arguments ? String(metadata.arguments) : "");
 						await Bun.sleep(500);
 					});
 				promptQueues.set(runtime.sessionId, next);

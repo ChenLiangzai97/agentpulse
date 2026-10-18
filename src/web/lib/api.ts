@@ -336,6 +336,12 @@ export const api = {
 				expiresAt: string;
 			}[];
 		}>(`/sessions/${encodeURIComponent(id)}/opencode/interactions`),
+	getOpenCodeCommands: (sessionId: string) =>
+		request<{
+			commands: { name: string; description?: string; source?: string }[];
+			agents: { name: string; description?: string }[];
+			providers: { id: string; name?: string; models: string[] }[] | null;
+		}>(`/sessions/${encodeURIComponent(sessionId)}/opencode/commands`),
 	openCodeAction: (id: string, body: Record<string, unknown>) =>
 		request(`/sessions/${encodeURIComponent(id)}/opencode/actions`, {
 			method: "POST",

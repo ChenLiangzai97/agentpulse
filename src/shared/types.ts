@@ -176,6 +176,7 @@ export type ControlActionType =
 	| "approval"
 	| "interrupt"
 	| "interaction_response"
+	| "opencode_command"
 	| "opencode_health"
 	| "cleanup_workarea";
 export type ControlActionStatus = "queued" | "running" | "succeeded" | "failed";

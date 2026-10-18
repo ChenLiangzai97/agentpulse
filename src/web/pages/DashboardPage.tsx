@@ -1,4 +1,5 @@
 import { ChevronDown, HelpCircle } from "lucide-react";
+import { NewSessionDialog } from "../components/NewSessionDialog.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -201,6 +202,7 @@ export function DashboardPage() {
 	// Single-select operational status filter, driven by the four status cards.
 	// Only meaningful on the Active tab; selecting a card switches to it.
 	const [statusFilter, setStatusFilter] = useState<ActiveOperationalStatus | null>(null);
+	const [newSessionOpen, setNewSessionOpen] = useState(false);
 	const [search, setSearch] = useState("");
 	// AGEN: the server-bound search (useOperationalSessionList's `q`) is
 	// debounced so a fast typist doesn't fire one request per keystroke —
@@ -757,6 +759,7 @@ export function DashboardPage() {
 
 	return (
 		<div className="p-3 md:p-6">
+			{newSessionOpen && <NewSessionDialog onClose={() => setNewSessionOpen(false)} />}
 			{/* Header. Under Mine | Everyone the subtitle says what the switch does, and the
 			    Owner select sits beside it: they are one control (whose sessions). */}
 			<div
@@ -767,13 +770,22 @@ export function DashboardPage() {
 				}
 			>
 				<div>
-					<h1
-						ref={headingRef}
-						tabIndex={-1}
-						className="text-xl md:text-2xl font-bold text-foreground focus:outline-none"
-					>
-						{t("dashboard.title")}
-					</h1>
+					<div className="flex items-center gap-3">
+						<h1
+							ref={headingRef}
+							tabIndex={-1}
+							className="text-xl md:text-2xl font-bold text-foreground focus:outline-none"
+						>
+							{t("dashboard.title")}
+						</h1>
+						<button
+							type="button"
+							onClick={() => setNewSessionOpen(true)}
+							className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90"
+						>
+							+ {t("newSession.title")}
+						</button>
+					</div>
 					<p
 						className={cn(
 							"text-sm mt-0.5 max-w-xl",
@@ -781,8 +793,8 @@ export function DashboardPage() {
 						)}
 					>
 						{ui.showScope
-							? "Mine is a filter. Everyone who can sign in sees every session."
-							: "Your AI coding agents, all in one place"}
+							? t("dashboard.subtitleScope")
+							: t("dashboard.subtitle")}
 					</p>
 				</div>
 				{ui.showScope && (

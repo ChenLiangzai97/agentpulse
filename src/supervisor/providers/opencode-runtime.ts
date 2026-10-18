@@ -38,7 +38,11 @@ export interface OpenCodeRuntime {
 	pid: number;
 	directory: string;
 	request<T = unknown>(path: string, body?: unknown): Promise<T>;
-	prompt(text: string): Promise<void>;
+	prompt(
+		text: string,
+		options?: { model?: { providerID: string; modelID: string }; agent?: string },
+	): Promise<void>;
+	runCommand(command: string, args?: string): Promise<void>;
 	abort(): Promise<void>;
 	stop(): Promise<void>;
 	snapshot(): Promise<{
@@ -47,6 +51,9 @@ export interface OpenCodeRuntime {
 		permissions: unknown[];
 		questions: unknown[];
 		status: unknown;
+		commands?: unknown[];
+		agents?: unknown[];
+		providers?: unknown;
 	}>;
 	touch(): void;
 	subscribe(onEvent: () => void): () => void;
@@ -306,21 +313,35 @@ export class OpenCodeRuntimePool {
 					const entry = this.instances.get(input.sessionId);
 					if (entry) entry.lastUsed = Date.now();
 				},
-				prompt: async (text) => {
+				prompt: async (text, options) => {
 					const entry = this.instances.get(input.sessionId);
 					if (!entry || entry.busy || entry.pending) throw new Error("opencode_session_busy");
 					entry.busy = true;
 					entry.lastUsed = Date.now();
-					const [providerID, ...model] = profile.model.split("/");
+					// No explicit model: inherit the session's current one (a previous
+					// explicit carry switches it natively and stickily per session).
 					// Never retry an ambiguous transport failure: native messageID is not part-idempotent.
 					try {
 						await request(`${nativePath}/prompt_async`, {
-							model: { providerID, modelID: model.join("/") },
+							...(options?.model ? { model: options.model } : {}),
+							...(options?.agent ? { agent: options.agent } : {}),
 							parts: [{ type: "text", text }],
 						});
 					} catch (error) {
 						throw new Error("opencode_prompt_delivery_uncertain", { cause: error });
 					}
+				},
+				runCommand: async (command, args) => {
+					// Native custom-command execution: the instance expands the command
+					// template as a user message and runs it. TUI built-ins are NOT
+					// valid here (verified: 1.18.35 answers UnknownError).
+					if (!/^[a-zA-Z0-9_-]+$/.test(command)) throw new Error("opencode_invalid_command");
+					await request(`${nativePath}/command`, {
+						command,
+						arguments: args ?? "",
+						messageID: `msg_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`,
+					});
+					runtime.touch();
 				},
 				abort: async () => {
 					await request(`${nativePath}/abort`, {});
@@ -344,13 +365,17 @@ export class OpenCodeRuntimePool {
 					await rm(configPath, { force: true });
 				},
 				snapshot: async () => {
-					const [messages, permissions, questions, status, nativeSessions] = await Promise.all([
-						request<unknown[]>(`${nativePath}/message`),
-						request<unknown[]>("/permission"),
-						request<unknown[]>("/question"),
-						request<Record<string, { type: string }>>("/session/status"),
-						request<Record<string, unknown>[]>("/session"),
-					]);
+					const [messages, permissions, questions, status, nativeSessions, commands, agents, providers] =
+						await Promise.all([
+							request<unknown[]>(`${nativePath}/message`),
+							request<unknown[]>("/permission"),
+							request<unknown[]>("/question"),
+							request<Record<string, { type: string }>>("/session/status"),
+							request<Record<string, unknown>[]>("/session"),
+							request<unknown[]>("/command").catch(() => []),
+							request<unknown[]>("/agent").catch(() => []),
+							request<unknown>("/config/providers").catch(() => null),
+						]);
 					const descendants = new Set<string>([native.id]);
 					for (let depth = 0; depth < 64; depth++) {
 						let changed = false;
@@ -414,6 +439,9 @@ export class OpenCodeRuntimePool {
 							)
 								? { type: "busy" }
 								: (status[native.id] ?? { type: "idle" }),
+						commands,
+						agents,
+						providers,
 					};
 				},
 			};

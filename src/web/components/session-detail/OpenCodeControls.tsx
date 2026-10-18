@@ -97,6 +97,35 @@ export function OpenCodeControls({
 	const [cap, setCap] = useState<Session["controlCapabilities"]>();
 	const [items, setItems] = useState<Interaction[]>([]);
 	const [prompt, setPrompt] = useState("");
+	const [catalog, setCatalog] = useState<{
+		commands: { name: string; description?: string; source?: string }[];
+		agents: { name: string; description?: string }[];
+		providers: { id: string; name?: string; models: string[] }[] | null;
+	} | null>(null);
+	const [commandMenuOpen, setCommandMenuOpen] = useState(false);
+	const [modelPickerOpen, setModelPickerOpen] = useState(false);
+	const [agentPickerOpen, setAgentPickerOpen] = useState(false);
+	const [pendingModel, setPendingModel] = useState<string | null>(() => {
+		try {
+			return localStorage.getItem(`agentpulse.opencode.model.${session.sessionId}`);
+		} catch {
+			return null;
+		}
+	});
+	const [pendingAgent, setPendingAgent] = useState<string | null>(() => {
+		try {
+			return localStorage.getItem(`agentpulse.opencode.agent.${session.sessionId}`);
+		} catch {
+			return null;
+		}
+	});
+	const persistChoice = (kind: "model" | "agent", value: string | null) => {
+		try {
+			const key = `agentpulse.opencode.${kind}.${session.sessionId}`;
+			if (value) localStorage.setItem(key, value);
+			else localStorage.removeItem(key);
+		} catch {}
+	};
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	useEffect(() => {
@@ -240,20 +269,104 @@ export function OpenCodeControls({
 					</button>
 				</div>
 			))}
+			{commandMenuOpen && (
+				<CommandMenu
+					catalog={catalog}
+					pendingModel={pendingModel}
+					pendingAgent={pendingAgent}
+					onPickModel={() => {
+						setCommandMenuOpen(false);
+						setModelPickerOpen(true);
+					}}
+					onPickAgent={() => {
+						setCommandMenuOpen(false);
+						setAgentPickerOpen(true);
+					}}
+					onRunCommand={(name) => {
+						setCommandMenuOpen(false);
+						void send({ kind: "opencode_command", command: name });
+					}}
+					onClose={() => setCommandMenuOpen(false)}
+				/>
+			)}
+			{modelPickerOpen && (
+				<ModelPicker
+					catalog={catalog}
+					current={pendingModel}
+					onChoose={(value) => {
+						setPendingModel(value);
+						persistChoice("model", value);
+						setModelPickerOpen(false);
+					}}
+					onClose={() => setModelPickerOpen(false)}
+				/>
+			)}
+			{agentPickerOpen && (
+				<AgentPicker
+					catalog={catalog}
+					current={pendingAgent}
+					onChoose={(value) => {
+						setPendingAgent(value);
+						persistChoice("agent", value);
+						setAgentPickerOpen(false);
+					}}
+					onClose={() => setAgentPickerOpen(false)}
+				/>
+			)}
 			<form
 				className="flex gap-2"
 				onSubmit={(e) => {
 					e.preventDefault();
-					void send({ kind: "prompt", prompt });
+					const [providerID, ...rest] = (pendingModel ?? "").split("/");
+				void send({
+					kind: "prompt",
+					prompt,
+					...(pendingModel && rest.length
+						? { model: { providerID, modelID: rest.join("/") } }
+						: {}),
+					...(pendingAgent ? { agent: pendingAgent } : {}),
+				});
 				}}
 			>
-				<textarea
-					aria-label="OpenCode 消息"
-					className="min-h-20 flex-1 rounded border bg-background p-2 text-sm"
-					maxLength={12000}
-					value={prompt}
-					onChange={(e) => setPrompt(e.target.value)}
-				/>
+				<div className="flex-1">
+					{(pendingModel || pendingAgent) && (
+						<div className="mb-1 flex flex-wrap gap-1 text-[11px] text-muted-foreground">
+							{pendingModel && (
+								<button
+									type="button"
+									className="rounded bg-muted px-1.5 py-0.5"
+									onClick={() => setModelPickerOpen(true)}
+								>
+									/model → {pendingModel}
+								</button>
+							)}
+							{pendingAgent && (
+								<button
+									type="button"
+									className="rounded bg-muted px-1.5 py-0.5"
+									onClick={() => setAgentPickerOpen(true)}
+								>
+									/agent → {pendingAgent}
+								</button>
+							)}
+						</div>
+					)}
+					<textarea
+						aria-label="OpenCode 消息"
+						className="min-h-20 w-full rounded border bg-background p-2 text-sm"
+						maxLength={12000}
+						value={prompt}
+						onChange={(e) => {
+							setPrompt(e.target.value);
+							setCommandMenuOpen(e.target.value.startsWith("/") && !e.target.value.includes(" "));
+						}}
+					/>
+					{prompt.startsWith("/") && !prompt.includes(" ") && (
+						<p className="mt-1 text-[11px] text-amber-400">
+							输入 / 打开命令菜单；直接发送未知命令不会被发出。
+						</p>
+					)}
+				</div>
 				<button type="submit" disabled={busy || !prompt.trim()} className="rounded border px-3">
 					发送
 				</button>
@@ -263,4 +376,238 @@ export function OpenCodeControls({
 			</p>
 		</section>
 	);
+}
+
+
+function CommandMenu({
+	catalog,
+	pendingModel,
+	pendingAgent,
+	onPickModel,
+	onPickAgent,
+	onRunCommand,
+	onClose,
+}: {
+	catalog: {
+		commands: { name: string; description?: string; source?: string }[];
+		agents: { name: string; description?: string }[];
+		providers: { id: string; name?: string; models: string[] }[] | null;
+	} | null;
+	pendingModel: string | null;
+	pendingAgent: string | null;
+	onPickModel: () => void;
+	onPickAgent: () => void;
+	onRunCommand: (name: string) => void;
+	onClose: () => void;
+}) {
+	const commands = (catalog?.commands ?? []).filter((c) => c.source !== "skill").slice(0, 40);
+	const skills = (catalog?.commands ?? []).filter((c) => c.source === "skill").slice(0, 40);
+	return (
+		<div
+			className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-20"
+			onClick={(e) => e.target === e.currentTarget && onClose()}
+		>
+			<div className="w-full max-w-md rounded-lg border border-border bg-card p-3 shadow-xl">
+				<div className="mb-2 flex items-center justify-between">
+					<strong className="text-sm">/ 命令</strong>
+					<button type="button" className="text-xs text-muted-foreground" onClick={onClose}>
+						关闭
+					</button>
+				</div>
+				<div className="max-h-72 space-y-1 overflow-y-auto text-sm">
+					<button
+						type="button"
+						onClick={onPickModel}
+						className="block w-full rounded px-2 py-1.5 text-left hover:bg-muted"
+					>
+						/model{" "}
+						<span className="text-muted-foreground">
+							切换模型{pendingModel ? `（当前待生效：${pendingModel}）` : ""}
+						</span>
+					</button>
+					<button
+						type="button"
+						onClick={onPickAgent}
+						className="block w-full rounded px-2 py-1.5 text-left hover:bg-muted"
+					>
+						/agent{" "}
+						<span className="text-muted-foreground">
+							切换 Agent{pendingAgent ? `（当前待生效：${pendingAgent}）` : ""}
+						</span>
+					</button>
+					<div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+						原生命令（在实例内执行）
+					</div>
+					{commands.length === 0 && (
+						<div className="px-2 py-1 text-xs text-muted-foreground">实例未返回自定义命令</div>
+					)}
+					{commands.map((c) => (
+						<button
+							key={c.name}
+							type="button"
+							onClick={() => onRunCommand(c.name)}
+							className="block w-full rounded px-2 py-1.5 text-left hover:bg-muted"
+						>
+							/{c.name} <span className="text-muted-foreground">{c.description ?? ""}</span>
+						</button>
+					))}
+					{skills.length > 0 && (
+						<>
+							<div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+								Skills
+							</div>
+							{skills.map((c) => (
+								<button
+									key={c.name}
+									type="button"
+									onClick={() => onRunCommand(c.name)}
+									className="block w-full rounded px-2 py-1.5 text-left hover:bg-muted"
+								>
+									/{c.name} <span className="text-muted-foreground">{c.description ?? ""}</span>
+								</button>
+							))}
+						</>
+					)}
+					<div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+						说明
+					</div>
+					<div className="px-2 pb-1 text-xs text-muted-foreground">
+						网页端支持：/model、/agent、上方列出的原生命令与 skills。/new 请用页顶"新建会话"；/share
+						未开放；其余 TUI 命令（/theme、/undo 等）请在本地终端使用。
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function ModelPicker({
+	catalog,
+	current,
+	onChoose,
+	onClose,
+}: {
+	catalog: {
+		commands: { name: string }[];
+		agents: { name: string }[];
+		providers: { id: string; name?: string; models: string[] }[] | null;
+	} | null;
+	current: string | null;
+	onChoose: (value: string | null) => void;
+	onClose: () => void;
+}) {
+	const entries: { id: string; label: string }[] = [];
+	for (const provider of catalog?.providers ?? [])
+		for (const modelID of provider.models ?? [])
+			entries.push({ id: `${provider.id}/${modelID}`, label: provider.name ?? provider.id });
+	return (
+		<div
+			className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-20"
+			onClick={(e) => e.target === e.currentTarget && onClose()}
+		>
+			<div className="w-full max-w-md rounded-lg border border-border bg-card p-3 shadow-xl">
+				<div className="mb-2 flex items-center justify-between">
+					<strong className="text-sm">/model — 选择模型</strong>
+					<button type="button" className="text-xs text-muted-foreground" onClick={onClose}>
+						关闭
+					</button>
+				</div>
+				<div className="max-h-72 space-y-1 overflow-y-auto text-sm">
+					{entries.length === 0 && (
+						<div className="px-2 py-1 text-xs text-muted-foreground">
+							主机 profile 未返回模型列表；将沿用会话当前模型。
+						</div>
+					)}
+					{entries.map((entry) => (
+						<button
+							key={entry.id}
+							type="button"
+							onClick={() => onChoose(entry.id)}
+							className={cnPicker(entry.id === current)}
+						>
+							<span className="font-mono text-xs">{entry.id}</span>{" "}
+							<span className="text-muted-foreground">{entry.label}</span>
+						</button>
+					))}
+					{current && (
+						<button
+							type="button"
+							onClick={() => onChoose(null)}
+							className="mt-2 block w-full rounded border border-border px-2 py-1.5 text-left text-xs text-muted-foreground"
+						>
+							恢复会话默认模型（清除待生效选择）
+						</button>
+					)}
+				</div>
+				<p className="mt-2 text-[11px] text-muted-foreground">
+					选择不会触发模型调用；下一条消息发送时生效，并由 OpenCode 原生记住。
+				</p>
+			</div>
+		</div>
+	);
+}
+
+function AgentPicker({
+	catalog,
+	current,
+	onChoose,
+	onClose,
+}: {
+	catalog: {
+		commands: { name: string }[];
+		agents: { name: string; description?: string }[];
+		providers: unknown;
+	} | null;
+	current: string | null;
+	onChoose: (value: string | null) => void;
+	onClose: () => void;
+}) {
+	const agents = catalog?.agents ?? [];
+	return (
+		<div
+			className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-20"
+			onClick={(e) => e.target === e.currentTarget && onClose()}
+		>
+			<div className="w-full max-w-md rounded-lg border border-border bg-card p-3 shadow-xl">
+				<div className="mb-2 flex items-center justify-between">
+					<strong className="text-sm">/agent — 选择 Agent</strong>
+					<button type="button" className="text-xs text-muted-foreground" onClick={onClose}>
+						关闭
+					</button>
+				</div>
+				<div className="max-h-72 space-y-1 overflow-y-auto text-sm">
+					{agents.length === 0 && (
+						<div className="px-2 py-1 text-xs text-muted-foreground">实例未返回 Agent 列表。</div>
+					)}
+					{agents.map((agent) => (
+						<button
+							key={agent.name}
+							type="button"
+							onClick={() => onChoose(agent.name)}
+							className={cnPicker(agent.name === current)}
+						>
+							<span className="font-mono text-xs">{agent.name}</span>{" "}
+							<span className="text-muted-foreground">{agent.description ?? ""}</span>
+						</button>
+					))}
+					{current && (
+						<button
+							type="button"
+							onClick={() => onChoose(null)}
+							className="mt-2 block w-full rounded border border-border px-2 py-1.5 text-left text-xs text-muted-foreground"
+						>
+							恢复默认 Agent（清除待生效选择）
+						</button>
+					)}
+				</div>
+				<p className="mt-2 text-[11px] text-muted-foreground">
+					选择不会触发模型调用；仅对后续消息生效。
+				</p>
+			</div>
+		</div>
+	);
+}
+
+function cnPicker(active: boolean): string {
+	return `block w-full rounded px-2 py-1.5 text-left hover:bg-muted ${active ? "bg-primary/10 text-primary" : ""}`;
 }

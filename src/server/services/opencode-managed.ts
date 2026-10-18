@@ -82,6 +82,9 @@ export async function acceptOpenCodeSnapshot(
 		permissions: unknown[];
 		questions: unknown[];
 		status: unknown;
+		commands?: unknown[];
+		agents?: unknown[];
+		providers?: unknown;
 	},
 ) {
 	const instance = await ownedOpenCodeInstance(supervisorId, instanceId, input.generation, true);
@@ -99,6 +102,47 @@ export async function acceptOpenCodeSnapshot(
 		!Array.isArray(input.questions)
 	)
 		throw new SessionControlOriginError("provider_binding_invalid");
+	if (Array.isArray(input.commands)) {
+		// Credentials must never reach the catalog: strip provider options/env
+		// down to id/name plus bare model ids before persisting.
+		const rawProviders = object(input.providers);
+		const providerList = Array.isArray(rawProviders.providers)
+			? rawProviders.providers.slice(0, 32).map((entry) => {
+					const provider = object(entry);
+					const models = object(provider.models);
+					return {
+						id: typeof provider.id === "string" ? provider.id : "",
+						name: typeof provider.name === "string" ? provider.name : "",
+						models: Object.keys(models)
+							.slice(0, 128)
+							.filter((modelId) => typeof modelId === "string" && modelId.length <= 200),
+					};
+				})
+			: [];
+		await getDb()
+			.update(sessions)
+			.set({
+				metadata: sql`json_patch(coalesce(${sessions.metadata}, '{}'), ${JSON.stringify({
+					opencodeCatalog: {
+						commands: input.commands.slice(0, 128).map((raw) => {
+							const command = object(raw);
+							return {
+								name: typeof command.name === "string" ? command.name : "",
+								description:
+									typeof command.description === "string"
+										? command.description.slice(0, 200)
+										: "",
+								source: typeof command.source === "string" ? command.source : "",
+							};
+						}),
+						agents: Array.isArray(input.agents) ? input.agents.slice(0, 64) : [],
+						providers: providerList,
+						updatedAt: new Date().toISOString(),
+					},
+				})})`,
+			})
+			.where(eq(sessions.sessionId, instance.sessionId));
+	}
 	const historical = instance.generation !== input.generation;
 	const interruptedReplay = historical || object(input.status).type === "interrupted";
 	if (interruptedReplay) {
@@ -343,7 +387,7 @@ export async function listOpenCodeInteractions(sessionId: string) {
 }
 export async function queueOpenCodeAction(
 	sessionId: string,
-	kind: "interrupt" | "stop" | "prompt" | "interaction_response",
+	kind: "interrupt" | "stop" | "prompt" | "interaction_response" | "opencode_command",
 	input: Json,
 	actor: Actor,
 ) {
@@ -485,6 +529,35 @@ export async function queueOpenCodeAction(
 			(typeof input.prompt !== "string" || !input.prompt.trim() || input.prompt.length > 12000)
 		)
 			throw new Error("invalid_prompt");
+		if (kind === "opencode_command") {
+			if (typeof input.command !== "string" || !/^[a-zA-Z0-9_-]+$/.test(input.command))
+				throw new Error("opencode_invalid_command");
+			if (
+				input.arguments !== undefined &&
+				(typeof input.arguments !== "string" || input.arguments.length > 2000)
+			)
+				throw new Error("opencode_invalid_command");
+		}
+		if (kind === "prompt" && input.model !== undefined) {
+			const model = input.model as { providerID?: unknown; modelID?: unknown } | null;
+			if (
+				model === null ||
+				typeof model !== "object" ||
+				typeof model.providerID !== "string" ||
+				typeof model.modelID !== "string" ||
+				!model.providerID ||
+				!model.modelID ||
+				model.providerID.length > 120 ||
+				model.modelID.length > 200
+			)
+				throw new Error("invalid_prompt_model");
+		}
+		if (
+			kind === "prompt" &&
+			input.agent !== undefined &&
+			(input.agent === null || typeof input.agent !== "string" || input.agent.length > 120)
+		)
+			throw new Error("invalid_prompt_agent");
 		const [action] = await tx
 			.insert(controlActions)
 			.values({
@@ -497,7 +570,16 @@ export async function queueOpenCodeAction(
 					agentType: "opencode",
 					instanceId: binding.instanceId,
 					generation: binding.generation,
-					...(kind === "prompt" ? { prompt: input.prompt } : {}),
+					...(kind === "prompt"
+					? {
+							prompt: input.prompt,
+							...(input.model ? { model: input.model } : {}),
+							...(input.agent ? { agent: input.agent } : {}),
+						}
+					: {}),
+					...(kind === "opencode_command"
+					? { command: input.command, arguments: input.arguments ?? "" }
+					: {}),
 					...(interaction
 						? {
 								interactionId: interaction.id,

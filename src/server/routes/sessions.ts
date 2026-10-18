@@ -616,16 +616,35 @@ sessionsRouter.get("/sessions/:sessionId/opencode/interactions", async (c) => {
 		throw error;
 	}
 });
+sessionsRouter.get("/sessions/:sessionId/opencode/commands", async (c) => {
+	const sessionId = c.req.param("sessionId");
+	const [session] = await getDb().select().from(sessions).where(eq(sessions.sessionId, sessionId));
+	const catalog = (session?.metadata as { opencodeCatalog?: unknown } | null)?.opencodeCatalog;
+	if (!catalog || typeof catalog !== "object")
+		return c.json({ commands: [], agents: [], providers: null });
+	return c.json(catalog);
+});
+
 sessionsRouter.post("/sessions/:sessionId/opencode/actions", async (c) => {
 	const body = await readJsonObject(c);
-	if (!body || !["prompt", "interrupt", "stop", "interaction_response"].includes(String(body.kind)))
+	if (
+		!body ||
+		!["prompt", "interrupt", "stop", "interaction_response", "opencode_command"].includes(
+			String(body.kind),
+		)
+	)
 		return invalidBody(c);
 	try {
 		return c.json(
 			{
 				action: await queueOpenCodeAction(
 					c.req.param("sessionId"),
-					body.kind as "prompt" | "interrupt" | "stop" | "interaction_response",
+					body.kind as
+						| "prompt"
+						| "interrupt"
+						| "stop"
+						| "interaction_response"
+						| "opencode_command",
 					body,
 					await getRequestActor(c),
 				),
