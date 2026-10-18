@@ -2,6 +2,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { eq } from "drizzle-orm";
 if (process.env.AGENTPULSE_OPENCODE_ACCEPTANCE_FIXTURE !== "1")
 	throw new Error("Set AGENTPULSE_OPENCODE_ACCEPTANCE_FIXTURE=1 to create disposable test data");
 const root = await mkdtemp(join(tmpdir(), "agentpulse-opencode-browser-"));
@@ -134,7 +135,28 @@ await getDb()
 		version: "fixture",
 		status: "connected",
 		trustedRoots: [root],
-		capabilities: {},
+		// Lease in the future (refreshed below) so mapSupervisor derives
+		// "connected" — the new-session dialog only lists connected hosts.
+		heartbeatLeaseExpiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+		// Mirrors the provider config above so the new-session dialog can
+		// offer OpenCode launches against this fixture host.
+		capabilities: {
+			version: 1,
+			os: "linux",
+			agentTypes: ["opencode"],
+			launchModes: ["managed_opencode"],
+			terminalSupport: [],
+			features: ["managed_opencode"],
+			executables: {
+				opencode: {
+					available: true,
+					command: "opencode",
+					resolvedPath: "opencode",
+					source: "config",
+					binaryVersion: "1.18.35",
+				},
+			},
+		},
 	});
 const sessionId = crypto.randomUUID();
 const [row] = await getDb()
@@ -163,6 +185,35 @@ await provider.launch(
 		},
 	},
 );
+// Second managed session (B) for A/B draft-isolation evidence: launched the
+// same direct way as the first, so browser tests need no dialog round-trip.
+const sessionIdB = crypto.randomUUID();
+const [rowB] = await getDb()
+	.insert(launchRequests)
+	.values({
+		launchCorrelationId: sessionIdB,
+		agentType: "opencode",
+		cwd,
+		requestedLaunchMode: "managed_opencode",
+		claimedBySupervisorId: "fixture-host",
+		status: "launching",
+		taskPrompt: "P0_HELLO_B",
+		desiredDisplayName: "OpenCode managed B",
+	})
+	.returning();
+const instanceB = await reserveOpenCodeInstance("fixture-host", rowB.id);
+await provider.launch(
+	{
+		...mapLaunchRequest(rowB),
+		openCodeInstance: { id: instanceB.id, generation: instanceB.generation },
+	},
+	{
+		reportState: (input) => upsertManagedSessionState("fixture-host", input),
+		reportEvents: async () => {
+			throw new Error("unfenced event path");
+		},
+	},
+);
 await getDb()
 	.insert(sessions)
 	.values({
@@ -173,6 +224,15 @@ await getDb()
 		metadata: { origin: "agentpulse_launch", controlCapabilities: { send: true } },
 	});
 await recordExternalOpenCodeSession("external-browser-fixture");
+const leaseTimer = setInterval(
+	() =>
+		void getDb()
+			.update(supervisors)
+			.set({ heartbeatLeaseExpiresAt: new Date(Date.now() + 10 * 60_000).toISOString() })
+			.where(eq(supervisors.id, "fixture-host"))
+			.catch(() => {}),
+	60_000,
+);
 const timer = setInterval(
 	() =>
 		void (async () => {
@@ -200,6 +260,7 @@ const state = {
 	root,
 	url: server.url.origin,
 	managedUrl: `${server.url.origin}/sessions/${sessionId}`,
+	managedUrlB: `${server.url.origin}/sessions/${sessionIdB}`,
 	externalUrl: `${server.url.origin}/sessions/external-browser-fixture`,
 	sessionId,
 	instanceId: instance.id,
@@ -211,6 +272,7 @@ async function close() {
 	if (closing) return;
 	closing = true;
 	clearInterval(timer);
+	clearInterval(leaseTimer);
 	await provider.close();
 	mock.kill();
 	await mock.exited;

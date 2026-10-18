@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import type { Session } from "../../../shared/types.js";
@@ -106,6 +106,12 @@ export function OpenCodeControls({
 	const [prompt, setPrompt] = useState(() =>
 		usePromptDraftStore.getState().getDraft(session.sessionId),
 	);
+	// Component reuse (A→B without a key) must never leak A's draft into B.
+	const sessionIdRef = useRef(session.sessionId);
+	sessionIdRef.current = session.sessionId;
+	useEffect(() => {
+		setPrompt(usePromptDraftStore.getState().getDraft(session.sessionId));
+	}, [session.sessionId]);
 	const [catalog, setCatalog] = useState<{
 		commands: { name: string; description?: string; source?: string }[];
 		agents: { name: string; description?: string }[];
@@ -222,6 +228,8 @@ export function OpenCodeControls({
 		);
 		if (known) {
 			const [providerID, ...modelParts] = (pendingModel ?? "").split("/");
+			const sentSession = sessionIdRef.current;
+			const sentVersion = usePromptDraftStore.getState().currentVersion(sentSession);
 			void send({
 				kind: "opencode_command",
 				command: known.name,
@@ -231,20 +239,24 @@ export function OpenCodeControls({
 					: {}),
 				...(pendingAgent ? { agent: pendingAgent } : {}),
 			});
-			setPrompt("");
-			usePromptDraftStore.getState().clearDraft(session.sessionId);
+			clearSentDraft(sentSession, sentVersion);
 			return;
 		}
 		toast.error(t("opencodeCmd.unknown").replace("{name}", name));
 	}
+	/** Clears the input/draft for a COMPLETED send, only if it still belongs to
+	 * the same session and the user did not rewrite the draft meanwhile. */
+	function clearSentDraft(sentSession: string, sentVersion: number) {
+		if (sessionIdRef.current === sentSession) setPrompt("");
+		usePromptDraftStore.getState().clearDraftIfUntouched(sentSession, sentVersion);
+	}
 	async function send(body: Record<string, unknown>) {
+		const sentSession = sessionIdRef.current;
+		const sentVersion = usePromptDraftStore.getState().currentVersion(sentSession);
 		setBusy(true);
 		try {
 			await api.openCodeAction(session.sessionId, body);
-			if (body.kind === "prompt") {
-				setPrompt("");
-				usePromptDraftStore.getState().clearDraft(session.sessionId);
-			}
+			if (body.kind === "prompt") clearSentDraft(sentSession, sentVersion);
 			if (body.interactionId)
 				setItems((old) => old.filter((item) => item.id !== body.interactionId));
 			await onChanged();

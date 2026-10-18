@@ -1,24 +1,69 @@
 import { create } from "zustand";
+import { useUserStore } from "./user-store.js";
 
 /**
- * Per-session prompt drafts (taskbook P1: drafts are isolated by sessionId,
- * surviving tab switches and reloads until sent or cleared). Bounded: the
- * most recent MAX_DRAFTS sessions, each capped at MAX_DRAFT_LENGTH chars.
+ * Per-session prompt drafts (taskbook P1). Drafts are isolated by sessionId,
+ * PERSISTED per viewer (same isolation rules as tabs-store: nothing is read
+ * or written before the viewer is known; switching identity loads the new
+ * viewer's drafts and drops the previous person's from memory), bounded to
+ * the most recent MAX_DRAFTS sessions at MAX_DRAFT_LENGTH chars (the input's
+ * own maxLength — so nothing is ever silently truncated below what the user
+ * could type), and versioned per session so an in-flight send can only clear
+ * a draft it actually sent (a callback for session A must not clear B, nor a
+ * draft the user rewrote while the send was running).
  */
 interface PromptDraftState {
 	drafts: Record<string, string>;
 	order: string[];
+	/** Monotonic per-session edit counter — runtime only, never persisted. */
+	versions: Record<string, number>;
 	setDraft: (sessionId: string, text: string) => void;
 	getDraft: (sessionId: string) => string;
+	currentVersion: (sessionId: string) => number;
 	clearDraft: (sessionId: string) => void;
+	/** Clears only if the draft has not been edited since `version`. */
+	clearDraftIfUntouched: (sessionId: string, version: number) => boolean;
 }
 
+const STORAGE_BASE = "agentpulse.promptDrafts";
 const MAX_DRAFTS = 50;
-const MAX_DRAFT_LENGTH = 10_000;
+const MAX_DRAFT_LENGTH = 12_000; // matches the textarea's maxLength
+
+function keyFor(userId: string | null): string {
+	return userId === null ? STORAGE_BASE : `${STORAGE_BASE}.${userId}`;
+}
+
+let storageKey: string | null = null;
+
+function read(key: string): { drafts: Record<string, string>; order: string[] } {
+	if (typeof localStorage === "undefined") return { drafts: {}, order: [] };
+	try {
+		const raw = localStorage.getItem(key);
+		if (!raw) return { drafts: {}, order: [] };
+		const parsed = JSON.parse(raw) as { drafts?: Record<string, string>; order?: string[] };
+		if (!parsed || typeof parsed !== "object" || !parsed.drafts) return { drafts: {}, order: [] };
+		const order = Array.isArray(parsed.order)
+			? parsed.order.filter((id) => typeof id === "string" && id in parsed.drafts!)
+			: [];
+		return { drafts: parsed.drafts, order };
+	} catch {
+		return { drafts: {}, order: [] };
+	}
+}
+
+function save(drafts: Record<string, string>, order: string[]) {
+	if (storageKey === null || typeof localStorage === "undefined") return;
+	try {
+		localStorage.setItem(storageKey, JSON.stringify({ drafts, order }));
+	} catch {
+		// quota or privacy mode — keep drafts in memory only
+	}
+}
 
 export const usePromptDraftStore = create<PromptDraftState>((set, get) => ({
 	drafts: {},
 	order: [],
+	versions: {},
 	setDraft: (sessionId, text) => {
 		if (!sessionId) return;
 		const clipped = text.length > MAX_DRAFT_LENGTH ? text.slice(0, MAX_DRAFT_LENGTH) : text;
@@ -29,15 +74,46 @@ export const usePromptDraftStore = create<PromptDraftState>((set, get) => ({
 				MAX_DRAFTS,
 			);
 			for (const evicted of state.order.filter((id) => !order.includes(id))) delete drafts[evicted];
-			return { drafts, order };
+			const versions = { ...state.versions, [sessionId]: (state.versions[sessionId] ?? 0) + 1 };
+			save(drafts, order);
+			return { drafts, order, versions };
 		});
 	},
 	getDraft: (sessionId) => get().drafts[sessionId] ?? "",
+	currentVersion: (sessionId) => get().versions[sessionId] ?? 0,
 	clearDraft: (sessionId) =>
 		set((state) => {
 			if (!(sessionId in state.drafts)) return state;
 			const drafts = { ...state.drafts };
 			delete drafts[sessionId];
-			return { drafts, order: state.order.filter((id) => id !== sessionId) };
+			const order = state.order.filter((id) => id !== sessionId);
+			save(drafts, order);
+			return { drafts, order };
 		}),
+	clearDraftIfUntouched: (sessionId, version) => {
+		if (get().versions[sessionId] !== version) return false;
+		get().clearDraft(sessionId);
+		return true;
+	},
 }));
+
+// ── viewer isolation (mirrors tabs-store): drafts follow the signed-in person.
+let adoptedFor: { userId: string | null } | null = null;
+function adoptViewer() {
+	const { loaded, userId } = useUserStore.getState();
+	if (!loaded) {
+		adoptedFor = null;
+		// Nobody is known: drop the previous person's drafts from memory; their
+		// saved drafts stay in storage for their next visit.
+		if (Object.keys(usePromptDraftStore.getState().drafts).length > 0)
+			usePromptDraftStore.setState({ drafts: {}, order: [] });
+		return;
+	}
+	if (adoptedFor && adoptedFor.userId === userId) return;
+	adoptedFor = { userId };
+	storageKey = keyFor(userId);
+	const { drafts, order } = read(storageKey);
+	usePromptDraftStore.setState({ drafts, order, versions: {} });
+}
+useUserStore.subscribe(adoptViewer);
+adoptViewer();
