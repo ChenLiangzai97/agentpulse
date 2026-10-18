@@ -42,7 +42,11 @@ export interface OpenCodeRuntime {
 		text: string,
 		options?: { model?: { providerID: string; modelID: string }; agent?: string },
 	): Promise<void>;
-	runCommand(command: string, args?: string): Promise<void>;
+	runCommand(
+		command: string,
+		args?: string,
+		options?: { model?: { providerID: string; modelID: string }; agent?: string },
+	): Promise<void>;
 	abort(): Promise<void>;
 	stop(): Promise<void>;
 	snapshot(): Promise<{
@@ -331,7 +335,7 @@ export class OpenCodeRuntimePool {
 						throw new Error("opencode_prompt_delivery_uncertain", { cause: error });
 					}
 				},
-				runCommand: async (command, args) => {
+				runCommand: async (command, args, options) => {
 					// Native custom-command execution: the instance expands the command
 					// template as a user message and runs it. TUI built-ins are NOT
 					// valid here (verified: 1.18.35 answers UnknownError).
@@ -340,6 +344,11 @@ export class OpenCodeRuntimePool {
 						command,
 						arguments: args ?? "",
 						messageID: `msg_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`,
+						// /command's model field is the "provider/model" string form.
+						...(options?.model
+							? { model: `${options.model.providerID}/${options.model.modelID}` }
+							: {}),
+						...(options?.agent ? { agent: options.agent } : {}),
 					});
 					runtime.touch();
 				},

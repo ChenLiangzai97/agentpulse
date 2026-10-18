@@ -538,6 +538,26 @@ export async function queueOpenCodeAction(
 			)
 				throw new Error("opencode_invalid_command");
 		}
+		if (kind === "opencode_command" && input.model !== undefined) {
+			const model = input.model as { providerID?: unknown; modelID?: unknown } | null;
+			if (
+				model === null ||
+				typeof model !== "object" ||
+				typeof model.providerID !== "string" ||
+				typeof model.modelID !== "string" ||
+				!model.providerID ||
+				!model.modelID ||
+				model.providerID.length > 120 ||
+				model.modelID.length > 200
+			)
+				throw new Error("invalid_prompt_model");
+		}
+		if (
+			kind === "opencode_command" &&
+			input.agent !== undefined &&
+			(input.agent === null || typeof input.agent !== "string" || input.agent.length > 120)
+		)
+			throw new Error("invalid_prompt_agent");
 		if (kind === "prompt" && input.model !== undefined) {
 			const model = input.model as { providerID?: unknown; modelID?: unknown } | null;
 			if (
@@ -578,7 +598,12 @@ export async function queueOpenCodeAction(
 						}
 					: {}),
 					...(kind === "opencode_command"
-					? { command: input.command, arguments: input.arguments ?? "" }
+					? {
+							command: input.command,
+							arguments: input.arguments ?? "",
+							...(input.model ? { model: input.model } : {}),
+							...(input.agent ? { agent: input.agent } : {}),
+						}
 					: {}),
 					...(interaction
 						? {

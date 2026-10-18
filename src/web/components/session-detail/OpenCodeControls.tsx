@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import type { Session } from "../../../shared/types.js";
 import { api } from "../../lib/api.js";
+import { scopedQuery } from "../../lib/scoped-query.js";
 
 type Interaction = Awaited<ReturnType<typeof api.getOpenCodeInteractions>>["interactions"][number];
 type Question = {
@@ -103,6 +105,7 @@ export function OpenCodeControls({
 		providers: { id: string; name?: string; models: string[] }[] | null;
 	} | null>(null);
 	const [commandMenuOpen, setCommandMenuOpen] = useState(false);
+	const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
 	const [modelPickerOpen, setModelPickerOpen] = useState(false);
 	const [agentPickerOpen, setAgentPickerOpen] = useState(false);
 	const [pendingModel, setPendingModel] = useState<string | null>(() => {
@@ -274,6 +277,10 @@ export function OpenCodeControls({
 					catalog={catalog}
 					pendingModel={pendingModel}
 					pendingAgent={pendingAgent}
+					onPickSession={() => {
+						setCommandMenuOpen(false);
+						setSessionPickerOpen(true);
+					}}
 					onPickModel={() => {
 						setCommandMenuOpen(false);
 						setModelPickerOpen(true);
@@ -284,10 +291,21 @@ export function OpenCodeControls({
 					}}
 					onRunCommand={(name) => {
 						setCommandMenuOpen(false);
-						void send({ kind: "opencode_command", command: name });
+						const [providerID, ...rest] = (pendingModel ?? "").split("/");
+						void send({
+							kind: "opencode_command",
+							command: name,
+							...(pendingModel && rest.length
+								? { model: { providerID, modelID: rest.join("/") } }
+								: {}),
+							...(pendingAgent ? { agent: pendingAgent } : {}),
+						});
 					}}
 					onClose={() => setCommandMenuOpen(false)}
 				/>
+			)}
+			{sessionPickerOpen && (
+				<SessionPicker currentSessionId={session.sessionId} onClose={() => setSessionPickerOpen(false)} />
 			)}
 			{modelPickerOpen && (
 				<ModelPicker
@@ -383,6 +401,7 @@ function CommandMenu({
 	catalog,
 	pendingModel,
 	pendingAgent,
+	onPickSession,
 	onPickModel,
 	onPickAgent,
 	onRunCommand,
@@ -395,13 +414,15 @@ function CommandMenu({
 	} | null;
 	pendingModel: string | null;
 	pendingAgent: string | null;
+	onPickSession: () => void;
 	onPickModel: () => void;
 	onPickAgent: () => void;
 	onRunCommand: (name: string) => void;
 	onClose: () => void;
 }) {
-	const commands = (catalog?.commands ?? []).filter((c) => c.source !== "skill").slice(0, 40);
-	const skills = (catalog?.commands ?? []).filter((c) => c.source === "skill").slice(0, 40);
+	// Only native custom commands are executable this round; global skills stay
+	// listed-but-not-runnable until an explicit source policy lands (spec §7).
+	const commands = (catalog?.commands ?? []).filter((c) => c.source === "command").slice(0, 40);
 	return (
 		<div
 			className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-20"
@@ -415,6 +436,13 @@ function CommandMenu({
 					</button>
 				</div>
 				<div className="max-h-72 space-y-1 overflow-y-auto text-sm">
+					<button
+						type="button"
+						onClick={onPickSession}
+						className="block w-full rounded px-2 py-1.5 text-left hover:bg-muted"
+					>
+						/session <span className="text-muted-foreground">切换到其他会话（仅导航）</span>
+					</button>
 					<button
 						type="button"
 						onClick={onPickModel}
@@ -451,29 +479,12 @@ function CommandMenu({
 							/{c.name} <span className="text-muted-foreground">{c.description ?? ""}</span>
 						</button>
 					))}
-					{skills.length > 0 && (
-						<>
-							<div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-								Skills
-							</div>
-							{skills.map((c) => (
-								<button
-									key={c.name}
-									type="button"
-									onClick={() => onRunCommand(c.name)}
-									className="block w-full rounded px-2 py-1.5 text-left hover:bg-muted"
-								>
-									/{c.name} <span className="text-muted-foreground">{c.description ?? ""}</span>
-								</button>
-							))}
-						</>
-					)}
 					<div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
 						说明
 					</div>
 					<div className="px-2 pb-1 text-xs text-muted-foreground">
-						网页端支持：/model、/agent、上方列出的原生命令与 skills。/new 请用页顶"新建会话"；/share
-						未开放；其余 TUI 命令（/theme、/undo 等）请在本地终端使用。
+						网页端支持：/session、/model、/agent、上方列出的实例原生命令。/new 请用页顶"新建会话"；/share
+						未开放；skills 与其余 TUI 命令暂不开放网页执行。
 					</div>
 				</div>
 			</div>
@@ -540,7 +551,7 @@ function ModelPicker({
 					)}
 				</div>
 				<p className="mt-2 text-[11px] text-muted-foreground">
-					选择不会触发模型调用；下一条消息发送时生效，并由 OpenCode 原生记住。
+					选择本身不调用模型；仅随你的下一条真实消息显式发送并生效（发送即产生正常推理）。选择已本地保存，刷新后仍保留。
 				</p>
 			</div>
 		</div>
@@ -601,7 +612,7 @@ function AgentPicker({
 					)}
 				</div>
 				<p className="mt-2 text-[11px] text-muted-foreground">
-					选择不会触发模型调用；仅对后续消息生效。
+					选择本身不调用模型；随你的后续消息显式携带生效，已本地保存。
 				</p>
 			</div>
 		</div>
@@ -610,4 +621,103 @@ function AgentPicker({
 
 function cnPicker(active: boolean): string {
 	return `block w-full rounded px-2 py-1.5 text-left hover:bg-muted ${active ? "bg-primary/10 text-primary" : ""}`;
+}
+
+
+function SessionPicker({
+	currentSessionId,
+	onClose,
+}: {
+	currentSessionId: string;
+	onClose: () => void;
+}) {
+	const [rows, setRows] = useState<
+		{ sessionId: string; displayName: string | null; status: string; controllable: boolean | null }[]
+	>([]);
+	const [loading, setLoading] = useState(true);
+	const navigate = useNavigate();
+	useEffect(() => {
+		let active = true;
+		void api
+			.getSessions(scopedQuery({ owner: "all", excludeScratch: false }, { agent_type: "opencode", limit: 30 }))
+			.then(async (r) => {
+				const sessions = r.sessions;
+				const detailed = await Promise.all(
+					sessions.map(async (item) => {
+						let controllable: boolean | null = null;
+						try {
+							const caps = await api.getOpenCodeCapabilities(item.sessionId);
+							controllable = Boolean(caps.send);
+						} catch {
+							controllable = null;
+						}
+						return {
+							sessionId: item.sessionId,
+							displayName: item.displayName,
+							status: item.status ?? "",
+							controllable,
+						};
+					}),
+				);
+				if (active) setRows(detailed);
+			})
+			.catch(() => {})
+			.finally(() => {
+				if (active) setLoading(false);
+			});
+		return () => {
+			active = false;
+		};
+	}, []);
+	return (
+		<div
+			className="fixed inset-0 z-40 flex items-start justify-center bg-black/30 p-4 pt-16"
+			onClick={(e) => e.target === e.currentTarget && onClose()}
+		>
+			<div className="w-full max-w-lg rounded-lg border border-border bg-card p-3 shadow-xl">
+				<div className="mb-2 flex items-center justify-between">
+					<strong className="text-sm">/session — 切换会话</strong>
+					<button type="button" className="text-xs text-muted-foreground" onClick={onClose}>
+						关闭
+					</button>
+				</div>
+				<div className="max-h-80 space-y-1 overflow-y-auto text-sm">
+					{loading && <div className="px-2 py-1 text-xs text-muted-foreground">加载中…</div>}
+					{!loading && rows.length === 0 && (
+						<div className="px-2 py-1 text-xs text-muted-foreground">暂无 OpenCode 会话</div>
+					)}
+					{rows.map((row) => (
+						<button
+							key={row.sessionId}
+							type="button"
+							onClick={() => {
+								onClose();
+								navigate(`/sessions/${row.sessionId}`);
+							}}
+							className={`block w-full rounded px-2 py-1.5 text-left hover:bg-muted ${
+								row.sessionId === currentSessionId ? "bg-primary/10" : ""
+							}`}
+						>
+							<span className="mr-2">{row.displayName || row.sessionId.slice(0, 8)}</span>
+							<span
+								className={`ml-1 rounded px-1 text-[10px] ${
+									row.controllable
+										? "bg-emerald-500/15 text-emerald-400"
+										: "bg-muted text-muted-foreground"
+								}`}
+							>
+								{row.controllable === null ? "状态未知" : row.controllable ? "可控" : "仅观察"}
+							</span>
+							{row.sessionId === currentSessionId && (
+								<span className="ml-1 text-[10px] text-muted-foreground">当前</span>
+							)}
+						</button>
+					))}
+				</div>
+				<p className="mt-2 text-[11px] text-muted-foreground">
+					仅切换页面视图；不执行任何模型命令，也不改变会话来源与控制权。
+				</p>
+			</div>
+		</div>
+	);
 }

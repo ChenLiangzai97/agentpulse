@@ -324,7 +324,23 @@ export function createManagedOpenCodeProvider(
 							if (Date.now() > deadline) throw new Error("opencode_prompt_wait_timeout");
 							await Bun.sleep(250);
 						}
-						await runtime.runCommand(command, metadata.arguments ? String(metadata.arguments) : "");
+						const commandModel =
+							metadata.model && typeof metadata.model === "object"
+								? {
+										providerID: String((metadata.model as Record<string, unknown>).providerID ?? ""),
+										modelID: String((metadata.model as Record<string, unknown>).modelID ?? ""),
+									}
+								: undefined;
+						await runtime.runCommand(
+							command,
+							metadata.arguments ? String(metadata.arguments) : "",
+							{
+								...(commandModel ? { model: commandModel } : {}),
+								...(typeof metadata.agent === "string" && metadata.agent
+									? { agent: metadata.agent }
+									: {}),
+							},
+						);
 						await Bun.sleep(500);
 					});
 				promptQueues.set(runtime.sessionId, next);
