@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """Native command/API capability probe for OpenCode 1.18.35 (isolated instance + mock model).
 
-Fills the COMMAND-MATRIX gaps the taskbook P0 asks for: /undo via revert/unrevert,
+Fills the COMMAND-MATRIX gaps the taskbook P0 asks for: /undo via revert/unrevert
+(with history-content assertions against what the fixture model actually received),
 /api compact, dedicated /api session model & agent switch endpoints, TUI control
-endpoints (execute-command / select-session / open-sessions), TUI builtin names
-routed through POST /session/{id}/command, and per-session model isolation.
+endpoints, TUI builtin names routed through POST /session/{id}/command, and
+per-session model isolation.
 
-Evidence is sanitized (native IDs replaced by stable labels) into
-capability-evidence.json next to this script. No real credentials, no production
+Evidence is sanitized (native ses_/msg_ IDs replaced by stable labels) into
+capability-evidence.json next to this script; a post-write artifact check fails
+the run (non-zero exit) if any native-looking ID survives. Key /undo assertions
+fail the run with a collected failure list. No real credentials, no production
 integration, loopback only.
 """
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -28,6 +32,11 @@ if p.STATE.exists():
 
 s = None
 evidence = []
+failures = []
+
+
+def fail(message):
+    failures.append(message)
 
 
 def call(path, body=None, method=None, label=None):
@@ -58,14 +67,43 @@ def wait_idle(sid, timeout=40):
 
 def turn(sid, text, i):
     before = len(p.request(s["base"], f"/session/{sid}/message"))
-    call(f"/session/{sid}/prompt_async", {"messageID": f"msg_cap_{i}", "parts": [{"type": "text", "text": text}]}, label=f"turn {i} prompt")
+    prompt_rec = call(f"/session/{sid}/prompt_async", {"messageID": f"msg_cap_{i}", "parts": [{"type": "text", "text": text}]}, label=f"turn {i} prompt")
     for _ in range(400):
         wait_idle(sid, timeout=40)
         msgs = p.request(s["base"], f"/session/{sid}/message")
         if len(msgs) >= before + 2 and msgs[-1]["info"]["role"] == "assistant" and msgs[-1]["info"].get("time", {}).get("completed"):
             return
         time.sleep(0.1)
-    raise RuntimeError(f"turn {i} did not complete (have {len(p.request(s['base'], f'/session/{sid}/message'))} messages)")
+    status = p.request(s["base"], "/session/status").get(sid)
+    raise RuntimeError(f"turn {i} did not complete (have {len(p.request(s['base'], f'/session/{sid}/message'))} messages, prompt_status={prompt_rec.get('status')}, session_status={status}, server_log_tail={server_log_tail()})")
+
+
+def server_log_tail(limit=400):
+    try:
+        return (Path(s["root"]) / "server.log").read_text(errors="replace")[-limit:].replace("\n", " | ")
+    except Exception:  # noqa: BLE001
+        return "<unavailable>"
+
+
+def try_turn(sid, text, i, timeout=12):
+    """Non-raising turn attempt for boundary facts; returns (completed, diagnostics)."""
+    before = len(p.request(s["base"], f"/session/{sid}/message"))
+    prompt_rec = call(f"/session/{sid}/prompt_async", {"messageID": f"msg_cap_{i}", "parts": [{"type": "text", "text": text}]}, label=f"turn {i} prompt (boundary)")
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        wait_idle(sid, timeout=timeout)
+        msgs = p.request(s["base"], f"/session/{sid}/message")
+        if len(msgs) >= before + 2 and msgs[-1]["info"]["role"] == "assistant" and msgs[-1]["info"].get("time", {}).get("completed"):
+            return True, None
+        time.sleep(0.2)
+    diagnostics = {
+        "prompt_status": prompt_rec.get("status"),
+        "prompt_response": prompt_rec.get("response"),
+        "message_count": len(p.request(s["base"], f"/session/{sid}/message")),
+        "session_status": p.request(s["base"], "/session/status").get(sid),
+        "server_log_tail": server_log_tail(),
+    }
+    return False, diagnostics
 
 
 def summarized(messages):
@@ -100,32 +138,132 @@ def main():
 
     restart(s)
 
-    sid_map = {}
+    sid_map = {}  # native session id -> label
+    turn_counter = [0]
 
-    def sid(label):
-        return sid_map.get(label, label)
+    def new_session(label, title):
+        rec = call("/session", {"title": title}, label=f"create {label}")
+        sid_map[rec["response"]["id"]] = label
+        return rec["response"]["id"]
 
-    # ── three completed turns on session A
-    a = call("/session", {"title": "capability probe A"}, label="create session A")["response"]["id"]
-    sid_map["SES_A"] = a
+    def seeded_session(label, markers):
+        sid = new_session(label, f"capability {label}")
+        for marker in markers:
+            turn_counter[0] += 1
+            turn(sid, f"history marker {marker}", turn_counter[0])
+        msgs = call(f"/session/{sid}/message", label=f"{label} messages after seed turns")["response"]
+        return sid, summarized(msgs)
+
+    def model_requests():
+        f = root / "mock-records.jsonl"
+        if not f.exists():
+            return []
+        return [json.loads(line) for line in f.read_text().splitlines()]
+
+    def assert_history(label, sid, expected_present, expected_absent):
+        """Sends a uniquely-marked probe prompt and asserts which history markers
+        the model actually received, by inspecting the recorded fixture request."""
+        marker = f"probe-{label}"
+        before = len(model_requests())
+        turn_counter[0] += 1
+        try:
+            turn(sid, f"history marker {marker}", turn_counter[0])
+        except Exception as exc:  # noqa: BLE001
+            fail(f"{label}: probe turn failed: {exc}")
+            return None
+        delta = model_requests()[before:]
+        if not delta:
+            fail(f"{label}: no model request recorded for the probe")
+            return None
+        received = " ".join(m.get("text") or "" for m in delta[-1]["messages"])
+        record = {
+            "label": f"history-assert {label}",
+            "probe_marker": marker,
+            "model_message_count": len(delta[-1]["messages"]),
+            "received_user_markers": sorted(set(re.findall(r"history marker ([A-Za-z0-9-]+)", received))),
+        }
+        evidence.append(record)
+        for wanted in expected_present + [marker]:
+            if f"history marker {wanted}" not in received:
+                fail(f"{label}: expected '{wanted}' in model context, missing")
+        for unwanted in expected_absent:
+            if f"history marker {unwanted}" in received:
+                fail(f"{label}: '{unwanted}' should be excluded from model context, still present")
+        return record
+
+    # ══════════════ /undo semantics on DEDICATED fresh sessions ══════════════
+    # Verified fact from the first instrumented run: after a revert, a prompt
+    # with a NEW messageID stalls (never completes), while RESENDING with the
+    # SAME messageID (the TUI undo+edit replacement flow) completes. All
+    # post-revert context assertions therefore go through the resend flow.
+
+    def resend_edited(sid, message_id, marker):
+        started_ms = time.time() * 1000
+        call(f"/session/{sid}/prompt_async", {"messageID": message_id, "parts": [{"type": "text", "text": f"history marker {marker}"}]}, label=f"resend same messageID ({marker})")
+        for _ in range(300):
+            wait_idle(sid, timeout=40)
+            msgs_now = p.request(s["base"], f"/session/{sid}/message")
+            last = msgs_now[-1]["info"] if msgs_now else {}
+            if last.get("role") == "assistant" and last.get("time", {}).get("completed", 0) > started_ms:
+                return True
+            time.sleep(0.1)
+        fail(f"resend {marker} did not complete")
+        return False
+
+    # R1: revert at turn-3 USER excludes the named message and everything after.
+    r1, r1_turns = seeded_session("SES_R1", ["r1alpha", "r1bravo", "r1charlie"])
+    assert_history("R1 baseline", r1, ["r1alpha", "r1bravo", "r1charlie"], [])
+    call(f"/session/{r1}/revert", {"messageID": r1_turns[4]["id"]}, label="R1 revert at turn-3 USER")
+    resend_edited(r1, r1_turns[4]["id"], "r1delta")
+    assert_history("R1 after revert@turn3-user + resend", r1, ["r1alpha", "r1bravo", "r1delta"], ["r1charlie"])
+
+    # R2: revert at turn-3 ASSISTANT excludes only that assistant message;
+    #     turn-2 survives and the turn-3 user message can be replaced.
+    r2, r2_turns = seeded_session("SES_R2", ["r2alpha", "r2bravo", "r2charlie"])
+    call(f"/session/{r2}/revert", {"messageID": r2_turns[5]["id"]}, label="R2 revert at turn-3 ASSISTANT")
+    resend_edited(r2, r2_turns[4]["id"], "r2delta")
+    assert_history("R2 after revert@turn3-assistant + resend", r2, ["r2alpha", "r2bravo", "r2delta"], ["r2charlie"])
+
+    # R3: revert at turn-2 ASSISTANT drops turn 2's answer and everything after.
+    r3, r3_turns = seeded_session("SES_R3", ["r3alpha", "r3bravo", "r3charlie"])
+    call(f"/session/{r3}/revert", {"messageID": r3_turns[3]["id"]}, label="R3 revert at turn-2 ASSISTANT")
+    resend_edited(r3, r3_turns[4]["id"], "r3delta")
+    assert_history("R3 after revert@turn2-assistant + resend", r3, ["r3alpha", "r3delta"], ["r3bravo", "r3charlie"])
+
+    # R4: unrevert semantics without interference — revert then immediately
+    #     unrevert: the reverted turn RETURNS to the model context.
+    r4, r4_turns = seeded_session("SES_R4", ["r4alpha", "r4bravo", "r4charlie"])
+    call(f"/session/{r4}/revert", {"messageID": r4_turns[4]["id"]}, label="R4 revert at turn-3 USER")
+    call(f"/session/{r4}/unrevert", None, method="POST", label="R4 immediate unrevert")
+    assert_history("R4 after immediate unrevert", r4, ["r4alpha", "r4bravo", "r4charlie"], [])
+
+    # R2B: boundary fact — after a revert, a prompt with a NEW messageID does
+    #      not complete on this build (stall recorded with diagnostics).
+    r2b, r2b_turns = seeded_session("SES_R2B", ["r2balpha", "r2bbravo", "r2bcharlie"])
+    call(f"/session/{r2b}/revert", {"messageID": r2b_turns[4]["id"]}, label="R2B revert at turn-3 USER")
+    turn_counter[0] += 1
+    completed, diagnostics = try_turn(r2b, "history marker r2bnew", turn_counter[0], timeout=12)
+    evidence.append({"label": "R2B new-messageID prompt after revert", "completed_within_12s": completed, "diagnostics": diagnostics})
+    if completed:
+        fail("R2B: new-messageID prompt unexpectedly completed after revert (stall boundary changed)")
+    # Boundary: after the stalled prompt, unrevert unblocks new prompts but the
+    # reverted turn does NOT return to the model context on this build.
+    call(f"/session/{r2b}/unrevert", None, method="POST", label="R2B unrevert after stalled prompt")
+    assert_history("R2B after stall + unrevert", r2b, ["r2balpha", "r2bbravo"], ["r2bcharlie"])
+
+    # Bogus messageID: response shape only (no context claim).
+    call(f"/session/{r3}/revert", {"messageID": "msg_nonexistent_cap"}, label="revert bogus messageID (error shape)")
+
+    # ══════════════ capability surface on session A ══════════════
+    a = new_session("SES_A", "capability probe A")
     for i, text in enumerate(["cap one", "cap two", "cap three"], start=1):
-        turn(a, text, i)
-    msgs = call(f"/session/{a}/message", label="messages after 3 turns")["response"]
-    turns = summarized(msgs)
-    assert len(turns) == 6, f"expected 6 messages, got {len(turns)}"
-
-    # ── /undo semantics: revert at turn-3 user message
-    call(f"/session/{a}/revert", {"messageID": turns[4]["id"]}, label="revert at turn-3 user message")
-    after_revert = summarized(call(f"/session/{a}/message", label="messages after revert")["response"])
-    call(f"/session/{a}/unrevert", None, method="POST", label="unrevert")
-    after_unrevert = summarized(call(f"/session/{a}/message", label="messages after unrevert")["response"])
-    call(f"/session/{a}/revert", {"messageID": "msg_nonexistent_cap"}, label="revert bogus messageID (error shape)")
+        turn_counter[0] += 1
+        turn(a, text, turn_counter[0])
 
     # ── dedicated switch endpoints (/api family; ModelRef = {id, providerID, variant?})
     call(f"/api/session/{a}/model", {"model": {"id": "missing-model", "providerID": "p0"}}, label="/api switch model to missing-model (full ModelRef)")
     model_after_switch = call(f"/session/{a}", label="session A after model switch")["response"]
-    b = call("/session", {"title": "capability probe B"}, label="create session B")["response"]["id"]
-    sid_map["SES_B"] = b
+    b = new_session("SES_B", "capability probe B")
     model_b = call(f"/session/{b}", label="session B default model")["response"]
     call(f"/api/session/{a}/model", {"model": {"id": "fixture-model", "providerID": "p0"}}, label="/api switch model back to fixture (full ModelRef)")
     model_a_restored = call(f"/session/{a}", label="session A after model restore")["response"]
@@ -149,62 +287,39 @@ def main():
     active_after_select = call("/api/session/active", label="/api active after tui select-session")
     call("/tui/open-sessions", None, method="POST", label="tui open-sessions (headless)")
     call("/tui/execute-command", {"command": "model"}, label="tui execute-command model (headless)")
+    if len(listing_before_tui) != len(listing_after_tui_new):
+        fail("tui execute-command new changed the session list in headless mode")
+    if active_after_select.get("response", {}).get("data"):
+        fail("tui select-session changed /api/session/active in headless mode")
 
     # ── TUI builtin names routed through the native command endpoint
     for name in ["undo", "compact", "export", "new", "session", "help", "model", "agent", "share", "theme"]:
-        call(f"/session/{a}/command", {"command": name, "arguments": ""}, label=f"/command builtin '{name}'")
+        rec = call(f"/session/{a}/command", {"command": name, "arguments": ""}, label=f"/command builtin '{name}'")
+        if rec.get("status") == 200:
+            fail(f"/command builtin '{name}' unexpectedly accepted")
 
     # ── session switching surface: list + active
     listing = call("/session", label="session list with per-session model")["response"]
+    for entry in listing:
+        sid_map.setdefault(entry["id"], f"SES_LIST_{len(sid_map)}")
     active = call("/api/session/active", label="/api session/active shape")
 
     # ── summarize endpoint
     call(f"/session/{a}/summarize", {"providerID": "p0", "modelID": "fixture-model"}, label="summarize")
     summarize_after = call(f"/session/{a}", label="session A after summarize")["response"]
 
-    # ── full message info after a fresh revert + context-level effect
-    turn(a, "cap four", 4)
-    msgs4 = call(f"/session/{a}/message", label="messages after 4th turn")["response"]
-    context_before = call(f"/api/session/{a}/context", label="context before final revert")["response"]
+    # ── per-session model isolation assertion
+    ma = (model_after_switch or {}).get("model") or {}
+    mb = (model_b or {}).get("model")
+    if ma.get("id") != "missing-model":
+        fail(f"session A model switch did not persist: {ma}")
+    if mb is not None:
+        fail(f"session B should have no explicit model, got {mb}")
 
-    def model_requests():
-        f = root / "mock-records.jsonl"
-        if not f.exists():
-            return []
-        return [json.loads(line) for line in f.read_text().splitlines()]
-
-    probe_counter = [100]
-
-    def probe_context(label):
-        before = len(model_requests())
-        probe_counter[0] += 1
-        try:
-            turn(a, f"probe {label}", probe_counter[0])
-        except Exception as exc:  # noqa: BLE001
-            evidence.append({"label": f"model-context {label}", "error": f"turn failed: {exc}", "message_count_now": len(p.request(s["base"], f"/session/{a}/message"))})
-            return
-        reqs = model_requests()[before:]
-        roles = [[m["role"] for m in r["messages"]] for r in reqs]
-        evidence.append({"label": f"model-context {label}", "call_count": len(reqs), "message_counts": [len(x) for x in roles], "last_roles_tail": roles[-1][-6:] if roles else []})
-
-    probe_context("baseline (no revert)")
-    call(f"/session/{a}/revert", {"messageID": summarized(msgs4)[-1]["id"]}, label="revert at final assistant message")
-    final_revert_info = call(f"/session/{a}/message", label="full info after final revert")["response"]
-    context_after = call(f"/api/session/{a}/context", label="context after final revert")["response"]
-    probe_context("after revert@final-assistant")
-    call(f"/session/{a}/unrevert", None, method="POST", label="unrevert after probe")
-    probe_context("after unrevert")
-
-    # ── staged revert workflow (/api stage/commit/clear shapes)
-    call(f"/api/session/{a}/revert/stage", {"messageID": summarized(msgs4)[-2]["id"]}, label="staged revert at turn-4 user message")
-    staged_context = call(f"/api/session/{a}/context", label="context after staged revert")["response"]
-    probe_context("after stage (pre-commit)")
-    call(f"/api/session/{a}/revert/commit", None, method="POST", label="staged revert commit")
-    committed = call(f"/session/{a}/message", label="messages after staged revert commit")["response"]
-    probe_context("after stage commit")
-    call(f"/api/session/{a}/revert/clear", None, method="POST", label="staged revert clear (nothing staged)")
-
-    # ── sanitize evidence: replace native IDs with labels, keep structure
+    # ══════════════ sanitize evidence: native IDs → labels ══════════════
+    # Named session labels first (readability), then a generic regex fallback
+    # over the serialized text catches every remaining native-looking ID
+    # (messages, parts, ids nested in paths or payloads we never enumerated).
     def scrub(value):
         if isinstance(value, str):
             for native, label in sid_map.items():
@@ -219,9 +334,6 @@ def main():
     out = {
         "cli_version": "1.18.35",
         "captured_at": "2026-10-18",
-        "turns_before_revert": turns,
-        "after_revert": after_revert,
-        "after_unrevert": after_unrevert,
         "model_a_after_switch": model_after_switch,
         "model_a_restored": model_a_restored,
         "model_b_default": model_b,
@@ -234,16 +346,33 @@ def main():
         "after_tui_undo": after_tui_undo,
         "listing_after_tui_new": listing_after_tui_new,
         "active_after_select": active_after_select,
-        "final_revert_info": final_revert_info,
-        "context_before_final_revert": context_before,
-        "context_after_final_revert": context_after,
-        "staged_context": staged_context,
-        "after_staged_commit": summarized(committed),
+        "failures": failures,
         "records": evidence,
     }
-    (here / "capability-evidence.json").write_text(json.dumps(scrub(out), ensure_ascii=False, indent=1))
-    print("records:", len(evidence))
-    print("revert:", len(after_revert), "unrevert:", len(after_unrevert), "model A:", (model_after_switch or {}).get("modelID"), "model B:", (model_b or {}).get("modelID"))
+    text = json.dumps(scrub(out), ensure_ascii=False, indent=1)
+    counters = {"ses": 0, "msg": 0, "prt": 0}
+    text = re.sub(r"ses_[A-Za-z0-9_-]{12,}", lambda m: (counters.__setitem__("ses", counters["ses"] + 1) or f"SES_ANON_{counters['ses']}"), text)
+    text = re.sub(r"msg_[A-Za-z0-9_-]{16,}", lambda m: (counters.__setitem__("msg", counters["msg"] + 1) or f"MSG_ANON_{counters['msg']}"), text)
+    text = re.sub(r"prt_[A-Za-z0-9_-]{12,}", lambda m: (counters.__setitem__("prt", counters["prt"] + 1) or f"PRT_ANON_{counters['prt']}"), text)
+    artifact = here / "capability-evidence.json"
+    artifact.write_text(text)
+    print("records:", len(evidence), "failures:", len(failures), "anon_labels:", counters)
+    for message in failures:
+        print("FAIL:", message)
+
+    # ── artifact self-check: no native-looking IDs may survive sanitization ──
+    leftover_text = artifact.read_text()
+    leftovers = {
+        "ses": len(re.findall(r"ses_[A-Za-z0-9_-]{12,}", leftover_text)),
+        "msg": len(re.findall(r"msg_[A-Za-z0-9_-]{16,}", leftover_text)),
+        "prt": len(re.findall(r"prt_[A-Za-z0-9_-]{12,}", leftover_text)),
+    }
+    if any(leftovers.values()):
+        print("ARTIFACT CHECK FAILED:", leftovers)
+        raise SystemExit(1)
+    if failures:
+        raise SystemExit(1)
+    print("artifact check: no native IDs remain; all history assertions passed")
 
 
 if __name__ == "__main__":
