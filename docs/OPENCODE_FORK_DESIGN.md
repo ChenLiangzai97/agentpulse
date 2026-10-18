@@ -151,18 +151,26 @@ CREATE INDEX idx_opencode_forks_parent ON opencode_forks(parent_session_id);
 - 改名只能走**另行** `PATCH /session/{id} {title}`（实测 200 生效）→ **fork 与改名之间存在真实崩溃窗口**；
 - title **可变**且**可多匹配**（把父改名成同一标记后列表命中 2 条）→ title 不构成唯一证据。
 
-结论：崩溃窗口（原生 fork 成功、回报丢失）**无可靠自动对账手段**。策略：
+结论（按评审措辞收紧）：崩溃窗口（原生 fork 成功、回报丢失）**当前未验证可靠的自动对账手段**（title 实测否定是其一；内容前缀+时间窗在并发 fork 下不唯一）。策略：
 - 该 action 保持 `unknown`，永不自动重发；
-- UI 提供**用户中介采纳**：列出候选分支（同 directory + 消息前缀与受理时父快照匹配 + fork 时间窗内创建），逐项展示证据，用户显式选择后才写入 `opencode_forks` 台账并建绑定；采纳前候选保持只观察。
+- UI 提供**用户中介采纳**——用户确认只解决"候选选择"，**不替代任何来源校验**。候选必须同时满足：
+  1. 位于**该受管实例内**（instanceId 匹配本 action 目标实例）；
+  2. 与本次 unknown action 关联（时间窗内创建、directory 与父一致）；
+  3. **未被绑定**且未被任何其他驱动占用（`uq_control_binding_native` 无记录、无活跃外部 observer 归属）；
+  4. 消息前缀与**实际执行前快照**（见 §3，非受理时镜像）匹配。
+  采纳时再次校验 Actor、owner、supervisor/host、generation、原生身份与实际执行快照；全部通过才写 `opencode_forks` 台账并建绑定；采纳前候选保持只观察。
 
 ## 2. 父删除 FK 链实测（真实 SQLite + 真实 schema）
 
-按设计插入父/子会话、共享 provider_instance、双方绑定、双方 managed 行、launch 后删除父会话，实测结果：
+按设计插入父/子会话、共享 provider_instance、双方绑定、双方 managed 行、launch 后删除父会话，实测结果（SQLite 与 PostgreSQL 双方言，fk-chain-probe.ts 断言化可复跑）：
 - 子会话行、**子绑定、provider_instances 行全部存活**（本 schema 的 instance→session 外键不级联删除实例）；
 - 仅父自身的 managed_sessions 行随父级联消失（属预期）；
 - launch 行存活。
 
-结论：现有外键链下"父删除 → 子分支保持可控"**成立**；设计仅需新增谱系表自身 `parent_session_id ON DELETE SET NULL` + 不可变标签（追溯），无需改动现有外键。该实验脚本随原型一并入库可复跑。
+结论（按评审撤回过强表述）：**仅观察到双方言下行存续**。**"子分支保持可控"未被证明**：
+- 探针实测 `inspectOpenCodeProvenance` 对子绑定判定 `bindingValid=false`——现行单会话守卫（`instance.sessionId === sessionId`、`launch.launchCorrelationId === sessionId`）从**绑定创建起**就拒绝共享实例的子会话（与父删除无关）；
+- 这正是设计 A1"绑定为权威"改造为**必需项**的直接证据；控制/审批/恢复链的父删除后行为属原型验证范围；
+- 探针以父 launch 代替未来 NULL launch（0015 未落地），此差异已显式断言不隐藏；改造落地后"现行守卫拒绝"断言翻转为 valid。
 
 ## 3. copyOf 父快照核验窗口（按评审收窄）
 
