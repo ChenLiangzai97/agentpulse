@@ -37,3 +37,21 @@
 
 `/new`（走 AgentPulse 新建会话与受保护绑定）、`/share`（公开会话内容，本轮不开放）、
 `/theme`（网页本地偏好）、`/undo`、`/compact`、`/export`（待逐项核实 API/语义/权限）。
+
+## 2026-10-18 能力表补全（capability_probe.py 实测）
+
+证据：[capability-evidence.json](capability-evidence.json)（原生 ID 已标签化）。基线同上：1.18.35 隔离实例 + 确定性 mock 模型，可复跑 `python3 capability_probe.py`。
+
+- **/undo** ↔ 服务端 `POST /session/{id}/revert {messageID}` + `POST /session/{id}/unrevert`：
+  - revert 将指定消息及其后内容从**模型上下文**排除（实测：revert 后下一次模型请求收到的消息数下降；unrevert 后恢复到包含被撤内容）。存储消息列表的压缩是惰性的，部分时点仍列出旧消息；**堆叠 revert/unrevert 的精确边界未经原生源码确认，产品化 /undo 前须补**。
+  - 伪 messageID → **200 静默**（无校验、无变化）。
+  - `/api/session/{id}/revert/stage|commit|clear` 分期端点存在；stage 对不在当前上下文的消息返回 404 `MessageNotFoundError`。
+- **/compact** ↔ `POST /api/session/{id}/compact`：本版本实测 **503 "Session compact is not available yet"**（服务未提供，与鉴权无关）。网页暂不可映射 /compact。
+- **会话级模型切换**：`POST /api/session/{id}/model`，ModelRef 必填 `{id, providerID}`（`providerID/modelID` 形态 400 `Missing key ["model"]["id"]`）。成功后 `GET /session` 的 `model` 字段持久为 `{id, providerID, variant}`，**另一会话不受影响**（并行会话保持原值）。与 prompt_async 携带模型的会话内粘滞互为补充。
+- **会话级 agent 切换**：`POST /api/session/{id}/agent {agent}` → 200，但**无任何校验**：不存在的 agent 同样被写入并持久（GET /session 可见 `agent: "no-such-agent"`）。网页若做会话级 /agent 粘滞必须自行按目录校验，不能依赖原生拒绝。
+- **TUI 控制端点在 headless 服务模式全部为无操作**并返回 true：`/tui/execute-command`（undo/new/model 实测无任何效果）、`/tui/select-session`（`/api/session/active` 恒为空 `{"data":{}}`）、`/tui/open-sessions`。不能用于网页驱动内置命令。
+- **TUI 内置命令名经 `POST /session/{id}/command` 一律 500 UnknownError**：undo/compact/export/new/session/help/model/agent/share/theme 全量复测确认（与既有 `model` 单点结论一致）。
+- **/export**：OpenAPI 162 路径中无对应服务端端点（TUI 本地行为），无 API 可映射。
+- **/new**：API 等价物即 `POST /session`（hello.json 已证）；网页映射为 AgentPulse 新建会话 + 受保护绑定，不做原生透传。
+- **/session 切换**：服务端无"激活会话"概念（headless 下 `/api/session/active` 恒空）；一切按会话 ID 寻址。网页 /session 选择器（5038e98）即产品实现，无需原生端点。
+- **summarize**：`POST /session/{id}/summarize {providerID, modelID}` → true；存储新增摘要问答消息（消息数 +2）。

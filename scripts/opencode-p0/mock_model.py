@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Loopback-only deterministic OpenAI-compatible fixture provider. No real credentials/LLM."""
-import json,time
+import json,os,time
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 
+RECORD=os.environ.get('P0_RECORD_FILE')
 class Handler(BaseHTTPRequestHandler):
  abort_started = False
  def log_message(self,*args):pass
@@ -13,6 +14,8 @@ class Handler(BaseHTTPRequestHandler):
   self.wfile.write(json.dumps({'data':[{'id':'fixture-model','object':'model'}]}).encode())
  def do_POST(self):
   body=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))))
+  if RECORD:
+   with open(RECORD,'a') as fh:fh.write(json.dumps({'t':time.time(),'model':body.get('model'),'messages':[{'role':m.get('role'),'text':(m.get('content') if isinstance(m.get('content'),str) else json.dumps(m.get('content')))[:80]} for m in body.get('messages',[])]})+'\n')
   if self.headers.get('Authorization')!='Bearer p0-fixture-key':
    self.send_response(401);self.send_header('Content-Type','application/json');self.end_headers();self.wfile.write(b'{"error":{"message":"P0 invalid test credential","type":"authentication_error","code":"invalid_api_key"}}');return
   if body.get('model')=='missing-model':
