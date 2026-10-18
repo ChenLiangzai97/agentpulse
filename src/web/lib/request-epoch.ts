@@ -14,5 +14,13 @@ export function createRequestEpoch() {
 			const mine = ++epoch;
 			return () => mine === epoch;
 		},
+		/**
+		 * Invalidates every in-flight guard WITHOUT starting a new request —
+		 * used when the context goes away (tab switch to a non-session page,
+		 * unmount) so a late response finds nothing current to touch.
+		 */
+		invalidate(): void {
+			epoch++;
+		},
 	};
 }

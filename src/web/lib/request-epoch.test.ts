@@ -26,3 +26,16 @@ describe("request epoch guard", () => {
 		expect(only()).toBe(true);
 	});
 });
+
+describe("request epoch invalidation", () => {
+	test("invalidate() stales in-flight guards without starting a new request", () => {
+		const guard = createRequestEpoch();
+		const only = guard.begin();
+		expect(only()).toBe(true);
+		guard.invalidate(); // context went away (unmount / non-session page)
+		expect(only()).toBe(false);
+		// the next begin still works normally
+		const next = guard.begin();
+		expect(next()).toBe(true);
+	});
+});

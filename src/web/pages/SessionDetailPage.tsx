@@ -103,6 +103,8 @@ export function SessionDetailPage() {
 	// success overwriting B's detail, not a late 403/404 navigating B away,
 	// not a late finally clearing B's loading flag.
 	const loadEpoch = useRef(createRequestEpoch()).current;
+	const sessionIdRef = useRef(sessionId);
+	sessionIdRef.current = sessionId;
 	const [searchParams, setSearchParams] = useSearchParams();
 
 	const [session, setSession] = useState<Session | null>(null);
@@ -153,16 +155,20 @@ export function SessionDetailPage() {
 
 	const loadSessionWorkspace = useCallback(async () => {
 		if (!sessionId) return;
+		// A stale CLOSURE (an old component's onChanged firing late) must not
+		// start loading its old session onto the current page — and must not
+		// steal the epoch from the current session's requests.
+		if (sessionId !== sessionIdRef.current) return;
 		const isCurrent = loadEpoch.begin();
 		try {
 			const data = await api.getSession(sessionId);
-			if (!isCurrent()) return; // the viewer moved on — drop the late success
+			if (!isCurrent() || sessionId !== sessionIdRef.current) return; // the viewer moved on — drop the late success
 			setSession(data.session as Session);
 			setEvents(data.events as SessionEvent[]);
 			setEventsLoaded(true);
 			setControlActions((data.controlActions as ControlAction[]) || []);
 		} catch (err) {
-			if (!isCurrent()) return; // a late failure must not navigate B away
+			if (!isCurrent() || sessionId !== sessionIdRef.current) return; // a late failure must not navigate B away
 			// P1 tab-restore revalidation: a tab whose session is GONE (404)
 			// or not visible to this viewer (403) closes itself instead of
 			// parking on an error page. Transient failures keep the page.
@@ -179,9 +185,14 @@ export function SessionDetailPage() {
 			}
 			console.error("Failed to fetch session:", err);
 		} finally {
-			if (isCurrent()) setLoading(false);
+			if (isCurrent() && sessionId === sessionIdRef.current) setLoading(false);
 		}
 	}, [sessionId, navigate, loadEpoch]);
+
+	// Leaving the session context (switch to a non-session page, unmount)
+	// invalidates every in-flight load immediately — no late response may
+	// touch state or navigate afterwards.
+	useEffect(() => () => loadEpoch.invalidate(), [loadEpoch]);
 
 	// Warm the header from the cached dashboard list so switching tabs feels instant.
 	useEffect(() => {
