@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import type { Session } from "../../../shared/types.js";
 import { api } from "../../lib/api.js";
+import { useT } from "../../i18n/i18n.js";
 import { scopedQuery } from "../../lib/scoped-query.js";
 
 type Interaction = Awaited<ReturnType<typeof api.getOpenCodeInteractions>>["interactions"][number];
@@ -18,6 +19,7 @@ function QuestionCard({
 	answer,
 	disabled,
 }: { item: Interaction; answer: (body: Record<string, unknown>) => void; disabled: boolean }) {
+	const t = useT();
 	const questions = (
 		Array.isArray(item.payload.questions) ? item.payload.questions : []
 	) as Question[];
@@ -57,9 +59,9 @@ function QuestionCard({
 					))}
 					{q.custom !== false && (
 						<input
-							aria-label={`自由回答 ${index + 1}`}
+							aria-label={`${t("opencodeCmd.freeAnswer")} ${index + 1}`}
 							value={custom[index]}
-							placeholder="自由回答"
+							placeholder={t("opencodeCmd.freeAnswer")}
 							maxLength={10000}
 							className="w-full rounded border bg-background p-2"
 							onChange={(e) =>
@@ -87,7 +89,7 @@ function QuestionCard({
 					})
 				}
 			>
-				提交回答
+				{t("opencodeCmd.submitAnswer")}
 			</button>
 		</div>
 	);
@@ -96,6 +98,7 @@ export function OpenCodeControls({
 	session,
 	onChanged,
 }: { session: Session; onChanged: () => Promise<void> }) {
+	const t = useT();
 	const [cap, setCap] = useState<Session["controlCapabilities"]>();
 	const [items, setItems] = useState<Interaction[]>([]);
 	const [prompt, setPrompt] = useState("");
@@ -131,6 +134,35 @@ export function OpenCodeControls({
 	};
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	// Catalog loads per session; a stale response from a previous session never
+	// lands (active flag + deps) — and pending model/agent reload from this
+	// session's own storage key whenever the rendered session changes, so a
+	// reused component never carries another session's choices.
+	useEffect(() => {
+		let active = true;
+		const load = () =>
+			api
+				.getOpenCodeCommands(session.sessionId)
+				.then((r) => {
+					if (active) setCatalog(r);
+				})
+				.catch(() => {});
+		void load();
+		const timer = setInterval(() => void load(), 10000);
+		return () => {
+			active = false;
+			clearInterval(timer);
+		};
+	}, [session.sessionId]);
+	useEffect(() => {
+		try {
+			setPendingModel(localStorage.getItem(`agentpulse.opencode.model.${session.sessionId}`));
+			setPendingAgent(localStorage.getItem(`agentpulse.opencode.agent.${session.sessionId}`));
+		} catch {
+			setPendingModel(null);
+			setPendingAgent(null);
+		}
+	}, [session.sessionId]);
 	useEffect(() => {
 		let active = true;
 		setCap(undefined);
@@ -148,7 +180,7 @@ export function OpenCodeControls({
 			} catch {
 				if (active) {
 					setCap(undefined);
-					setError("控制状态暂不可用");
+					setError(t("opencodeCmd.capUnavailable"));
 				}
 			}
 		};
@@ -159,6 +191,45 @@ export function OpenCodeControls({
 			clearInterval(timer);
 		};
 	}, [session.sessionId]);
+	function handleSlash(text: string): void {
+		const [head, ...rest] = text.slice(1).split(/\s+/);
+		const name = (head ?? "").toLowerCase();
+		const args = rest.join(" ");
+		if (name === "model") {
+			setModelPickerOpen(true);
+			return;
+		}
+		if (name === "agent") {
+			setAgentPickerOpen(true);
+			return;
+		}
+		if (name === "help") {
+			setCommandMenuOpen(true);
+			return;
+		}
+		if (name === "session") {
+			setSessionPickerOpen(true);
+			return;
+		}
+		const known = (catalog?.commands ?? []).find(
+			(c) => c.source === "command" && c.name.toLowerCase() === name,
+		);
+		if (known) {
+			const [providerID, ...modelParts] = (pendingModel ?? "").split("/");
+			void send({
+				kind: "opencode_command",
+				command: known.name,
+				...(args ? { arguments: args.slice(0, 2000) } : {}),
+				...(pendingModel && modelParts.length
+					? { model: { providerID, modelID: modelParts.join("/") } }
+					: {}),
+				...(pendingAgent ? { agent: pendingAgent } : {}),
+			});
+			setPrompt("");
+			return;
+		}
+		toast.error(t("opencodeCmd.unknown").replace("{name}", name));
+	}
 	async function send(body: Record<string, unknown>) {
 		setBusy(true);
 		try {
@@ -168,7 +239,7 @@ export function OpenCodeControls({
 				setItems((old) => old.filter((item) => item.id !== body.interactionId));
 			await onChanged();
 		} catch (error) {
-			toast.error(error instanceof Error ? error.message : "控制失败");
+			toast.error(error instanceof Error ? error.message : t("opencodeCmd.controlFailed"));
 		} finally {
 			setBusy(false);
 		}
@@ -179,8 +250,8 @@ export function OpenCodeControls({
 			<section className="border-b border-border px-3 py-3 text-sm text-muted-foreground">
 				{error ??
 					(cap?.reason === "not_owner"
-						? "你没有控制此会话的权限。"
-						: "受管实例已停止或中断；旧审批已失效，消息不会自动重投。")}
+						? t("opencodeCmd.notOwner")
+						: t("opencodeCmd.stoppedNote"))}
 			</section>
 		);
 	}
@@ -188,14 +259,14 @@ export function OpenCodeControls({
 	return (
 		<section className="space-y-3 border-b border-border px-3 py-3 md:px-6">
 			<div className="flex gap-3 items-center text-sm">
-				<strong>OpenCode · AgentPulse 受管实例</strong>
+				<strong>{t("opencodeCmd.managedHeader")}</strong>
 				<button
 					type="button"
 					disabled={busy}
 					className="rounded border px-3 py-1"
 					onClick={() => void send({ kind: "interrupt" })}
 				>
-					中止当前轮
+					{t("opencodeCmd.interruptTurn")}
 				</button>
 				<button
 					type="button"
@@ -203,7 +274,7 @@ export function OpenCodeControls({
 					className="rounded border px-3 py-1"
 					onClick={() => void send({ kind: "stop" })}
 				>
-					停止实例
+					{t("opencodeCmd.stopInstance")}
 				</button>
 			</div>
 			{items.map((item) => (
@@ -211,7 +282,7 @@ export function OpenCodeControls({
 					key={`${item.id}-${item.revision}`}
 					className="space-y-3 rounded border border-amber-500/40 p-3 text-sm"
 				>
-					<strong>{item.kind === "permission" ? "权限请求（仅本次）" : "Agent 提问"}</strong>
+					<strong>{item.kind === "permission" ? t("opencodeCmd.permissionCard") : t("opencodeCmd.questionCard")}</strong>
 					{item.kind === "permission" ? (
 						<>
 							<pre className="whitespace-pre-wrap break-all text-xs">
@@ -238,7 +309,7 @@ export function OpenCodeControls({
 									})
 								}
 							>
-								允许本次
+								{t("opencodeCmd.allowOnce")}
 							</button>
 						</>
 					) : (
@@ -268,7 +339,7 @@ export function OpenCodeControls({
 							})
 						}
 					>
-						拒绝
+						{t("opencodeCmd.reject")}
 					</button>
 				</div>
 			))}
@@ -335,15 +406,20 @@ export function OpenCodeControls({
 				className="flex gap-2"
 				onSubmit={(e) => {
 					e.preventDefault();
+					const text = prompt.trim();
+					if (text.startsWith("/")) {
+						handleSlash(text);
+						return;
+					}
 					const [providerID, ...rest] = (pendingModel ?? "").split("/");
-				void send({
-					kind: "prompt",
-					prompt,
-					...(pendingModel && rest.length
-						? { model: { providerID, modelID: rest.join("/") } }
-						: {}),
-					...(pendingAgent ? { agent: pendingAgent } : {}),
-				});
+					void send({
+						kind: "prompt",
+						prompt: text,
+						...(pendingModel && rest.length
+							? { model: { providerID, modelID: rest.join("/") } }
+							: {}),
+						...(pendingAgent ? { agent: pendingAgent } : {}),
+					});
 				}}
 			>
 				<div className="flex-1">
@@ -355,7 +431,7 @@ export function OpenCodeControls({
 									className="rounded bg-muted px-1.5 py-0.5"
 									onClick={() => setModelPickerOpen(true)}
 								>
-									/model → {pendingModel}
+									{t("opencodeCmd.modelBadge")} {pendingModel}
 								</button>
 							)}
 							{pendingAgent && (
@@ -364,7 +440,7 @@ export function OpenCodeControls({
 									className="rounded bg-muted px-1.5 py-0.5"
 									onClick={() => setAgentPickerOpen(true)}
 								>
-									/agent → {pendingAgent}
+									{t("opencodeCmd.agentBadge")} {pendingAgent}
 								</button>
 							)}
 						</div>
@@ -378,19 +454,26 @@ export function OpenCodeControls({
 							setPrompt(e.target.value);
 							setCommandMenuOpen(e.target.value.startsWith("/") && !e.target.value.includes(" "));
 						}}
+						onKeyDown={(e) => {
+							// Enter sends (and routes /commands); Shift+Enter is a newline.
+							if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+								e.preventDefault();
+								e.currentTarget.form?.requestSubmit();
+							}
+						}}
 					/>
 					{prompt.startsWith("/") && !prompt.includes(" ") && (
 						<p className="mt-1 text-[11px] text-amber-400">
-							输入 / 打开命令菜单；直接发送未知命令不会被发出。
+							{t("opencodeCmd.slashHint")}
 						</p>
 					)}
 				</div>
 				<button type="submit" disabled={busy || !prompt.trim()} className="rounded border px-3">
-					发送
+					{t("opencodeCmd.send")}
 				</button>
 			</form>
 			<p className="text-xs text-muted-foreground">
-				空闲不代表任务完成。发送结果不确定时不会自动重试；请先核对时间线。
+				{t("opencodeCmd.footerNote")}
 			</p>
 		</section>
 	);
@@ -420,6 +503,7 @@ function CommandMenu({
 	onRunCommand: (name: string) => void;
 	onClose: () => void;
 }) {
+	const t = useT();
 	// Only native custom commands are executable this round; global skills stay
 	// listed-but-not-runnable until an explicit source policy lands (spec §7).
 	const commands = (catalog?.commands ?? []).filter((c) => c.source === "command").slice(0, 40);
@@ -430,9 +514,9 @@ function CommandMenu({
 		>
 			<div className="w-full max-w-md rounded-lg border border-border bg-card p-3 shadow-xl">
 				<div className="mb-2 flex items-center justify-between">
-					<strong className="text-sm">/ 命令</strong>
+					<strong className="text-sm">{t("opencodeCmd.title")}</strong>
 					<button type="button" className="text-xs text-muted-foreground" onClick={onClose}>
-						关闭
+						{t("opencodeCmd.close")}
 					</button>
 				</div>
 				<div className="max-h-72 space-y-1 overflow-y-auto text-sm">
@@ -441,7 +525,7 @@ function CommandMenu({
 						onClick={onPickSession}
 						className="block w-full rounded px-2 py-1.5 text-left hover:bg-muted"
 					>
-						/session <span className="text-muted-foreground">切换到其他会话（仅导航）</span>
+						/session <span className="text-muted-foreground">{t("opencodeCmd.sessionDesc")}</span>
 					</button>
 					<button
 						type="button"
@@ -450,7 +534,7 @@ function CommandMenu({
 					>
 						/model{" "}
 						<span className="text-muted-foreground">
-							切换模型{pendingModel ? `（当前待生效：${pendingModel}）` : ""}
+							{t("opencodeCmd.modelDesc").replace("{current}", pendingModel ?? "")}
 						</span>
 					</button>
 					<button
@@ -460,14 +544,14 @@ function CommandMenu({
 					>
 						/agent{" "}
 						<span className="text-muted-foreground">
-							切换 Agent{pendingAgent ? `（当前待生效：${pendingAgent}）` : ""}
+							{t("opencodeCmd.agentDesc").replace("{current}", pendingAgent ?? "")}
 						</span>
 					</button>
 					<div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-						原生命令（在实例内执行）
+						{t("opencodeCmd.nativeSection")}
 					</div>
 					{commands.length === 0 && (
-						<div className="px-2 py-1 text-xs text-muted-foreground">实例未返回自定义命令</div>
+						<div className="px-2 py-1 text-xs text-muted-foreground">{t("opencodeCmd.noCommands")}</div>
 					)}
 					{commands.map((c) => (
 						<button
@@ -480,11 +564,10 @@ function CommandMenu({
 						</button>
 					))}
 					<div className="px-2 pt-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-						说明
+						{t("opencodeCmd.notesSection")}
 					</div>
 					<div className="px-2 pb-1 text-xs text-muted-foreground">
-						网页端支持：/session、/model、/agent、上方列出的实例原生命令。/new 请用页顶"新建会话"；/share
-						未开放；skills 与其余 TUI 命令暂不开放网页执行。
+						{t("opencodeCmd.helpMatrix")}
 					</div>
 				</div>
 			</div>
@@ -507,6 +590,7 @@ function ModelPicker({
 	onChoose: (value: string | null) => void;
 	onClose: () => void;
 }) {
+	const t = useT();
 	const entries: { id: string; label: string }[] = [];
 	for (const provider of catalog?.providers ?? [])
 		for (const modelID of provider.models ?? [])
@@ -518,15 +602,15 @@ function ModelPicker({
 		>
 			<div className="w-full max-w-md rounded-lg border border-border bg-card p-3 shadow-xl">
 				<div className="mb-2 flex items-center justify-between">
-					<strong className="text-sm">/model — 选择模型</strong>
+					<strong className="text-sm">{t("opencodeCmd.modelTitle")}</strong>
 					<button type="button" className="text-xs text-muted-foreground" onClick={onClose}>
-						关闭
+						{t("opencodeCmd.close")}
 					</button>
 				</div>
 				<div className="max-h-72 space-y-1 overflow-y-auto text-sm">
 					{entries.length === 0 && (
 						<div className="px-2 py-1 text-xs text-muted-foreground">
-							主机 profile 未返回模型列表；将沿用会话当前模型。
+							{t("opencodeCmd.noModels")}
 						</div>
 					)}
 					{entries.map((entry) => (
@@ -546,12 +630,12 @@ function ModelPicker({
 							onClick={() => onChoose(null)}
 							className="mt-2 block w-full rounded border border-border px-2 py-1.5 text-left text-xs text-muted-foreground"
 						>
-							恢复会话默认模型（清除待生效选择）
+							{t("opencodeCmd.clearModel")}
 						</button>
 					)}
 				</div>
 				<p className="mt-2 text-[11px] text-muted-foreground">
-					选择本身不调用模型；仅随你的下一条真实消息显式发送并生效（发送即产生正常推理）。选择已本地保存，刷新后仍保留。
+					{t("opencodeCmd.modelNote")}
 				</p>
 			</div>
 		</div>
@@ -573,6 +657,7 @@ function AgentPicker({
 	onChoose: (value: string | null) => void;
 	onClose: () => void;
 }) {
+	const t = useT();
 	const agents = catalog?.agents ?? [];
 	return (
 		<div
@@ -581,14 +666,14 @@ function AgentPicker({
 		>
 			<div className="w-full max-w-md rounded-lg border border-border bg-card p-3 shadow-xl">
 				<div className="mb-2 flex items-center justify-between">
-					<strong className="text-sm">/agent — 选择 Agent</strong>
+					<strong className="text-sm">{t("opencodeCmd.agentTitle")}</strong>
 					<button type="button" className="text-xs text-muted-foreground" onClick={onClose}>
-						关闭
+						{t("opencodeCmd.close")}
 					</button>
 				</div>
 				<div className="max-h-72 space-y-1 overflow-y-auto text-sm">
 					{agents.length === 0 && (
-						<div className="px-2 py-1 text-xs text-muted-foreground">实例未返回 Agent 列表。</div>
+						<div className="px-2 py-1 text-xs text-muted-foreground">{t("opencodeCmd.noAgents")}</div>
 					)}
 					{agents.map((agent) => (
 						<button
@@ -607,12 +692,12 @@ function AgentPicker({
 							onClick={() => onChoose(null)}
 							className="mt-2 block w-full rounded border border-border px-2 py-1.5 text-left text-xs text-muted-foreground"
 						>
-							恢复默认 Agent（清除待生效选择）
+							{t("opencodeCmd.clearAgent")}
 						</button>
 					)}
 				</div>
 				<p className="mt-2 text-[11px] text-muted-foreground">
-					选择本身不调用模型；随你的后续消息显式携带生效，已本地保存。
+					{t("opencodeCmd.agentNote")}
 				</p>
 			</div>
 		</div>
@@ -631,6 +716,7 @@ function SessionPicker({
 	currentSessionId: string;
 	onClose: () => void;
 }) {
+	const t = useT();
 	const [rows, setRows] = useState<
 		{ sessionId: string; displayName: string | null; status: string; controllable: boolean | null }[]
 	>([]);
@@ -676,15 +762,15 @@ function SessionPicker({
 		>
 			<div className="w-full max-w-lg rounded-lg border border-border bg-card p-3 shadow-xl">
 				<div className="mb-2 flex items-center justify-between">
-					<strong className="text-sm">/session — 切换会话</strong>
+					<strong className="text-sm">{t("opencodeCmd.sessionTitle")}</strong>
 					<button type="button" className="text-xs text-muted-foreground" onClick={onClose}>
-						关闭
+						{t("opencodeCmd.close")}
 					</button>
 				</div>
 				<div className="max-h-80 space-y-1 overflow-y-auto text-sm">
-					{loading && <div className="px-2 py-1 text-xs text-muted-foreground">加载中…</div>}
+					{loading && <div className="px-2 py-1 text-xs text-muted-foreground">{t("opencodeCmd.loading")}</div>}
 					{!loading && rows.length === 0 && (
-						<div className="px-2 py-1 text-xs text-muted-foreground">暂无 OpenCode 会话</div>
+						<div className="px-2 py-1 text-xs text-muted-foreground">{t("opencodeCmd.noSessions")}</div>
 					)}
 					{rows.map((row) => (
 						<button
@@ -706,16 +792,19 @@ function SessionPicker({
 										: "bg-muted text-muted-foreground"
 								}`}
 							>
-								{row.controllable === null ? "状态未知" : row.controllable ? "可控" : "仅观察"}
+								{row.controllable === null ? t("opencodeCmd.capUnknown")
+								: row.controllable
+									? t("opencodeCmd.controllable")
+									: t("opencodeCmd.observeOnly")}
 							</span>
 							{row.sessionId === currentSessionId && (
-								<span className="ml-1 text-[10px] text-muted-foreground">当前</span>
+								<span className="ml-1 text-[10px] text-muted-foreground">{t("opencodeCmd.current")}</span>
 							)}
 						</button>
 					))}
 				</div>
 				<p className="mt-2 text-[11px] text-muted-foreground">
-					仅切换页面视图；不执行任何模型命令，也不改变会话来源与控制权。
+					{t("opencodeCmd.sessionNote")}
 				</p>
 			</div>
 		</div>

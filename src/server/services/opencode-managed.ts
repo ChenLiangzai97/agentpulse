@@ -104,7 +104,9 @@ export async function acceptOpenCodeSnapshot(
 		throw new SessionControlOriginError("provider_binding_invalid");
 	if (Array.isArray(input.commands)) {
 		// Credentials must never reach the catalog: strip provider options/env
-		// down to id/name plus bare model ids before persisting.
+		// down to id/name plus bare model ids, agents to name/description/mode,
+		// and keep only native custom commands (source=command) — skills are
+		// listed nowhere until an explicit source policy lands.
 		const rawProviders = object(input.providers);
 		const providerList = Array.isArray(rawProviders.providers)
 			? rawProviders.providers.slice(0, 32).map((entry) => {
@@ -119,28 +121,48 @@ export async function acceptOpenCodeSnapshot(
 					};
 				})
 			: [];
+		const commands = input.commands
+			.filter((raw) => object(raw).source === "command")
+			.slice(0, 128)
+			.map((raw) => {
+				const command = object(raw);
+				return {
+					name: typeof command.name === "string" ? command.name : "",
+					description:
+						typeof command.description === "string" ? command.description.slice(0, 200) : "",
+					source: "command",
+				};
+			});
+		const agents = (Array.isArray(input.agents) ? input.agents : []).slice(0, 64).map((raw) => {
+			const agent = object(raw);
+			return {
+				name: typeof agent.name === "string" ? agent.name : "",
+				description:
+					typeof agent.description === "string" ? agent.description.slice(0, 200) : "",
+				mode: typeof agent.mode === "string" ? agent.mode.slice(0, 32) : "",
+			};
+		});
+		// Read-modify-write in JS instead of SQLite's json_patch: PostgreSQL has
+		// no json_patch, so a dialect-specific SQL helper would diverge. The
+		// catalog key is only written by this single snapshot path.
+		const [existing] = await getDb()
+			.select({ metadata: sessions.metadata })
+			.from(sessions)
+			.where(eq(sessions.sessionId, instance.sessionId))
+			.limit(1);
+		const metadata =
+			existing?.metadata && typeof existing.metadata === "object"
+				? { ...(existing.metadata as Record<string, unknown>) }
+				: {};
+		metadata.opencodeCatalog = {
+			commands,
+			agents,
+			providers: providerList,
+			updatedAt: new Date().toISOString(),
+		};
 		await getDb()
 			.update(sessions)
-			.set({
-				metadata: sql`json_patch(coalesce(${sessions.metadata}, '{}'), ${JSON.stringify({
-					opencodeCatalog: {
-						commands: input.commands.slice(0, 128).map((raw) => {
-							const command = object(raw);
-							return {
-								name: typeof command.name === "string" ? command.name : "",
-								description:
-									typeof command.description === "string"
-										? command.description.slice(0, 200)
-										: "",
-								source: typeof command.source === "string" ? command.source : "",
-							};
-						}),
-						agents: Array.isArray(input.agents) ? input.agents.slice(0, 64) : [],
-						providers: providerList,
-						updatedAt: new Date().toISOString(),
-					},
-				})})`,
-			})
+			.set({ metadata })
 			.where(eq(sessions.sessionId, instance.sessionId));
 	}
 	const historical = instance.generation !== input.generation;
@@ -532,6 +554,18 @@ export async function queueOpenCodeAction(
 		if (kind === "opencode_command") {
 			if (typeof input.command !== "string" || !/^[a-zA-Z0-9_-]+$/.test(input.command))
 				throw new Error("opencode_invalid_command");
+			// Server-side source policy: the name must exist in this session's
+			// own stored catalog as a native custom command (source=command).
+			const [catalogRow] = await getDb()
+				.select({ metadata: sessions.metadata })
+				.from(sessions)
+				.where(eq(sessions.sessionId, sessionId))
+				.limit(1);
+			const catalog = (
+				catalogRow?.metadata as { opencodeCatalog?: { commands?: { name: string }[] } } | undefined
+			)?.opencodeCatalog;
+			const listed = (catalog?.commands ?? []).some((entry) => entry.name === input.command);
+			if (!listed) throw new Error("opencode_invalid_command");
 			if (
 				input.arguments !== undefined &&
 				(typeof input.arguments !== "string" || input.arguments.length > 2000)

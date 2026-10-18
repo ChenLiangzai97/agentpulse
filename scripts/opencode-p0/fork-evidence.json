@@ -1,0 +1,100 @@
+{
+ "base": "http://127.0.0.1:4611",
+ "model": "zhipuai-coding-plan/glm-5.3-flash",
+ "root_session": "ses_eb32752c1ffejaxzMXVYol1i6C",
+ "root_messages": [
+  {
+   "id": "msg_probe_1",
+   "role": "user"
+  },
+  {
+   "id": "msg_14cd8aec9001wdi2VJiZZUYAAv",
+   "role": "assistant"
+  },
+  {
+   "id": "msg_probe_2",
+   "role": "user"
+  },
+  {
+   "id": "msg_14cd8b545001oMPuqjC4mz1GSm",
+   "role": "assistant"
+  }
+ ],
+ "omit_messageID": {
+  "fork_request": {},
+  "fork_response": {
+   "id": "ses_eb32742cbffevt3jHq3j5mURVr",
+   "title": "fork probe root (fork #1)",
+   "parentID": null
+  },
+  "branch_messages_before_question": [
+   {
+    "id": "msg_14cd8bd35001uGKvUvuaSk6O55",
+    "role": "user"
+   },
+   {
+    "id": "msg_14cd8bd370011l0PPTWTNHUQNh",
+    "role": "assistant"
+   },
+   {
+    "id": "msg_14cd8bd3b001Q1rn6Pg6D3K7V5",
+    "role": "user"
+   },
+   {
+    "id": "msg_14cd8bd3c001Uaj8ClJbkzttAX",
+    "role": "assistant"
+   }
+  ],
+  "answer": null
+ },
+ "at_last_assistant": {
+  "fork_request": {
+   "messageID": "msg_14cd8b545001oMPuqjC4mz1GSm"
+  },
+  "fork_response": {
+   "id": "ses_eb325e223ffe2YFd1lshOCh5A6",
+   "title": "fork probe root (fork #1)",
+   "parentID": null
+  },
+  "branch_messages_before_question": [
+   {
+    "id": "msg_14cda1dde001odZlUHKH2OBpwU",
+    "role": "user"
+   },
+   {
+    "id": "msg_14cda1de0002PJMDUp4yU66ROH",
+    "role": "assistant"
+   },
+   {
+    "id": "msg_14cda1de4001FjTyDZtlYbhiHA",
+    "role": "user"
+   },
+   {
+    "id": "msg_probe_q_at_last_assistant",
+    "role": "user"
+   }
+  ],
+  "answer": null
+ },
+ "at_middle_user": {
+  "fork_request": {
+   "messageID": "msg_probe_1"
+  },
+  "fork_response": {
+   "id": "ses_eb324818affeGL8be4lL5TWgL9",
+   "title": "fork probe root (fork #1)",
+   "parentID": null
+  },
+  "branch_messages_before_question": [
+   {
+    "id": "msg_probe_q_at_middle_user",
+    "role": "user"
+   },
+   {
+    "id": "msg_14cdb7e7d0015HUzlFTXMblz9x",
+    "role": "assistant"
+   }
+  ],
+  "answer": null
+ }
+}

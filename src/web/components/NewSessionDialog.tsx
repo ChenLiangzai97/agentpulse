@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { defaultLaunchModeForAgent } from "./templates/utils.js";
 import { api } from "../lib/api.js";
+import { scopedQuery } from "../lib/scoped-query.js";
 import { useT } from "../i18n/i18n.js";
 import type { LaunchableAgentType } from "../../shared/types.js";
 import type { Project } from "../../shared/types.js";
@@ -28,6 +29,9 @@ export function NewSessionDialog({ onClose }: { onClose: () => void }) {
 	const [supervisorId, setSupervisorId] = useState<string>("");
 	const [advanced, setAdvanced] = useState(false);
 	const [submitting, setSubmitting] = useState(false);
+	// One correlation id per dialog lifetime: a retry after a timeout reuses it
+	// instead of minting a second launch for the same intent.
+	const correlationIdRef = useRef(`sess-${crypto.randomUUID()}`);
 
 	useEffect(() => {
 		void api
@@ -82,7 +86,7 @@ export function NewSessionDialog({ onClose }: { onClose: () => void }) {
 				template: { name: displayName.trim() || cwd.trim(), agentType, cwd: cwd.trim(), launchMode },
 				launchSpec: {
 					version: 1,
-					launchCorrelationId: crypto.randomUUID(),
+					launchCorrelationId: correlationIdRef.current,
 					managedMode: "unmanaged_preview",
 					agentType,
 					launchMode,
@@ -93,14 +97,41 @@ export function NewSessionDialog({ onClose }: { onClose: () => void }) {
 					baseInstructions: "",
 					taskPrompt: firstPrompt.trim(),
 					env: {},
-				},
-			})) as { launchRequest?: { id: string; status: string; error?: string | null } };
+			},
+			})) as {
+				launchRequest?: {
+					id: string;
+					status: string;
+					error?: string | null;
+					launchCorrelationId?: string;
+				};
+			};
 			const launch = result?.launchRequest;
 			if (!launch?.id) throw new Error(t("newSession.launchFailed"));
 			if (launch.status === "rejected") throw new Error(launch.error || t("newSession.launchRejected"));
 			toast.success(t("newSession.launched"));
 			onClose();
 			navigate(`/launches/${launch.id}`);
+			// Bounded wait for the session to appear, then straight into it —
+			// the launch page stays as the fallback if binding is slow.
+			// The server mints the authoritative correlation id — poll by that.
+			const correlation = launch.launchCorrelationId ?? correlationIdRef.current;
+			void (async () => {
+				const deadline = Date.now() + 45000;
+				while (Date.now() < deadline) {
+					await new Promise((resolve) => setTimeout(resolve, 1500));
+					try {
+						const list = await api.getSessions(scopedQuery({ owner: "all", excludeScratch: false }, { limit: 50 }));
+						const match = list.sessions.find((item) => item.sessionId === correlation);
+						if (match) {
+							navigate(`/sessions/${encodeURIComponent(match.sessionId)}`);
+							return;
+						}
+					} catch {
+						/* keep waiting until the deadline */
+					}
+				}
+			})();
 		} catch (error) {
 			toast.error(error instanceof Error ? error.message : t("newSession.launchFailed"));
 		} finally {
