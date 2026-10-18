@@ -1,6 +1,6 @@
 # 受管 OpenCode /fork 独立设计（P1 增量 5）
 
-日期：2026-10-18。状态：**设计稿，待 codex 评审后实施**。依据：任务书 §P1/§P0、FORK-VERIFICATION.md（原生语义实证）、opencode-control-provenance 架构、P4 事实模型（copyOf 契约）。
+日期：2026-10-18；**v2 修订（同日）：按评审意见补齐单会话假设改造清单、幂等唯一约束与结果对账、copyOf 授信链、停止会话完整语义、双方言迁移与父删除规则**。状态：设计稿 v2，待评审；实施顺序=先隔离原型与测试，再接控制主路径。依据：任务书 §P1/§P0、FORK-VERIFICATION.md（原生语义实证）、opencode-control-provenance 架构、P4 事实模型（copyOf 契约）。
 
 ## 0. 已实证的原生事实（设计前提）
 
@@ -75,3 +75,67 @@ CREATE INDEX idx_opencode_forks_parent ON opencode_forks(parent_session_id);
 2. 探针：能力探针补"子会话 abort 不影响父"实证。
 3. 浏览器（并入 4+6 终局验收）：真实 fork → 子会话回答继承上下文（暗号法）；停止子分支父继续输出；父/子审批各归各卡；copyOf 生效后 worklog 同日不重复计数。
 4. 安全：伪造 metadata/旧 generation/外部 origin 的 fork 一律拒绝。
+
+---
+
+# v2 修订：评审四项缺口的落地设计
+
+## A. 单会话假设改造清单（多会话共实例）
+
+核心原则：**provider_instances 保持"进程"语义（session_id = 发起会话=父，不变）；session_control_bindings 升级为"每 AgentPulse 会话的寻址与授权权威"**。守卫不删除，改为按绑定解析：
+
+| # | 现有单会话假设（代码位） | 改造 |
+|---|---|---|
+| A1 | `provider_instances.session_id` UNIQUE + `ownedOpenCodeInstance` 以 instance.sessionId 为会话 | 新增 `bindingForSession(sessionId)`：校验 binding.origin=agentpulse_launch、binding.instanceId、binding.generation==instance.generation、instance.state∈{reserved,running}；所有"以会话找实例"的路径改走绑定（父会话走既有绑定，等价兼容） |
+| A2 | `validateOpenCodeReport`（observer/回报自举）要求 instance.sessionId===input.sessionId | 受管实例的子会话**不走 report 自举**（无 launch）；回报仍按父会话校验不变 |
+| A3 | `acceptOpenCodeSnapshot` 归属 instance.sessionId | 改为按 snapshot.nativeSessionId 匹配该实例下的 binding（父或子），事件/目录写入对应 AgentPulse 会话；无匹配绑定且非父 → 拒绝（不静默建外部行） |
+| A4 | legacy observer 会把子原生会话当外部会话摄取（opencode: 命名空间、永久只观察） | 摄取前置检查：native session id 已被任何 `uq_control_binding_native` 占用 → 跳过（受管域，不是外部会话）；已有重复行做一次性清洗迁移 |
+| A5 | `managed_sessions.launch_request_id NOT NULL` | 迁移放宽为 NULL（drizzle 0015 双方言 + legacy ALTER）；子会话行 launch_request_id=NULL、correlation_source='opencode_fork'；控制锁/activeAction 语义按会话行各自独立 |
+| A6 | Supervisor `provider.control(action)` 按 action.sessionId→instance.sessionId 的原生会话寻址 | provider 侧改为 binding 寻址：action 携带 nativeSessionId（服务端入队时按绑定解析并写入 action metadata）；provider 校验 (instanceId, nativeSessionId) 属于本 supervisor 的实例后才执行 |
+| A7 | 恢复路径（Supervisor 重启/控制断开重连）按"实例→会话"一对一恢复 | 恢复枚举实例下**全部有效绑定**会话；generation 失效对同实例所有绑定同时成立（assert 时校验 binding.generation==instance.generation） |
+| A8 | 空闲回收按实例/会话一对一判定 | 回收候选条件改为：实例下**所有**绑定会话均无 pending 交互、无 queued/running 动作、非 working；任一不满足即不回收 |
+
+父子来源验证保持：外部/legacy/BotMux origin 不变；子会话绑定的创建仅由 fork 动作成功回报触发（见 B），不接受任何"自称子会话"的回报。
+
+## B. 幂等与结果对账（可崩溃）
+
+- **持久唯一约束**：`CREATE UNIQUE INDEX uq_fork_action_idem ON control_actions(requested_by_user_id, idempotency_key) WHERE action_type='opencode_fork' AND idempotency_key IS NOT NULL`（双方言 partial unique；SQLite 支持，PG 支持；legacy 路径补同款语句）。作用域=Actor（requested_by_user_id，solo 下 NULL 视为同一 owner，用 COALESCE 键或 owner 列冗余）。
+- **请求体冲突**：action metadata 存 `requestHash`（messageId+parentSessionId 规范化哈希）；同键不同 hash → 409 `fork_key_conflict`。
+- **结果台账**：fork 成功回报落地 `opencode_forks` 行（含 action_id）即为持久结果；动作状态以台账为准对账。
+- **崩溃窗口对账**（原生 fork 已发生、回报丢失）：服务端在受理时生成 `forkTitle = agentpulse-fork:<actionId>` 并作为原生 fork 的 title 传入；对账时 Supervisor 按该 title 扫描实例的原生会话列表，命中者按 A3/C 流程采纳为该 action 的结果（并核验父前缀，见 C）；未命中 → 保持 unknown，**不自动重发**（沿用原则）。
+- 锁串行仅去抖并发，不承担崩溃后去重——去重由唯一约束+台账+title 对账承担。
+
+## C. copyOf 授信链（不靠事后同文猜测）
+
+1. **受理时钉住父态**：服务端把父会话当前消息清单（原生 msg id、part 结构哈希、各事件 createdAt）与分叉点快照进 `opencode_fork_requests.parent_snapshot`（JSON，随请求持久化）。
+2. **子初始快照关联**：fork 回报的子会话**首个**快照到达时，将其消息序列与 parent_snapshot 前缀逐位核验（按实证语义：省略 messageID=全量；指定 messageID=排除该消息及其后）。逐条建立映射：message→message、part→part（工具事件按 messageIndex+partIndex+toolName+内容哈希三元组对齐）。
+3. **歧义即停**：任一位置哈希不等、part 数不齐、顺序断裂 → **停止推断**（映射截止于断点前），不跨缺口继续；无映射的子事件按普通新事件处理（不写 copyOf）。
+4. **继承时间**：被映射的拷贝事件入库 `createdAt` 取 parent_snapshot 中对应父事件的原始发生时间（不落 fork 当日）；`copyOf=父事件id` 由父原生 msg id→events 解析。
+5. 映射一次性构建后持久化（fork_requests.child_map），后续子快照增量不再推断（新消息都是真新消息）。
+
+## D. 停止会话完整语义（不止 abort+归档）
+
+`停止会话`（仅作用于目标绑定会话，其他分支不受影响）：
+1. 取消该会话全部 queued/running control actions（标记 cancelled，Supervisor 领取侧跳过）；
+2. 其绑定下 pending provider_interactions 全部置 cancelled（失效，不可再答复）；
+3. managedSession 置 stopped、绑定保留（generation 不变）；`assertSessionControlOrigin` 增加绑定会话状态检查——stopped 绑定拒绝新动作（prompt/fork/command 一律 409 session_stopped）；
+4. **恢复=显式操作**：UI「恢复此分支」→ managedSession 回 managed（绑定/代数不变，历史保留）；恢复后新动作可入队；
+5. 实例级停止：generation+1 并显式失效该实例**全部**绑定（含父子），UI 列出受影响会话清单并二次确认；空闲回收见 A8。
+
+## E. 迁移与双方言
+
+- drizzle **0015**（sqlite + postgres 同内容）：`opencode_forks`、`opencode_fork_requests`、`uq_fork_action_idem` partial unique、`managed_sessions.launch_request_id` 放宽（PG 侧 DROP NOT NULL + ADD COLUMN 兼容；SQLite 重建表或新列可空+应用层保证）、父删除规则（见 F）所需列。
+- 旧库 legacy init 路径追加等价语句（CREATE TABLE IF NOT EXISTS + CREATE UNIQUE INDEX IF NOT EXISTS + ALTER）。
+- 一次性清洗：A4 的受管子会话若已被 observer 摄取为外部行，迁移时删除重复外部行（保留绑定权威行）。
+
+## F. 父删除后的子分支规则
+
+- `opencode_forks.parent_session_id` 改 `ON DELETE SET NULL`（可空），并在创建时**冗余不可变标签**（父 displayName、父原生会话 id、分叉点 msg id）——父被删除后谱系仍可追溯展示。
+- 子会话授权不依赖父会话行：绑定指向 instance（进程）而非父 session → 父删除不影响子会话控制/审批/停止。
+- 父删除时**不**级联停止子分支（显式独立操作）；子分支快照/事件自持。
+
+## G. 实施顺序（隔离原型先行）
+
+1. 原型 + 单测（不接控制主路径）：绑定寻址助手（A1/A3 纯函数）、fork 幂等/冲突/对账状态机（B）、前缀映射器（C，含断点即停与时间继承用例）、停止语义（D 的取消/失效/拒新）。
+2. 评审通过后接主路径：0015 迁移 + 端点 + provider binding 寻址（A6）+ observer 跳过（A4）。
+3. 浏览器终局验收（并入 4+6）：fork 继承上下文（暗号法）、停止子不影响父、审批各归各卡、copyOf 去重生效、真实组件 A/B 迟到响应场景。
