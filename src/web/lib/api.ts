@@ -358,6 +358,23 @@ export const api = {
 	getWorklogs: () => request<{ runs: WorklogRun[] }>("/worklog/runs"),
 	getWorklogRun: (date: string) =>
 		request<{ run: WorklogRun }>(`/worklog/runs/${encodeURIComponent(date)}`),
+	getWorklogPreview: (date: string) =>
+		request<{
+			date: string;
+			timezone: string;
+			sessions: Array<{
+				sessionId: string;
+				name: string | null;
+				host: string | null;
+				included: boolean;
+				counts: { prompt: number; assistant_message: number; tool_event: number };
+			}>;
+		}>(`/worklog/preview/${encodeURIComponent(date)}`),
+	editWorklogVersion: (date: string, baseVersionId: string, markdown: string) =>
+		request<{ run: WorklogRun }>(`/worklog/runs/${encodeURIComponent(date)}/edit`, {
+			method: "POST",
+			body: JSON.stringify({ baseVersionId, markdown }),
+		}),
 	adoptWorklogVersion: (date: string, versionId: string) =>
 		request<{ run: WorklogRun }>(`/worklog/runs/${encodeURIComponent(date)}/adopt`, {
 			method: "POST",

@@ -435,12 +435,19 @@ export async function runWorklog(
 					new Date(extractedAt),
 				);
 			}
+			// Adoption is user-owned: a forced regeneration appends versions but
+			// never resets a prior explicit adoption (manual edits included).
+			// Only a first generation (no prior adoption) auto-adopts the team draft.
 			const teamVersion = versions.filter((v) => v.kind === "team").at(-1) ?? null;
+			const priorAdoptedId = run.adoptedVersionId ?? null;
+			const adoptedId =
+				priorAdoptedId && versions.some((v) => v.versionId === priorAdoptedId)
+					? priorAdoptedId
+					: (teamVersion?.versionId ?? versions[versions.length - 1]?.versionId ?? null);
+			const adoptedVersion = versions.find((v) => v.versionId === adoptedId) ?? teamVersion;
 			run = {
 				...run,
-				markdown: teamVersion
-					? teamVersion.markdown
-					: (versions[versions.length - 1]?.markdown ?? ""),
+				markdown: adoptedVersion ? adoptedVersion.markdown : "",
 				facts,
 				factMeta: {
 					model: config.model,
@@ -450,9 +457,7 @@ export async function runWorklog(
 					downgraded: downgradedFacts,
 				},
 				versions,
-				adoptedVersionId: teamVersion
-					? teamVersion.versionId
-					: (versions[versions.length - 1]?.versionId ?? null),
+				adoptedVersionId: adoptedId,
 				status: "ready",
 				error: null,
 				updatedAt: extractedAt,
@@ -524,6 +529,128 @@ export async function discardWorklog(date: string) {
 		const run = await readWorklogValue<WorklogRun | null>(key, null);
 		if (run?.status === "delivered") throw new Error("A delivered log cannot be discarded");
 		await getDb().delete(settings).where(eq(settings.key, key));
+	} finally {
+		await getDb()
+			.delete(settings)
+			.where(
+				and(eq(settings.key, leaseKey), eq(jsonExtractText(settings.value, "$.token"), token)),
+			);
+	}
+}
+
+/** Scope preview: sessions active in the day window, no model calls. */
+export async function previewWorklogScope(date: string): Promise<{
+	date: string;
+	timezone: string;
+	sessions: Array<{
+		sessionId: string;
+		name: string | null;
+		host: string | null;
+		included: boolean;
+		counts: { prompt: number; assistant_message: number; tool_event: number };
+	}>;
+}> {
+	validateDate(date);
+	const config = await getWorklogConfig();
+	const window = dayWindow(date, config.timezone);
+	const rows = await getDb()
+		.select({
+			sessionId: events.sessionId,
+			name: sessions.displayName,
+			host: EFFECTIVE_MACHINE,
+			category: events.category,
+		})
+		.from(events)
+		.innerJoin(sessions, eq(events.sessionId, sessions.sessionId))
+		.where(
+			and(
+				gte(events.createdAt, toDbTimestamp(window.start)),
+				lt(events.createdAt, toDbTimestamp(window.end)),
+				inArray(events.category, ["prompt", "assistant_message", "tool_event"]),
+			),
+		);
+	const excludedRows = await getDb()
+		.select()
+		.from(settings)
+		.where(like(settings.key, "worklog.include.%"));
+	const excluded = new Set(
+		excludedRows
+			.filter((r) => r.value === false)
+			.map((r) => r.key.slice("worklog.include.".length)),
+	);
+	const bySession = new Map<
+		string,
+		{
+			name: string | null;
+			host: string | null;
+			counts: { prompt: number; assistant_message: number; tool_event: number };
+		}
+	>();
+	for (const row of rows) {
+		const entry = bySession.get(row.sessionId) ?? {
+			name: row.name,
+			host: row.host,
+			counts: { prompt: 0, assistant_message: 0, tool_event: 0 },
+		};
+		if (
+			row.category === "prompt" ||
+			row.category === "assistant_message" ||
+			row.category === "tool_event"
+		)
+			entry.counts[row.category] += 1;
+		bySession.set(row.sessionId, entry);
+	}
+	return {
+		date,
+		timezone: config.timezone,
+		sessions: [...bySession.entries()].map(([sessionId, entry]) => ({
+			sessionId,
+			name: entry.name,
+			host: entry.host,
+			included: !excluded.has(sessionId),
+			counts: entry.counts,
+		})),
+	};
+}
+
+/**
+ * Appends a manual-edit version based on an existing one and adopts it.
+ * Regeneration never overwrites it; a delivered run is locked.
+ */
+export async function editWorklogVersion(
+	date: string,
+	baseVersionId: string,
+	markdown: string,
+): Promise<WorklogRun> {
+	validateDate(date);
+	if (typeof markdown !== "string" || !markdown.trim() || markdown.length > 200_000)
+		throw new Error("Invalid markdown");
+	const config = await getWorklogConfig();
+	const key = runKey(date, config.timezone);
+	const leaseKey = `worklog.lock.${config.timezone}.${date}`;
+	const token = await claim(leaseKey);
+	try {
+		const run = await readWorklogValue<WorklogRun | null>(key, null);
+		if (!run) throw new Error("No work log for that date");
+		if (run.status === "delivered") throw new Error("A delivered log cannot be edited");
+		const base = run.versions?.find((v) => v.versionId === baseVersionId);
+		if (!base) throw new Error("Unknown base version");
+		const { appendVersion } = await import("./worklog-facts.js");
+		const versions = appendVersion(run.versions ?? [], {
+			kind: base.kind,
+			markdown,
+			generator: { model: null, source: "manual" },
+		});
+		const manual = versions[versions.length - 1];
+		const next: WorklogRun = {
+			...run,
+			versions,
+			markdown,
+			adoptedVersionId: manual.versionId,
+			updatedAt: new Date().toISOString(),
+		};
+		await save(key, next);
+		return next;
 	} finally {
 		await getDb()
 			.delete(settings)

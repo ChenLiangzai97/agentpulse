@@ -18,6 +18,11 @@ export function WorklogPage() {
 	const [error, setError] = useState("");
 	const [selected, setSelected] = useState<string | null>(null);
 	const [viewVersionId, setViewVersionId] = useState<string | null>(null);
+	const [preview, setPreview] = useState<Awaited<ReturnType<typeof api.getWorklogPreview>> | null>(
+		null,
+	);
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState("");
 	const refresh = useCallback(() => api.getWorklogs().then((r) => setRuns(r.runs)), []);
 	useEffect(() => {
 		void api
@@ -41,6 +46,10 @@ export function WorklogPage() {
 		try {
 			await fn();
 			await refresh();
+			void api
+				.getWorklogPreview(date)
+				.then(setPreview)
+				.catch(() => {});
 		} catch (e) {
 			setError(e instanceof Error ? e.message : "操作失败");
 		} finally {
@@ -50,6 +59,13 @@ export function WorklogPage() {
 	const field = (key: keyof WorklogConfig, value: string | boolean) =>
 		setConfig((s) => ({ ...s, [key]: value }));
 	const current = runs.find((r) => `${r.timezone}/${r.date}` === selected) ?? runs[0];
+	useEffect(() => {
+		setPreview(null);
+		void api
+			.getWorklogPreview(date)
+			.then(setPreview)
+			.catch(() => {});
+	}, [date]);
 	return (
 		<div className="mx-auto max-w-5xl space-y-6 p-6">
 			<div>
@@ -154,6 +170,44 @@ export function WorklogPage() {
 					保存设置
 				</button>
 			</fieldset>
+			{preview && (
+				<section className="rounded-lg border border-border bg-card p-4" aria-label="范围预览">
+					<h2 className="font-medium">
+						范围预览 · {preview.date}（{preview.timezone}）
+					</h2>
+					{preview.sessions.length ? (
+						<table className="mt-2 w-full text-sm">
+							<thead>
+								<tr className="text-left text-muted-foreground">
+									<th className="py-1">会话</th>
+									<th>主机</th>
+									<th>用户消息</th>
+									<th>助手消息</th>
+									<th>工具事件</th>
+									<th>纳入</th>
+								</tr>
+							</thead>
+							<tbody>
+								{preview.sessions.map((row) => (
+									<tr key={row.sessionId} className="border-t border-border">
+										<td className="py-1">{row.name || row.sessionId}</td>
+										<td>{row.host ?? "—"}</td>
+										<td>{row.counts.prompt}</td>
+										<td>{row.counts.assistant_message}</td>
+										<td>{row.counts.tool_event}</td>
+										<td>{row.included ? "是" : "否（已排除）"}</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					) : (
+						<p className="mt-2 text-sm text-muted-foreground">该日在时间窗内没有可纳入的会话。</p>
+					)}
+					<p className="mt-2 text-xs text-muted-foreground">
+						排除在会话详情页"纳入每日工作日志"处调整；时间窗为该时区的完整自然日。
+					</p>
+				</section>
+			)}
 			<div className="flex flex-wrap gap-3">
 				<input
 					aria-label="日志日期"
@@ -244,13 +298,79 @@ export function WorklogPage() {
 								))}
 							</div>
 						)}
-						<MarkdownContent
-							content={
-								current.versions?.find(
-									(v) => v.versionId === (viewVersionId ?? current.adoptedVersionId),
-								)?.markdown ?? current.markdown
-							}
-						/>
+						{editing ? (
+							<div className="space-y-2">
+								<textarea
+									aria-label="编辑版本内容"
+									className="min-h-72 w-full rounded border bg-background p-3 font-mono text-sm"
+									value={draft}
+									onChange={(e) => setDraft(e.target.value)}
+								/>
+								<div className="flex gap-2">
+									<button
+										type="button"
+										className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground"
+										disabled={busy || !draft.trim()}
+										onClick={() =>
+											runAction(async () => {
+												const baseId = viewVersionId ?? current.adoptedVersionId;
+												if (!baseId) throw new Error("缺少基准版本");
+												await api.editWorklogVersion(current.date, baseId, draft);
+												setEditing(false);
+												toast.success("已保存为人工编辑版本并采用");
+											})
+										}
+									>
+										保存为人工版本并采用
+									</button>
+									<button
+										type="button"
+										className="rounded border px-3 py-1 text-sm"
+										onClick={() => setEditing(false)}
+									>
+										取消
+									</button>
+								</div>
+							</div>
+						) : (
+							<>
+								<MarkdownContent
+									content={
+										current.versions?.find(
+											(v) => v.versionId === (viewVersionId ?? current.adoptedVersionId),
+										)?.markdown ?? current.markdown
+									}
+								/>
+								{viewVersionId && viewVersionId !== current.adoptedVersionId && (
+									<VersionDiff
+										from={
+											current.versions?.find((v) => v.versionId === current.adoptedVersionId)
+												?.markdown ?? ""
+										}
+										to={
+											current.versions?.find((v) => v.versionId === viewVersionId)?.markdown ?? ""
+										}
+									/>
+								)}
+								{current.status !== "delivered" && current.status !== "generating" && (
+									<button
+										type="button"
+										className="mt-4 rounded border px-3 py-1 text-sm"
+										disabled={busy}
+										onClick={() => {
+											setDraft(
+												current.versions?.find(
+													(v) => v.versionId === (viewVersionId ?? current.adoptedVersionId),
+												)?.markdown ?? current.markdown,
+											);
+											setEditing(true);
+										}}
+									>
+										编辑此版本（保存为人工版本）
+									</button>
+								)}
+							</>
+						)}
 						{current.status !== "delivered" &&
 							current.status !== "generating" &&
 							viewVersionId &&
@@ -282,6 +402,59 @@ export function WorklogPage() {
 					</article>
 				)}
 			</div>
+		</div>
+	);
+}
+
+/** Simple line diff between the adopted version and the one being previewed. */
+function VersionDiff({ from, to }: { from: string; to: string }) {
+	const fromLines = from.split("\n");
+	const toLines = to.split("\n");
+	if (fromLines.length > 400 || toLines.length > 400)
+		return (
+			<p className="mt-4 text-xs text-muted-foreground">
+				版本差异过大（超过 400 行），请直接对比内容后再采用。
+			</p>
+		);
+	// LCS table (bounded by the 400-line cap above).
+	const table: number[][] = Array.from({ length: fromLines.length + 1 }, () =>
+		new Array<number>(toLines.length + 1).fill(0),
+	);
+	for (let i = fromLines.length - 1; i >= 0; i--)
+		for (let j = toLines.length - 1; j >= 0; j--)
+			table[i][j] =
+				fromLines[i] === toLines[j]
+					? table[i + 1][j + 1] + 1
+					: Math.max(table[i + 1][j], table[i][j + 1]);
+	const rows: Array<{ sign: "-" | "+"; text: string }> = [];
+	let i = 0;
+	let j = 0;
+	while (i < fromLines.length && j < toLines.length) {
+		if (fromLines[i] === toLines[j]) {
+			i++;
+			j++;
+		} else if (table[i + 1][j] >= table[i][j + 1]) {
+			rows.push({ sign: "-", text: fromLines[i] });
+			i++;
+		} else {
+			rows.push({ sign: "+", text: toLines[j] });
+			j++;
+		}
+	}
+	while (i < fromLines.length) rows.push({ sign: "-", text: fromLines[i++] });
+	while (j < toLines.length) rows.push({ sign: "+", text: toLines[j++] });
+	if (!rows.length) return null;
+	return (
+		<div className="mt-4" aria-label="与采用版本的差异">
+			<h3 className="text-sm font-medium">与当前采用版本的差异</h3>
+			<pre className="mt-1 max-h-72 overflow-auto rounded border bg-background p-2 text-xs leading-5">
+				{rows.map((row, index) => (
+					// biome-ignore lint/suspicious/noArrayIndexKey: static diff rows
+					<div key={index} className={row.sign === "-" ? "text-red-400" : "text-green-500"}>
+						{row.sign} {row.text}
+					</div>
+				))}
+			</pre>
 		</div>
 	);
 }

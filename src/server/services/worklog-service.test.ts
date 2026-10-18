@@ -8,9 +8,11 @@ import { upsertSetting } from "./settings-service.js";
 import {
 	adoptWorklogVersion,
 	dayWindow,
+	editWorklogVersion,
 	getWorklogIncluded,
 	listWorklogs,
 	localDate,
+	previewWorklogScope,
 	queueWorklog,
 	runScheduledWorklogs,
 	runWorklog,
@@ -390,9 +392,11 @@ test("forced regeneration appends versions and never overwrites old drafts", asy
 	// The old personal draft is preserved verbatim.
 	expect(second.versions?.some((v) => v.versionId === firstPersonal?.versionId)).toBe(true);
 	expect(second.facts?.length).toBeGreaterThan(first.facts?.length ?? 0);
-	// The adopted (delivered) markdown is the LATEST team version.
-	const lastTeam = second.versions?.filter((v) => v.kind === "team").at(-1);
-	expect(second.adoptedVersionId).toBe(lastTeam?.versionId);
+	// Adoption is user-owned: regeneration appends drafts but keeps the
+	// previously adopted version until the user explicitly switches.
+	const firstAdopted = first.adoptedVersionId;
+	expect(second.adoptedVersionId).toBe(firstAdopted);
+	expect(second.versions?.filter((v) => v.kind === "team").length).toBeGreaterThanOrEqual(2);
 });
 
 test("adopting the personal view switches delivery content", async () => {
@@ -432,3 +436,54 @@ async function testConfig() {
 	const { getWorklogConfig } = await import("./worklog-service.js");
 	return getWorklogConfig();
 }
+
+test("scope preview lists in-window sessions with counts and exclusion flags", async () => {
+	await seed("in", "2026-01-02 05:00:00", "白天工作");
+	await seed("in", "2026-01-02 05:30:00", "完成", "assistant_message");
+	await seed("in", "2026-01-02 05:40:00", "bash", "tool_event", {
+		eventType: "PostToolUse",
+		toolResponse: "ok",
+	});
+	await seed("out", "2026-01-02 20:00:00", "次日内容"); // 2026-01-03 in Shanghai
+	await setWorklogIncluded("in", false);
+	const preview = await previewWorklogScope("2026-01-02");
+	expect(preview.timezone).toBe("Asia/Shanghai");
+	expect(preview.sessions).toHaveLength(1);
+	const entry = preview.sessions[0];
+	expect(entry.sessionId).toBe("in");
+	expect(entry.included).toBe(false);
+	expect(entry.counts).toEqual({ prompt: 1, assistant_message: 1, tool_event: 1 });
+	await setWorklogIncluded("in", true);
+	expect((await previewWorklogScope("2026-01-02")).sessions[0].included).toBe(true);
+});
+
+test("manual edit appends an adopted manual version and survives regeneration", async () => {
+	await seed("editme", "2026-01-01 06:00:00", "需要人工修订");
+	const run = await runWorklog("2026-01-01");
+	const base = run.versions?.[0];
+	if (!base) throw new Error("no base version");
+	const edited = await editWorklogVersion(
+		"2026-01-01",
+		base.versionId,
+		"# 人工修订稿\n- 修改了结论",
+	);
+	const manual = edited.versions?.at(-1);
+	expect(manual?.generator.source).toBe("manual");
+	expect(manual?.kind).toBe(base.kind);
+	expect(edited.adoptedVersionId).toBe(manual?.versionId);
+	expect(edited.markdown).toContain("人工修订稿");
+	// forced regeneration keeps the manual version verbatim
+	const second = await runWorklog("2026-01-01", false, {
+		token: await claimTestToken(),
+		config: await testConfig(),
+		force: true,
+	});
+	expect(second.versions?.some((v) => v.versionId === manual?.versionId)).toBe(true);
+	// delivery uses the adopted manual version
+	await runWorklog("2026-01-01", true);
+	expect(deliveries.at(-1)?.body.markdown).toContain("人工修订稿");
+	// delivered runs are locked against further edits
+	await expect(editWorklogVersion("2026-01-01", base.versionId, "# 再改")).rejects.toThrow(
+		"delivered",
+	);
+});

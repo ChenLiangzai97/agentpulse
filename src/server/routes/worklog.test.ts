@@ -4,7 +4,7 @@ import { app } from "../app.js";
 import { createApiKey } from "../auth/api-key.js";
 import { config } from "../config.js";
 import { getDb, initializeDatabase } from "../db/client.js";
-import { apiKeys, sessions, settings } from "../db/schema/index.js";
+import { apiKeys, events, sessions, settings } from "../db/schema/index.js";
 import { upsertSetting } from "../services/settings-service.js";
 const original = config.disableAuth;
 beforeAll(() => initializeDatabase());
@@ -158,4 +158,87 @@ test("run detail exposes dual views and adopt switches the export version", asyn
 		headers: jsonHeaders(key),
 	});
 	expect(missing.status).toBe(404);
+});
+
+test("scope preview and manual edit work over real HTTP", async () => {
+	const { key } = await createApiKey("worklog-preview-edit", ["manage"]);
+	await getDb()
+		.insert(sessions)
+		.values({ sessionId: "pv-1", agentType: "codex_cli", displayName: "预览会话" });
+	await getDb().insert(events).values({
+		sessionId: "pv-1",
+		eventType: "UserPromptSubmit",
+		category: "prompt",
+		content: "预览内容",
+		createdAt: "2026-01-02 05:00:00",
+		rawPayload: {},
+	});
+	await upsertSetting(
+		"worklog.config",
+		{
+			enabled: false,
+			timezone: "Asia/Shanghai",
+			time: "00:05",
+			providerId: "p",
+			model: "m",
+			documentUrl: "",
+			documentId: "",
+		},
+		{ allowProtected: true },
+	);
+	const preview = await app.request("/api/v1/worklog/preview/2026-01-02", {
+		headers: jsonHeaders(key),
+	});
+	expect(preview.status).toBe(200);
+	const previewBody = (await preview.json()) as {
+		sessions: Array<{ sessionId: string; included: boolean; counts: { prompt: number } }>;
+	};
+	expect(previewBody.sessions).toHaveLength(1);
+	expect(previewBody.sessions[0].sessionId).toBe("pv-1");
+	expect(previewBody.sessions[0].included).toBe(true);
+	expect(previewBody.sessions[0].counts.prompt).toBe(1);
+	// Manual edit: seed a run with one version, then edit it over HTTP.
+	const base = {
+		versionId: "v1-base",
+		kind: "personal" as const,
+		markdown: "# original",
+		createdAt: "2026-01-02T00:05:00.000Z",
+		generator: { model: "m", source: "facts" as const },
+	};
+	await upsertSetting(
+		"worklog.run.Asia/Shanghai.2026-01-02",
+		{
+			date: "2026-01-02",
+			timezone: "Asia/Shanghai",
+			status: "ready",
+			markdown: "# original",
+			sessionIds: ["pv-1"],
+			error: null,
+			updatedAt: "2026-01-02T00:05:01.000Z",
+			versions: [base],
+			adoptedVersionId: base.versionId,
+		},
+		{ allowProtected: true },
+	);
+	const edit = await app.request("/api/v1/worklog/runs/2026-01-02/edit", {
+		method: "POST",
+		headers: jsonHeaders(key),
+		body: JSON.stringify({ baseVersionId: "v1-base", markdown: "# 人工修订" }),
+	});
+	expect(edit.status).toBe(200);
+	const edited = (await edit.json()) as {
+		run: {
+			markdown: string;
+			adoptedVersionId: string;
+			versions: Array<{ generator: { source: string } }>;
+		};
+	};
+	expect(edited.run.markdown).toBe("# 人工修订");
+	expect(edited.run.versions.at(-1)?.generator.source).toBe("manual");
+	const badEdit = await app.request("/api/v1/worklog/runs/2026-01-02/edit", {
+		method: "POST",
+		headers: jsonHeaders(key),
+		body: JSON.stringify({ baseVersionId: "v1-base", markdown: "" }),
+	});
+	expect(badEdit.status).toBe(400);
 });

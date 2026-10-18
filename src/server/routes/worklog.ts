@@ -5,10 +5,12 @@ import { NotOwnerError, assertCanEditSessionNotes } from "../services/authorizat
 import {
 	adoptWorklogVersion,
 	discardWorklog,
+	editWorklogVersion,
 	getWorklogConfig,
 	getWorklogIncluded,
 	getWorklogRun,
 	listWorklogs,
+	previewWorklogScope,
 	queueWorklog,
 	saveWorklogConfig,
 	setWorklogIncluded,
@@ -53,6 +55,37 @@ worklogRouter.post("/worklog/runs", async (c) => {
 		return c.json({ error: error instanceof Error ? error.message : "Unable to queue" }, 409);
 	}
 });
+worklogRouter.get("/worklog/preview/:date", async (c) => {
+	const date = c.req.param("date");
+	try {
+		return c.json(await previewWorklogScope(date));
+	} catch (error) {
+		return c.json({ error: error instanceof Error ? error.message : "invalid_date" }, 400);
+	}
+});
+
+worklogRouter.post("/worklog/runs/:date/edit", async (c) => {
+	const date = c.req.param("date");
+	const body = (await c.req.json().catch(() => null)) as {
+		baseVersionId?: unknown;
+		markdown?: unknown;
+	} | null;
+	if (
+		!body ||
+		typeof body.baseVersionId !== "string" ||
+		!/^[A-Za-z0-9-]{1,64}$/.test(body.baseVersionId)
+	)
+		return c.json({ error: "invalid_version" }, 400);
+	if (typeof body.markdown !== "string" || !body.markdown.trim() || body.markdown.length > 200_000)
+		return c.json({ error: "invalid_markdown" }, 400);
+	try {
+		return c.json({ run: await editWorklogVersion(date, body.baseVersionId, body.markdown) });
+	} catch (error) {
+		const message = error instanceof Error ? error.message : "edit_failed";
+		return c.json({ error: message }, 404);
+	}
+});
+
 worklogRouter.get("/worklog/runs/:date", async (c) => {
 	const date = c.req.param("date");
 	try {
