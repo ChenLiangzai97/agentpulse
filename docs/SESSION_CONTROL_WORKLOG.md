@@ -95,3 +95,15 @@ AGENTPULSE_WORKLOG_DOCUMENT_TOKEN=<document-api-token>
 新增自动化测试使用真实 SQLite、模拟模型与文档 HTTP 服务、模拟 Codex WebSocket app-server，覆盖会话绑定与固定主机路由、消息恢复与去重、原生审批只消费一次、恢复不重发任务、自然日与 DST 边界、逐会话排除、写入失败重试、数据库租约与权限隔离。
 
 真实主机上的 Codex/Claude 二进制和用户实际在线文档接口尚未联调。浏览器测试环境下载 Chromium 失败，因此当前验证包括 TypeScript、前后端生产构建、服务与 API 测试，不包含真实浏览器交互验收。全量测试中还存在当前执行环境的文件所有权操作失败和部分旧测试间环境状态干扰；具体结果记录在 PR 中。
+
+## 评审修复：启动幂等与会话元数据原子更新（2026-10-18，待复核）
+
+针对上轮评审剩余项「启动请求服务端幂等、metadata 目录并发更新、服务端会话配置与切换隔离」的实现与证据：
+
+- **启动幂等**：`launch_requests` 新增 `idempotency_key`/`idempotency_owner` 列与 `(owner, key)` 唯一索引（drizzle 0014 双方言 + 旧版 SQLite 初始化路径同步追加）。`createValidatedLaunchRequest` 预查返回首个 launch，并发冲突由唯一约束兜底；键按 Actor 作用域隔离，服务端仍自铸 correlationId，非法键 400。测试见 `src/server/services/launch-idempotency.test.ts`（6 用例）。
+- **metadata 单键原子更新**：快照目录（opencodeCatalog）、会话偏好（opencodePrefs）、快照事务内的 permissionWait/opencode/opencodeManaged 均改为方言原生单键更新（SQLite json_set / PG jsonb_set，PG 列为 json 需 jsonb 往返转换）。任何写入方不再整对象覆盖其他写入方的键。
+- **服务端会话偏好**：`GET/PUT /sessions/:id/opencode/prefs`（model/agent），写入走受管来源校验（外部/BotMux/legacy 只读），请求 Actor 参与所有权检查；前端会话切换时清空目录防串扰。
+- **修复 0014 迁移文件缺 `statement-breakpoint`**：此前 SQLite 全新库只执行了第一条 ALTER 即记账，实际缺列缺索引；已修复并验证全新库完整建列建索引。
+- **测试与验证**：新增 `opencode-prefs-catalog.test.ts`（偏好读写、observe-only 拒写、目录/偏好/无关键交错回归）；`bun run typecheck` 通过；本机 PostgreSQL 14 实测偏好/目录/事务内单键写入、无关键保留、脱敏白名单与幂等两列全部通过。全量测试与本仓 HEAD 基线一致（新增失败为 0；既有失败为环境敏感的计时/漂移用例）。
+
+仍待评审：浏览器断言质量、fork 授权/队列/交互/停止/恢复/统计边界。

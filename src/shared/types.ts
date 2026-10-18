@@ -1149,6 +1149,8 @@ export interface SupervisorEnrollmentTokenInfo {
 
 export interface LaunchRequestInput {
 	templateId?: string | null;
+	/** Actor-scoped idempotency: retrying with the same key returns the first launch. */
+	idempotencyKey?: string | null;
 	requestedSupervisorId?: string | null;
 	requestedLaunchMode?: LaunchMode;
 	routingPolicy?: LaunchRoutingPolicy | null;

@@ -1,7 +1,9 @@
 /** Managed OpenCode protocol boundary. Native state is scoped to a protected instance/generation. */
 import { createHash } from "node:crypto";
 import { and, eq, gt, inArray, ne, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
 import type { Actor } from "../auth/actor.js";
+import { config } from "../config.js";
 import { getDb } from "../db/client.js";
 import {
 	events,
@@ -27,6 +29,31 @@ import { normalizeOpenCodePart } from "./opencode-observer.js";
 type Json = Record<string, unknown>;
 const object = (v: unknown): Json =>
 	v && typeof v === "object" && !Array.isArray(v) ? (v as Json) : {};
+/**
+ * Dialect-native multi-key atomic metadata update (SQLite json_set / PG
+ * jsonb_set chain). Each key is set in place, so writers owned by other
+ * features (opencodeCatalog, opencodePrefs, worklogInclude, ...) never lose
+ * their keys to a whole-object read-modify-write. The PG column is `json`,
+ * not `jsonb`, so the expression casts json -> jsonb for jsonb_set and back.
+ */
+const SAFE_METADATA_KEY = /^[A-Za-z0-9_]+$/;
+function metadataSetSql(entries: Record<string, Json>): SQL {
+	let expr: SQL =
+		config.dialect === "postgres"
+			? sql`coalesce(${sessions.metadata}::jsonb, '{}'::jsonb)`
+			: sql`coalesce(${sessions.metadata}, '{}')`;
+	for (const [key, value] of Object.entries(entries)) {
+		// Paths are inlined string literals; only developer-controlled
+		// constant keys ever reach here (never user input).
+		if (!SAFE_METADATA_KEY.test(key)) throw new Error(`unsafe metadata key: ${key}`);
+		const json = JSON.stringify(value);
+		expr =
+			config.dialect === "postgres"
+				? sql`jsonb_set(${expr}, ${sql.raw(`'{${key}}'`)}, ${json}::jsonb)`
+				: sql`json_set(${expr}, ${sql.raw(`'$.${key}'`)}, json(${json}))`;
+	}
+	return config.dialect === "postgres" ? sql`${expr}::json` : expr;
+}
 export async function openCodeControlCapabilities(sessionId: string, actor?: Actor) {
 	const origin = await inspectOpenCodeProvenance(sessionId);
 	let enabled = Boolean(origin?.bindingValid);
@@ -74,7 +101,7 @@ export async function ownedOpenCodeInstance(
 export async function acceptOpenCodeSnapshot(
 	supervisorId: string,
 	instanceId: string,
-	input: {
+	rawInput: {
 		generation: number;
 		children?: { session: Json; messages: unknown[] }[];
 		nativeSessionId: string;
@@ -87,7 +114,7 @@ export async function acceptOpenCodeSnapshot(
 		providers?: unknown;
 	},
 ) {
-	const instance = await ownedOpenCodeInstance(supervisorId, instanceId, input.generation, true);
+	const instance = await ownedOpenCodeInstance(supervisorId, instanceId, rawInput.generation, true);
 	const [binding] = await getDb()
 		.select()
 		.from(sessionControlBindings)
@@ -95,19 +122,19 @@ export async function acceptOpenCodeSnapshot(
 	if (
 		binding?.origin !== "agentpulse_launch" ||
 		binding.instanceId !== instanceId ||
-		binding.generation !== input.generation ||
-		binding.nativeSessionId !== input.nativeSessionId ||
-		!Array.isArray(input.messages) ||
-		!Array.isArray(input.permissions) ||
-		!Array.isArray(input.questions)
+		binding.generation !== rawInput.generation ||
+		binding.nativeSessionId !== rawInput.nativeSessionId ||
+		!Array.isArray(rawInput.messages) ||
+		!Array.isArray(rawInput.permissions) ||
+		!Array.isArray(rawInput.questions)
 	)
 		throw new SessionControlOriginError("provider_binding_invalid");
-	if (Array.isArray(input.commands)) {
+	if (Array.isArray(rawInput.commands)) {
 		// Credentials must never reach the catalog: strip provider options/env
 		// down to id/name plus bare model ids, agents to name/description/mode,
 		// and keep only native custom commands (source=command) — skills are
 		// listed nowhere until an explicit source policy lands.
-		const rawProviders = object(input.providers);
+		const rawProviders = object(rawInput.providers);
 		const providerList = Array.isArray(rawProviders.providers)
 			? rawProviders.providers.slice(0, 32).map((entry) => {
 					const provider = object(entry);
@@ -121,7 +148,7 @@ export async function acceptOpenCodeSnapshot(
 					};
 				})
 			: [];
-		const commands = input.commands
+		const commands = rawInput.commands
 			.filter((raw) => object(raw).source === "command")
 			.slice(0, 128)
 			.map((raw) => {
@@ -133,28 +160,21 @@ export async function acceptOpenCodeSnapshot(
 					source: "command",
 				};
 			});
-		const agents = (Array.isArray(input.agents) ? input.agents : []).slice(0, 64).map((raw) => {
-			const agent = object(raw);
-			return {
-				name: typeof agent.name === "string" ? agent.name : "",
-				description:
-					typeof agent.description === "string" ? agent.description.slice(0, 200) : "",
-				mode: typeof agent.mode === "string" ? agent.mode.slice(0, 32) : "",
-			};
-		});
-		// Read-modify-write in JS instead of SQLite's json_patch: PostgreSQL has
-		// no json_patch, so a dialect-specific SQL helper would diverge. The
-		// catalog key is only written by this single snapshot path.
-		const [existing] = await getDb()
-			.select({ metadata: sessions.metadata })
-			.from(sessions)
-			.where(eq(sessions.sessionId, instance.sessionId))
-			.limit(1);
-		const metadata =
-			existing?.metadata && typeof existing.metadata === "object"
-				? { ...(existing.metadata as Record<string, unknown>) }
-				: {};
-		metadata.opencodeCatalog = {
+		const agents = (Array.isArray(rawInput.agents) ? rawInput.agents : [])
+			.slice(0, 64)
+			.map((raw) => {
+				const agent = object(raw);
+				return {
+					name: typeof agent.name === "string" ? agent.name : "",
+					description: typeof agent.description === "string" ? agent.description.slice(0, 200) : "",
+					mode: typeof agent.mode === "string" ? agent.mode.slice(0, 32) : "",
+				};
+			});
+		// Dialect-native atomic single-key update: SQLite json_set / PG jsonb_set
+		// touch only the opencodeCatalog key, so a concurrent writer updating a
+		// different metadata field (permissionWait, worklogInclude, ...) never
+		// loses its update to a whole-object overwrite.
+		const catalog = {
 			commands,
 			agents,
 			providers: providerList,
@@ -162,14 +182,16 @@ export async function acceptOpenCodeSnapshot(
 		};
 		await getDb()
 			.update(sessions)
-			.set({ metadata })
+			.set({ metadata: metadataSetSql({ opencodeCatalog: catalog }) })
 			.where(eq(sessions.sessionId, instance.sessionId));
 	}
-	const historical = instance.generation !== input.generation;
-	const interruptedReplay = historical || object(input.status).type === "interrupted";
-	if (interruptedReplay) {
-		input = { ...input, permissions: [], questions: [], status: { type: "idle" } };
-	}
+	const historical = instance.generation !== rawInput.generation;
+	const interruptedReplay = historical || object(rawInput.status).type === "interrupted";
+	// Replay of an interrupted/stopped generation is sanitized before it can
+	// resurrect permissions or questions the operator never answered.
+	const input = interruptedReplay
+		? { ...rawInput, permissions: [], questions: [], status: { type: "idle" } }
+		: rawInput;
 	const children: Array<{ session: Json; messages: unknown[] }> = [];
 	const permittedSessions = new Set([input.nativeSessionId]);
 	for (let depth = 0; depth < 64; depth++) {
@@ -333,8 +355,8 @@ export async function acceptOpenCodeSnapshot(
 			cost: 0,
 			tokens: { input: 0, output: 0, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
 		};
-		let latestUser = 0,
-			latestAssistant = 0;
+		let latestUser = 0;
+		let latestAssistant = 0;
 		for (const value of input.messages) {
 			const info = object(object(value).info);
 			const time = object(info.time);
@@ -370,8 +392,7 @@ export async function acceptOpenCodeSnapshot(
 					? { lastAgentTurnCompletedAt: new Date(latestAssistant).toISOString() }
 					: {}),
 				lastActivityAt: changedRows.length ? timestamp : session.lastActivityAt,
-				metadata: {
-					...session.metadata,
+				metadata: metadataSetSql({
 					permissionWait: { ids: [...pendingKeys], anon: 0 },
 					opencode: {
 						...object(session.metadata?.opencode),
@@ -380,7 +401,7 @@ export async function acceptOpenCodeSnapshot(
 						...usage,
 					},
 					opencodeManaged: { status: input.status, pending: pendingKeys.size },
-				},
+				}),
 			})
 			.where(eq(sessions.sessionId, instance.sessionId));
 		return changedRows;
@@ -407,6 +428,43 @@ export async function listOpenCodeInteractions(sessionId: string) {
 			),
 		);
 }
+export async function readOpenCodePrefs(
+	sessionId: string,
+): Promise<{ model: string | null; agent: string | null }> {
+	const [row] = await getDb()
+		.select({ metadata: sessions.metadata })
+		.from(sessions)
+		.where(eq(sessions.sessionId, sessionId))
+		.limit(1);
+	const prefs = (
+		row?.metadata as { opencodePrefs?: { model?: unknown; agent?: unknown } } | undefined
+	)?.opencodePrefs;
+	return {
+		model: typeof prefs?.model === "string" ? prefs.model : null,
+		agent: typeof prefs?.agent === "string" ? prefs.agent : null,
+	};
+}
+
+export async function writeOpenCodePrefs(
+	sessionId: string,
+	update: { model?: string | null; agent?: string | null },
+	actor?: Actor,
+): Promise<{ model: string | null; agent: string | null }> {
+	// Managed-only: prefs steer real prompts, so an observe-only session may
+	// read but never write them.
+	await assertSessionControlOrigin(sessionId, actor);
+	const before = await readOpenCodePrefs(sessionId);
+	const next = {
+		model: update.model === undefined ? before.model : update.model,
+		agent: update.agent === undefined ? before.agent : update.agent,
+	};
+	await getDb()
+		.update(sessions)
+		.set({ metadata: metadataSetSql({ opencodePrefs: next }) })
+		.where(eq(sessions.sessionId, sessionId));
+	return next;
+}
+
 export async function queueOpenCodeAction(
 	sessionId: string,
 	kind: "interrupt" | "stop" | "prompt" | "interaction_response" | "opencode_command",
@@ -625,20 +683,20 @@ export async function queueOpenCodeAction(
 					instanceId: binding.instanceId,
 					generation: binding.generation,
 					...(kind === "prompt"
-					? {
-							prompt: input.prompt,
-							...(input.model ? { model: input.model } : {}),
-							...(input.agent ? { agent: input.agent } : {}),
-						}
-					: {}),
+						? {
+								prompt: input.prompt,
+								...(input.model ? { model: input.model } : {}),
+								...(input.agent ? { agent: input.agent } : {}),
+							}
+						: {}),
 					...(kind === "opencode_command"
-					? {
-							command: input.command,
-							arguments: input.arguments ?? "",
-							...(input.model ? { model: input.model } : {}),
-							...(input.agent ? { agent: input.agent } : {}),
-						}
-					: {}),
+						? {
+								command: input.command,
+								arguments: input.arguments ?? "",
+								...(input.model ? { model: input.model } : {}),
+								...(input.agent ? { agent: input.agent } : {}),
+							}
+						: {}),
 					...(interaction
 						? {
 								interactionId: interaction.id,
@@ -671,10 +729,6 @@ export async function interruptOpenCodeInstance(
 	if (instance.generation !== generation || !["reserved", "running"].includes(instance.state))
 		throw new SessionControlOriginError("provider_binding_invalid");
 	await withTransaction(async (tx) => {
-		const [session] = await tx
-			.select()
-			.from(sessions)
-			.where(eq(sessions.sessionId, instance.sessionId));
 		await tx
 			.update(providerInstances)
 			.set({ state, generation: generation + 1 })
@@ -723,11 +777,10 @@ export async function interruptOpenCodeInstance(
 			.set({
 				isWorking: false,
 				status: "idle",
-				metadata: {
-					...session?.metadata,
+				metadata: metadataSetSql({
 					permissionWait: { ids: [], anon: 0 },
 					opencodeManaged: { state, generation: generation + 1, pending: 0 },
-				},
+				}),
 			})
 			.where(eq(sessions.sessionId, instance.sessionId));
 	});

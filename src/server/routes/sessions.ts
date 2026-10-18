@@ -64,6 +64,8 @@ import {
 	listOpenCodeInteractions,
 	openCodeControlCapabilities,
 	queueOpenCodeAction,
+	readOpenCodePrefs,
+	writeOpenCodePrefs,
 } from "../services/opencode-managed.js";
 import { readServiceKeyLists } from "../services/service-key-lists.js";
 import { isServiceKeyRow } from "../services/service-keys.js";
@@ -616,6 +618,40 @@ sessionsRouter.get("/sessions/:sessionId/opencode/interactions", async (c) => {
 		throw error;
 	}
 });
+sessionsRouter.get("/sessions/:sessionId/opencode/prefs", async (c) => {
+	const prefs = await readOpenCodePrefs(c.req.param("sessionId"));
+	return c.json(prefs);
+});
+
+sessionsRouter.put("/sessions/:sessionId/opencode/prefs", async (c) => {
+	const body = await readJsonObject(c);
+	const model = body?.model;
+	const agent = body?.agent;
+	if (
+		(model !== undefined && model !== null && typeof model !== "string") ||
+		(agent !== undefined && agent !== null && typeof agent !== "string") ||
+		(model !== undefined && String(model).length > 320) ||
+		(agent !== undefined && String(agent).length > 120)
+	) {
+		return c.json({ error: "invalid_prefs" }, 400);
+	}
+	try {
+		const prefs = await writeOpenCodePrefs(
+			c.req.param("sessionId"),
+			{
+				model: model === undefined ? undefined : (model as string | null),
+				agent: agent === undefined ? undefined : (agent as string | null),
+			},
+			await getRequestActor(c),
+		);
+		return c.json(prefs);
+	} catch (error) {
+		if (error instanceof SessionControlOriginError)
+			return c.json({ error: error.code }, error.status);
+		throw error;
+	}
+});
+
 sessionsRouter.get("/sessions/:sessionId/opencode/commands", async (c) => {
 	const sessionId = c.req.param("sessionId");
 	const [session] = await getDb().select().from(sessions).where(eq(sessions.sessionId, sessionId));

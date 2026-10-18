@@ -8,6 +8,7 @@ import type {
 	SessionTemplateInput,
 } from "../../shared/types.js";
 import type { Actor } from "../auth/actor.js";
+import { getDb } from "../db/client.js";
 import { supervisors } from "../db/schema/index.js";
 import { launchRequests } from "../db/schema/index.js";
 import { withTransaction } from "../db/with-transaction.js";
@@ -144,6 +145,38 @@ async function resolveSupervisorForLaunch(
 }
 
 export async function createValidatedLaunchRequest(input: LaunchRequestInput, actor: Actor) {
+	// Actor-scoped idempotency: a retry or concurrent duplicate with the same
+	// key maps to the FIRST launch instead of starting a second one. The
+	// server still mints the correlation id — the key never influences it.
+	const idempotencyOwner = `${actor.label}:${actor.userId ?? "-"}`;
+	if (
+		input.idempotencyKey !== undefined &&
+		input.idempotencyKey !== null &&
+		(typeof input.idempotencyKey !== "string" ||
+			!/^[A-Za-z0-9_-]{1,120}$/.test(input.idempotencyKey))
+	)
+		throw new HTTPException(400, { message: "Invalid idempotency key." });
+	const idempotencyKey = input.idempotencyKey ?? null;
+	if (idempotencyKey) {
+		const [existing] = await getDb()
+			.select()
+			.from(launchRequests)
+			.where(
+				and(
+					eq(launchRequests.idempotencyOwner, idempotencyOwner),
+					eq(launchRequests.idempotencyKey, idempotencyKey),
+				),
+			)
+			.limit(1);
+		if (existing) {
+			const [supervisor] = await getDb()
+				.select()
+				.from(supervisors)
+				.where(eq(supervisors.id, existing.resolvedSupervisorId ?? ""))
+				.limit(1);
+			return { launchRequest: mapLaunchRequest(existing), supervisor };
+		}
+	}
 	const normalizedTemplate = normalizeTemplateInput(input.template);
 	const templateValidation = validateTemplateInput(normalizedTemplate);
 	if (templateValidation.errors.length > 0) {
@@ -247,6 +280,8 @@ export async function createValidatedLaunchRequest(input: LaunchRequestInput, ac
 				validationWarnings: warnings,
 				validationSummary: summary,
 				metadata: input.metadata ?? null,
+				idempotencyKey,
+				idempotencyOwner,
 				desiredDisplayName: input.desiredDisplayName ?? null,
 				createdAt: now,
 				updatedAt: now,
@@ -257,6 +292,33 @@ export async function createValidatedLaunchRequest(input: LaunchRequestInput, ac
 			launchRequest: mapLaunchRequest(row),
 			supervisor,
 		};
+	}).catch(async (error) => {
+		const message = error instanceof Error ? error.message : String(error);
+		const isUnique =
+			message.includes("uq_launch_idempotency") ||
+			message.includes("duplicate key") ||
+			message.includes("UNIQUE constraint failed");
+		if (idempotencyKey && isUnique) {
+			const [existing] = await getDb()
+				.select()
+				.from(launchRequests)
+				.where(
+					and(
+						eq(launchRequests.idempotencyOwner, idempotencyOwner),
+						eq(launchRequests.idempotencyKey, idempotencyKey),
+					),
+				)
+				.limit(1);
+			if (existing) {
+				const [supervisor] = await getDb()
+					.select()
+					.from(supervisors)
+					.where(eq(supervisors.id, existing.resolvedSupervisorId ?? ""))
+					.limit(1);
+				return { launchRequest: mapLaunchRequest(existing), supervisor };
+			}
+		}
+		throw error;
 	});
 }
 

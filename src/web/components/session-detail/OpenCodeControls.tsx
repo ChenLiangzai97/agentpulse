@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import type { Session } from "../../../shared/types.js";
-import { api } from "../../lib/api.js";
 import { useT } from "../../i18n/i18n.js";
+import { api } from "../../lib/api.js";
 import { scopedQuery } from "../../lib/scoped-query.js";
 
 type Interaction = Awaited<ReturnType<typeof api.getOpenCodeInteractions>>["interactions"][number];
@@ -140,6 +140,8 @@ export function OpenCodeControls({
 	// reused component never carries another session's choices.
 	useEffect(() => {
 		let active = true;
+		// A previous session's catalog must never flash into this one's menu.
+		setCatalog(null);
 		const load = () =>
 			api
 				.getOpenCodeCommands(session.sessionId)
@@ -249,9 +251,7 @@ export function OpenCodeControls({
 		return (
 			<section className="border-b border-border px-3 py-3 text-sm text-muted-foreground">
 				{error ??
-					(cap?.reason === "not_owner"
-						? t("opencodeCmd.notOwner")
-						: t("opencodeCmd.stoppedNote"))}
+					(cap?.reason === "not_owner" ? t("opencodeCmd.notOwner") : t("opencodeCmd.stoppedNote"))}
 			</section>
 		);
 	}
@@ -282,7 +282,11 @@ export function OpenCodeControls({
 					key={`${item.id}-${item.revision}`}
 					className="space-y-3 rounded border border-amber-500/40 p-3 text-sm"
 				>
-					<strong>{item.kind === "permission" ? t("opencodeCmd.permissionCard") : t("opencodeCmd.questionCard")}</strong>
+					<strong>
+						{item.kind === "permission"
+							? t("opencodeCmd.permissionCard")
+							: t("opencodeCmd.questionCard")}
+					</strong>
 					{item.kind === "permission" ? (
 						<>
 							<pre className="whitespace-pre-wrap break-all text-xs">
@@ -376,7 +380,10 @@ export function OpenCodeControls({
 				/>
 			)}
 			{sessionPickerOpen && (
-				<SessionPicker currentSessionId={session.sessionId} onClose={() => setSessionPickerOpen(false)} />
+				<SessionPicker
+					currentSessionId={session.sessionId}
+					onClose={() => setSessionPickerOpen(false)}
+				/>
 			)}
 			{modelPickerOpen && (
 				<ModelPicker
@@ -463,22 +470,17 @@ export function OpenCodeControls({
 						}}
 					/>
 					{prompt.startsWith("/") && !prompt.includes(" ") && (
-						<p className="mt-1 text-[11px] text-amber-400">
-							{t("opencodeCmd.slashHint")}
-						</p>
+						<p className="mt-1 text-[11px] text-amber-400">{t("opencodeCmd.slashHint")}</p>
 					)}
 				</div>
 				<button type="submit" disabled={busy || !prompt.trim()} className="rounded border px-3">
 					{t("opencodeCmd.send")}
 				</button>
 			</form>
-			<p className="text-xs text-muted-foreground">
-				{t("opencodeCmd.footerNote")}
-			</p>
+			<p className="text-xs text-muted-foreground">{t("opencodeCmd.footerNote")}</p>
 		</section>
 	);
 }
-
 
 function CommandMenu({
 	catalog,
@@ -551,7 +553,9 @@ function CommandMenu({
 						{t("opencodeCmd.nativeSection")}
 					</div>
 					{commands.length === 0 && (
-						<div className="px-2 py-1 text-xs text-muted-foreground">{t("opencodeCmd.noCommands")}</div>
+						<div className="px-2 py-1 text-xs text-muted-foreground">
+							{t("opencodeCmd.noCommands")}
+						</div>
 					)}
 					{commands.map((c) => (
 						<button
@@ -634,9 +638,7 @@ function ModelPicker({
 						</button>
 					)}
 				</div>
-				<p className="mt-2 text-[11px] text-muted-foreground">
-					{t("opencodeCmd.modelNote")}
-				</p>
+				<p className="mt-2 text-[11px] text-muted-foreground">{t("opencodeCmd.modelNote")}</p>
 			</div>
 		</div>
 	);
@@ -673,7 +675,9 @@ function AgentPicker({
 				</div>
 				<div className="max-h-72 space-y-1 overflow-y-auto text-sm">
 					{agents.length === 0 && (
-						<div className="px-2 py-1 text-xs text-muted-foreground">{t("opencodeCmd.noAgents")}</div>
+						<div className="px-2 py-1 text-xs text-muted-foreground">
+							{t("opencodeCmd.noAgents")}
+						</div>
 					)}
 					{agents.map((agent) => (
 						<button
@@ -696,9 +700,7 @@ function AgentPicker({
 						</button>
 					)}
 				</div>
-				<p className="mt-2 text-[11px] text-muted-foreground">
-					{t("opencodeCmd.agentNote")}
-				</p>
+				<p className="mt-2 text-[11px] text-muted-foreground">{t("opencodeCmd.agentNote")}</p>
 			</div>
 		</div>
 	);
@@ -707,7 +709,6 @@ function AgentPicker({
 function cnPicker(active: boolean): string {
 	return `block w-full rounded px-2 py-1.5 text-left hover:bg-muted ${active ? "bg-primary/10 text-primary" : ""}`;
 }
-
 
 function SessionPicker({
 	currentSessionId,
@@ -718,14 +719,21 @@ function SessionPicker({
 }) {
 	const t = useT();
 	const [rows, setRows] = useState<
-		{ sessionId: string; displayName: string | null; status: string; controllable: boolean | null }[]
+		{
+			sessionId: string;
+			displayName: string | null;
+			status: string;
+			controllable: boolean | null;
+		}[]
 	>([]);
 	const [loading, setLoading] = useState(true);
 	const navigate = useNavigate();
 	useEffect(() => {
 		let active = true;
 		void api
-			.getSessions(scopedQuery({ owner: "all", excludeScratch: false }, { agent_type: "opencode", limit: 30 }))
+			.getSessions(
+				scopedQuery({ owner: "all", excludeScratch: false }, { agent_type: "opencode", limit: 30 }),
+			)
 			.then(async (r) => {
 				const sessions = r.sessions;
 				const detailed = await Promise.all(
@@ -768,9 +776,15 @@ function SessionPicker({
 					</button>
 				</div>
 				<div className="max-h-80 space-y-1 overflow-y-auto text-sm">
-					{loading && <div className="px-2 py-1 text-xs text-muted-foreground">{t("opencodeCmd.loading")}</div>}
+					{loading && (
+						<div className="px-2 py-1 text-xs text-muted-foreground">
+							{t("opencodeCmd.loading")}
+						</div>
+					)}
 					{!loading && rows.length === 0 && (
-						<div className="px-2 py-1 text-xs text-muted-foreground">{t("opencodeCmd.noSessions")}</div>
+						<div className="px-2 py-1 text-xs text-muted-foreground">
+							{t("opencodeCmd.noSessions")}
+						</div>
 					)}
 					{rows.map((row) => (
 						<button
@@ -792,20 +806,21 @@ function SessionPicker({
 										: "bg-muted text-muted-foreground"
 								}`}
 							>
-								{row.controllable === null ? t("opencodeCmd.capUnknown")
-								: row.controllable
-									? t("opencodeCmd.controllable")
-									: t("opencodeCmd.observeOnly")}
+								{row.controllable === null
+									? t("opencodeCmd.capUnknown")
+									: row.controllable
+										? t("opencodeCmd.controllable")
+										: t("opencodeCmd.observeOnly")}
 							</span>
 							{row.sessionId === currentSessionId && (
-								<span className="ml-1 text-[10px] text-muted-foreground">{t("opencodeCmd.current")}</span>
+								<span className="ml-1 text-[10px] text-muted-foreground">
+									{t("opencodeCmd.current")}
+								</span>
 							)}
 						</button>
 					))}
 				</div>
-				<p className="mt-2 text-[11px] text-muted-foreground">
-					{t("opencodeCmd.sessionNote")}
-				</p>
+				<p className="mt-2 text-[11px] text-muted-foreground">{t("opencodeCmd.sessionNote")}</p>
 			</div>
 		</div>
 	);

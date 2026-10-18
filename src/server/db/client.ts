@@ -1,4 +1,3 @@
-import { PROVIDER_CONTROL_SQLITE_MIGRATIONS } from "./provider-control-migration.js";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -17,6 +16,7 @@ import {
 	FTS_BOOTSTRAP_SQL,
 	FTS_INDEXED_EVENT_TYPES_SQL_LIST,
 } from "./fts-ddl.js";
+import { PROVIDER_CONTROL_SQLITE_MIGRATIONS } from "./provider-control-migration.js";
 import * as schema from "./schema/index.js";
 
 // ── getSqlite() boot-failure registry (Decision 28) ──────────────────────────
@@ -1140,9 +1140,14 @@ async function runLegacySqliteInit(sqlite: Database): Promise<void> {
 		"ALTER TABLE sessions ADD COLUMN last_agent_turn_completed_at TEXT",
 		"ALTER TABLE sessions ADD COLUMN last_user_acknowledged_at TEXT",
 		// The machine a relay or the Codex observer reported (display only,
-		// unauthenticated). Mirrors the drizzle migrations for installs on the
-		// legacy init path.
+		// unauthenticated). Mirrors the drizzle migrations for installs on
+		// the legacy init path.
 		"ALTER TABLE sessions ADD COLUMN reported_host TEXT",
+		// Actor-scoped launch idempotency (drizzle 0014): one launch per
+		// (owner, key). NULL keys stay distinct in both dialects.
+		"ALTER TABLE launch_requests ADD COLUMN idempotency_key TEXT",
+		"ALTER TABLE launch_requests ADD COLUMN idempotency_owner TEXT",
+		"CREATE UNIQUE INDEX IF NOT EXISTS uq_launch_idempotency ON launch_requests(idempotency_owner, idempotency_key)",
 	];
 
 	// Vector search opt-in. The embeddings table only materializes when

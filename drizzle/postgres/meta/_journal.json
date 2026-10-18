@@ -1,104 +1,111 @@
 {
-	"version": "7",
-	"dialect": "postgresql",
-	"entries": [
-		{
-			"idx": 0,
-			"version": "7",
-			"when": 1777965217898,
-			"tag": "0000_even_tattoo",
-			"breakpoints": true
-		},
-		{
-			"idx": 1,
-			"version": "7",
-			"when": 1782762924855,
-			"tag": "0001_large_agent_brand",
-			"breakpoints": true
-		},
-		{
-			"idx": 2,
-			"version": "7",
-			"when": 1782783354860,
-			"tag": "0002_dark_tombstone",
-			"breakpoints": true
-		},
-		{
-			"idx": 3,
-			"version": "7",
-			"when": 1790684791768,
-			"tag": "0003_polite_ultimo",
-			"breakpoints": true
-		},
-		{
-			"idx": 4,
-			"version": "7",
-			"when": 1790712867382,
-			"tag": "0004_wakeful_cardiac",
-			"breakpoints": true
-		},
-		{
-			"idx": 5,
-			"version": "7",
-			"when": 1790744157804,
-			"tag": "0005_clean_winter_soldier",
-			"breakpoints": true
-		},
-		{
-			"idx": 6,
-			"version": "7",
-			"when": 1790746797144,
-			"tag": "0006_agen27_pg_trgm_search_index",
-			"breakpoints": true
-		},
-		{
-			"idx": 7,
-			"version": "7",
-			"when": 1790829882603,
-			"tag": "0007_user_ownership",
-			"breakpoints": true
-		},
-		{
-			"idx": 8,
-			"version": "7",
-			"when": 1790892327194,
-			"tag": "0008_session_ack_timestamps",
-			"breakpoints": true
-		},
-		{
-			"idx": 9,
-			"version": "7",
-			"when": 1791008597857,
-			"tag": "0009_supervisor_exclude_rules_state",
-			"breakpoints": true
-		},
-		{
-			"idx": 10,
-			"version": "7",
-			"when": 1791038765977,
-			"tag": "0010_session_reported_host",
-			"breakpoints": true
-		},
-		{
-			"idx": 11,
-			"version": "7",
-			"when": 1791087960575,
-			"tag": "0011_ai_session_summaries",
-			"breakpoints": true
-		},
-		{
-			"idx": 12,
-			"version": "7",
-			"when": 1792249655464,
-			"tag": "0012_opencode_provenance",
-			"breakpoints": true
-		},
-		{
-			"idx": 13,
-			"version": "7",
-			"when": 1792250671998,
-			"tag": "0013_opencode_interactions",
-			"breakpoints": true
-		}
-	]
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1777965217898,
+      "tag": "0000_even_tattoo",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782762924855,
+      "tag": "0001_large_agent_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782783354860,
+      "tag": "0002_dark_tombstone",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790684791768,
+      "tag": "0003_polite_ultimo",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790712867382,
+      "tag": "0004_wakeful_cardiac",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790744157804,
+      "tag": "0005_clean_winter_soldier",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790746797144,
+      "tag": "0006_agen27_pg_trgm_search_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790829882603,
+      "tag": "0007_user_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790892327194,
+      "tag": "0008_session_ack_timestamps",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791008597857,
+      "tag": "0009_supervisor_exclude_rules_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791038765977,
+      "tag": "0010_session_reported_host",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791087960575,
+      "tag": "0011_ai_session_summaries",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792249655464,
+      "tag": "0012_opencode_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792250671998,
+      "tag": "0013_opencode_interactions",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1792291306009,
+      "tag": "0014_launch_idempotency",
+      "breakpoints": true
+    }
+  ]
 }
