@@ -119,3 +119,77 @@ describe("durable fork idempotency (real DB)", () => {
 		expect(rows.length).toBeGreaterThanOrEqual(3);
 	});
 });
+
+describe("idempotency races and conservative conflicts (review round 19)", () => {
+	test("Promise.all same key SAME body: exactly one created, the other replays it", async () => {
+		const results = await Promise.all([
+			resolveForkActionIdempotency({
+				actorUserId: "race",
+				idempotencyKey: "same",
+				requestHash: "h",
+				sessionId: "s",
+			}),
+			resolveForkActionIdempotency({
+				actorUserId: "race",
+				idempotencyKey: "same",
+				requestHash: "h",
+				sessionId: "s",
+			}),
+			resolveForkActionIdempotency({
+				actorUserId: "race",
+				idempotencyKey: "same",
+				requestHash: "h",
+				sessionId: "s",
+			}),
+		]);
+		const created = results.filter((r) => r.outcome === "created");
+		const existing = results.filter((r) => r.outcome === "existing");
+		const conflicts = results.filter((r) => r.outcome === "conflict");
+		expect(created.length).toBe(1);
+		expect(existing.length).toBe(2);
+		expect(conflicts.length).toBe(0);
+		const createdId = created[0].outcome === "created" ? created[0].actionId : "";
+		for (const r of existing) if (r.outcome === "existing") expect(r.actionId).toBe(createdId);
+	});
+
+	test("Promise.all same key DIFFERENT body: one created, others conflict (no crash)", async () => {
+		const results = await Promise.all([
+			resolveForkActionIdempotency({
+				actorUserId: "race2",
+				idempotencyKey: "k",
+				requestHash: "h1",
+				sessionId: "s",
+			}),
+			resolveForkActionIdempotency({
+				actorUserId: "race2",
+				idempotencyKey: "k",
+				requestHash: "h2",
+				sessionId: "s",
+			}),
+		]);
+		const outcomes = results.map((r) => r.outcome).sort();
+		expect(outcomes).toEqual(["conflict", "created"]);
+	});
+
+	test("a prior row WITHOUT a request hash is a conservative conflict, never a replay", async () => {
+		const [seeded] = await getDb()
+			.insert(controlActions)
+			.values({
+				sessionId: "s",
+				actionType: "opencode_fork",
+				requestedBy: "user",
+				requestedByUserId: "legacy",
+				idempotencyKey: "nohash",
+				metadata: null,
+			})
+			.returning();
+		const result = await resolveForkActionIdempotency({
+			actorUserId: "legacy",
+			idempotencyKey: "nohash",
+			requestHash: "anything",
+			sessionId: "s",
+		});
+		expect(result.outcome).toBe("conflict");
+		if (result.outcome === "conflict") expect(result.existingActionId).toBe(seeded.id);
+	});
+});

@@ -47,22 +47,45 @@ export async function resolveForkActionIdempotency(input: {
 			),
 		)
 		.limit(1);
-	if (existing.length) {
-		const priorHash = (existing[0].metadata as { requestHash?: string } | null)?.requestHash;
-		if (priorHash && priorHash !== input.requestHash)
-			return { outcome: "conflict", existingActionId: existing[0].id };
-		return { outcome: "existing", actionId: existing[0].id };
+	const decide = (prior: (typeof existing)[number]): ForkIdempotencyResolution => {
+		// A prior row WITHOUT a request hash is treated conservatively as a
+		// conflict — never as a same-request replay.
+		const priorHash = (prior.metadata as { requestHash?: string } | null)?.requestHash;
+		if (priorHash !== input.requestHash) return { outcome: "conflict", existingActionId: prior.id };
+		return { outcome: "existing", actionId: prior.id };
+	};
+	if (existing.length) return decide(existing[0]);
+	try {
+		const [row] = await getDb()
+			.insert(controlActions)
+			.values({
+				sessionId: input.sessionId,
+				actionType: "opencode_fork",
+				requestedBy: "user",
+				requestedByUserId: input.actorUserId,
+				idempotencyKey: input.idempotencyKey,
+				metadata: { requestHash: input.requestHash },
+			})
+			.returning();
+		return { outcome: "created", actionId: row.id };
+	} catch (error) {
+		// Concurrent racer hit the unique index first: re-read and decide on
+		// the persisted row instead of surfacing the constraint as an error.
+		const message = error instanceof Error ? error.message : String(error);
+		if (/UNIQUE constraint failed|duplicate key|unique/i.test(message)) {
+			const winner = await getDb()
+				.select()
+				.from(controlActions)
+				.where(
+					and(
+						eq(controlActions.actionType, "opencode_fork"),
+						eq(controlActions.idempotencyKey, input.idempotencyKey),
+						sql`COALESCE(${controlActions.requestedByUserId}, '') = ${actorKey}`,
+					),
+				)
+				.limit(1);
+			if (winner.length) return decide(winner[0]);
+		}
+		throw error;
 	}
-	const [row] = await getDb()
-		.insert(controlActions)
-		.values({
-			sessionId: input.sessionId,
-			actionType: "opencode_fork",
-			requestedBy: "user",
-			requestedByUserId: input.actorUserId,
-			idempotencyKey: input.idempotencyKey,
-			metadata: { requestHash: input.requestHash },
-		})
-		.returning();
-	return { outcome: "created", actionId: row.id };
 }
