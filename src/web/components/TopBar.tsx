@@ -40,6 +40,7 @@ function AdminMenu() {
 	const [open, setOpen] = useState(false);
 	const ref = useDropdownClose(() => setOpen(false));
 	const ui = useOwnershipUi();
+	const t = useT();
 	return (
 		<div className="relative" ref={ref}>
 			<button
@@ -79,7 +80,7 @@ function AdminMenu() {
 						<MenuLink
 							key={item.to}
 							to={item.to}
-							label={item.label}
+							label={t(item.label)}
 							onClick={() => setOpen(false)}
 						/>
 					))}
@@ -108,7 +109,7 @@ function UserMenu({
 	const [open, setOpen] = useState(false);
 	const ref = useDropdownClose(() => setOpen(false));
 	const { handleSignOut: signOut, signOutUrl } = useSignOut();
-	const label = user?.name ?? (disableAuth ? "anonymous" : "signed out");
+	const label = user?.name ?? (disableAuth ? t("nav.anonymous") : "signed out");
 	const initial = label.charAt(0).toUpperCase();
 	// Prefer provider (Phase 1+) for the display label; fall back to "Authentik"
 	// for cached responses that still carry source === "authentik" (no provider field).
@@ -156,14 +157,14 @@ function UserMenu({
 				<MenuPanel onClose={() => setOpen(false)} align="right">
 					{user && (
 						<div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-							Signed in · {sourceLabel}
+							{t("nav.signedIn").replace("{source}", sourceLabel)}
 						</div>
 					)}
 					{userMenuItems(ui, { isLocal }).map((item) => (
 						<MenuLink
 							key={item.to}
 							to={item.to}
-							label={item.label}
+							label={t(item.label)}
 							onClick={() => setOpen(false)}
 						/>
 					))}

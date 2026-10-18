@@ -28,7 +28,7 @@ function loadSidebarCollapsed(): boolean {
 
 type NavItem = {
 	to: string;
-	label: string;
+	labelKey: string;
 	icon: string;
 	labsFlag?: LabsFlag;
 };
@@ -36,46 +36,46 @@ type NavItem = {
 const navItems: NavItem[] = [
 	{
 		to: "/",
-		label: "Dashboard",
+		labelKey: "nav.dashboard",
 		icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6",
 	},
-	{ to: "/sessions", label: "Sessions", icon: "M4 6h16M4 10h16M4 14h16M4 18h16" },
+	{ to: "/sessions", labelKey: "nav.sessions", icon: "M4 6h16M4 10h16M4 14h16M4 18h16" },
 	{
 		to: "/search",
-		label: "Search",
+		labelKey: "nav.search",
 		icon: "M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z",
 	},
 	{
 		to: "/inbox",
-		label: "Inbox",
+		labelKey: "nav.inbox",
 		icon: "M3 8l9 6 9-6m-18 0v10a2 2 0 002 2h14a2 2 0 002-2V8m-18 0V6a2 2 0 012-2h14a2 2 0 012 2v2",
 		labsFlag: "inbox",
 	},
 	{
 		to: "/worklog",
-		label: "工作日志",
+		labelKey: "nav.worklog",
 		icon: "M9 12h6m-6 4h6M5 3h14v18H5z",
 	},
 	{
 		to: "/digest",
-		label: "Digest",
+		labelKey: "nav.digest",
 		icon: "M9 17v-6h13v6M9 17a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2h2a2 2 0 012 2v6zm3-4l2 2 4-4",
 		labsFlag: "digest",
 	},
 	{
 		to: "/ask",
-		label: "Ask",
+		labelKey: "nav.ask",
 		icon: "M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z",
 		labsFlag: "askAssistant",
 	},
 	{
 		to: "/projects",
-		label: "Projects",
+		labelKey: "nav.projects",
 		icon: "M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z",
 	},
 	{
 		to: "/templates",
-		label: "Templates",
+		labelKey: "nav.templates",
 		icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586A2 2 0 0114 3.586l3.414 3.414A2 2 0 0118 8.414V19a2 2 0 01-2 2z",
 	},
 	// Setup / Hosts / Settings used to live here. They moved into the
@@ -198,7 +198,7 @@ export function Layout() {
 					ref={menuButtonRef}
 					type="button"
 					onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-					aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+					aria-label={mobileMenuOpen ? t("nav.closeNav") : t("nav.openNav")}
 					aria-expanded={mobileMenuOpen}
 					aria-controls="primary-navigation"
 					className="text-muted-foreground p-1.5 hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
@@ -290,7 +290,7 @@ export function Layout() {
 									>
 										<path strokeLinecap="round" strokeLinejoin="round" d={item.icon} />
 									</svg>
-									<span className="flex-1">{item.label}</span>
+									<span className="flex-1">{t(item.labelKey)}</span>
 									{item.to === "/inbox" && inboxIndicator && (
 										<InboxNavPills total={inboxIndicator.total} hasNew={inboxIndicator.hasNew} />
 									)}
@@ -300,7 +300,7 @@ export function Layout() {
 
 							<div className="mt-2 pt-2 border-t border-border/70 space-y-0.5">
 								<div className="px-3 py-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-									{drawer.heading}
+									{drawer.heading === "Admin" ? t("nav.admin") : t("nav.machines")}
 								</div>
 								{drawer.links.map((item) => (
 									<NavLink
@@ -316,7 +316,7 @@ export function Layout() {
 											)
 										}
 									>
-										{item.label}
+										{t(item.label)}
 									</NavLink>
 								))}
 								{user && (
@@ -422,7 +422,7 @@ export function Layout() {
 							key={item.to}
 							to={item.to}
 							end={item.to === "/"}
-							title={sidebarCollapsed ? item.label : undefined}
+							title={sidebarCollapsed ? t(item.labelKey) : undefined}
 							className={({ isActive }) =>
 								cn(
 									"group flex items-center rounded-lg text-[13px] font-medium transition-all duration-200",
@@ -444,7 +444,7 @@ export function Layout() {
 							</svg>
 							{!sidebarCollapsed && (
 								<>
-									<span className="flex-1">{item.label}</span>
+									<span className="flex-1">{t(item.labelKey)}</span>
 									{item.to === "/inbox" && inboxIndicator && (
 										<InboxNavPills total={inboxIndicator.total} hasNew={inboxIndicator.hasNew} />
 									)}
