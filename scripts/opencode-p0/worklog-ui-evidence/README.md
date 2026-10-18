@@ -30,3 +30,11 @@ cd /tmp/agentpulse-wl-e2e && bun browser.ts
 ```
 
 前端日期切换竞态已修复（`src/web/lib/latest-only.ts` 守卫，双维校验：①仅最新发起请求获胜；②**日期身份校验**——在 A 上发起的操作完成后即使最晚返回，也不能用 A 的数据覆盖 B，`setIdentity` 换日期时使所有在途请求失效；四种场景含"操作 A 未完成→切 B→A 完成后刷新"均有单测）。
+
+## 补充：草稿异步行为证据（2026-10-18，路由注入）
+
+`draft-async-browser.ts`（可复跑，参数为 fixture state.json 路径）用 Playwright 路由拦截注入延迟/失败响应，4/4：
+- `9-draft-rewrite-during-send.png` 慢发送期间改写→输入框与持久化都保留**新**文本（未被迟到成功清空）
+- `10-draft-failed-send-kept.png` 发送失败（注入 500）→草稿保留在输入框并在刷新后仍存在
+
+同步路径证据见 6-8 截图（draft-isolation-browser.ts，5/5）。

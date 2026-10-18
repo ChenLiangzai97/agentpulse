@@ -45,6 +45,7 @@ import { ownerChip } from "../lib/owner-chip.js";
 import { ownerLabel, sessionOwnerText } from "../lib/owner-label.js";
 import { NOTES_BLOCKED_REASON, sessionActionAccess } from "../lib/ownership-ui.js";
 import { assignablePeople, withCurrentOwner } from "../lib/people.js";
+import { createRequestEpoch } from "../lib/request-epoch.js";
 import { sessionHostLabel } from "../lib/session-host.js";
 import type { WorkspaceTabId } from "../lib/session-summary-core.js";
 import { shouldCloseTabOnLoadFailure } from "../lib/tab-visibility.js";
@@ -97,6 +98,11 @@ function insertEvents(existing: SessionEvent[], incoming: SessionEvent[]): Sessi
 export function SessionDetailPage() {
 	const { sessionId } = useParams<{ sessionId: string }>();
 	const navigate = useNavigate();
+	// Request-epoch guard: a session-detail response that lands after the
+	// viewer switched to another tab must not touch state — not a late
+	// success overwriting B's detail, not a late 403/404 navigating B away,
+	// not a late finally clearing B's loading flag.
+	const loadEpoch = useRef(createRequestEpoch()).current;
 	const [searchParams, setSearchParams] = useSearchParams();
 
 	const [session, setSession] = useState<Session | null>(null);
@@ -147,13 +153,16 @@ export function SessionDetailPage() {
 
 	const loadSessionWorkspace = useCallback(async () => {
 		if (!sessionId) return;
+		const isCurrent = loadEpoch.begin();
 		try {
 			const data = await api.getSession(sessionId);
+			if (!isCurrent()) return; // the viewer moved on — drop the late success
 			setSession(data.session as Session);
 			setEvents(data.events as SessionEvent[]);
 			setEventsLoaded(true);
 			setControlActions((data.controlActions as ControlAction[]) || []);
 		} catch (err) {
+			if (!isCurrent()) return; // a late failure must not navigate B away
 			// P1 tab-restore revalidation: a tab whose session is GONE (404)
 			// or not visible to this viewer (403) closes itself instead of
 			// parking on an error page. Transient failures keep the page.
@@ -170,9 +179,9 @@ export function SessionDetailPage() {
 			}
 			console.error("Failed to fetch session:", err);
 		} finally {
-			setLoading(false);
+			if (isCurrent()) setLoading(false);
 		}
-	}, [sessionId, navigate]);
+	}, [sessionId, navigate, loadEpoch]);
 
 	// Warm the header from the cached dashboard list so switching tabs feels instant.
 	useEffect(() => {
