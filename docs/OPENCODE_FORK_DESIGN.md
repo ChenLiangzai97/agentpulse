@@ -139,3 +139,35 @@ CREATE INDEX idx_opencode_forks_parent ON opencode_forks(parent_session_id);
 1. 原型 + 单测（不接控制主路径）：绑定寻址助手（A1/A3 纯函数）、fork 幂等/冲突/对账状态机（B）、前缀映射器（C，含断点即停与时间继承用例）、停止语义（D 的取消/失效/拒新）。
 2. 评审通过后接主路径：0015 迁移 + 端点 + provider binding 寻址（A6）+ observer 跳过（A4）。
 3. 浏览器终局验收（并入 4+6）：fork 继承上下文（暗号法）、停止子不影响父、审批各归各卡、copyOf 去重生效、真实组件 A/B 迟到响应场景。
+
+---
+
+# v2.1 实测修订（2026-10-18，真实协议/数据库证据）
+
+## 1. forkTitle 对账前提被实测否定 → 改为 unknown + 用户采纳
+
+隔离实例（1.18.35）四项实测：
+- `POST /session/{id}/fork` 携带 `{"title": ...}` → 200 但 **title 被静默忽略**（响应 title 为原生自动命名 "…(fork #1)"，非调用方值）——OpenAPI `additionalProperties:false` 服务端未强执，但该字段不生效；
+- 改名只能走**另行** `PATCH /session/{id} {title}`（实测 200 生效）→ **fork 与改名之间存在真实崩溃窗口**；
+- title **可变**且**可多匹配**（把父改名成同一标记后列表命中 2 条）→ title 不构成唯一证据。
+
+结论：崩溃窗口（原生 fork 成功、回报丢失）**无可靠自动对账手段**。策略：
+- 该 action 保持 `unknown`，永不自动重发；
+- UI 提供**用户中介采纳**：列出候选分支（同 directory + 消息前缀与受理时父快照匹配 + fork 时间窗内创建），逐项展示证据，用户显式选择后才写入 `opencode_forks` 台账并建绑定；采纳前候选保持只观察。
+
+## 2. 父删除 FK 链实测（真实 SQLite + 真实 schema）
+
+按设计插入父/子会话、共享 provider_instance、双方绑定、双方 managed 行、launch 后删除父会话，实测结果：
+- 子会话行、**子绑定、provider_instances 行全部存活**（本 schema 的 instance→session 外键不级联删除实例）；
+- 仅父自身的 managed_sessions 行随父级联消失（属预期）；
+- launch 行存活。
+
+结论：现有外键链下"父删除 → 子分支保持可控"**成立**；设计仅需新增谱系表自身 `parent_session_id ON DELETE SET NULL` + 不可变标签（追溯），无需改动现有外键。该实验脚本随原型一并入库可复跑。
+
+## 3. copyOf 父快照核验窗口（按评审收窄）
+
+受理时的中央镜像**不作为原生事实**：映射核验发生在**执行受控窗口**——Supervisor 在实际调用原生 fork 前一刻从实例拉取父消息清单（msg id + part 哈希 + 事件时间），与受理请求一并随 fork 动作存档；子首快照核验以此为准。中央镜像仅用于 UI 预览（分叉点选择）。
+
+## 4. observer 跳过作用域（按评审收窄）
+
+跳过条件 = **(来源实例所属 supervisor/host, native session id) 组合**命中受管绑定（`uq_control_binding_native` 按 instance 归属主机），不按裸 native id 跨来源跳过。既有外部重复行**不在迁移中删除**：先证明同源（同 host、同 native id、时间窗）且内容重复才合并，独有笔记/关联保留；无把握隔离保留并打标，交用户处置。
