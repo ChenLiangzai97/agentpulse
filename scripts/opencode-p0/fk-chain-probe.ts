@@ -71,21 +71,19 @@ if (instanceRows !== 1) failures.push("provider instance row lost");
 if (parentManaged !== 0) failures.push("parent managed row unexpectedly kept");
 if (childManaged !== 1) failures.push("child managed row lost");
 if (launchRows !== 1) failures.push("launch row lost");
-// CURRENT-GUARD FINDING (design A1 motivation): inspectOpenCodeProvenance
-// requires instance.sessionId === sessionId, so a shared-instance CHILD
-// binding is rejected by today's single-session guards — before AND after
-// the parent delete. Row survival is observed; CONTROLLABILITY is NOT
-// proven and stays prototype scope. When binding-as-authority lands, this
-// expectation flips to true.
-const childRejectedByCurrentGuard = results.childProvenanceAfter?.bindingValid === false;
-if (!childRejectedByCurrentGuard)
-	failures.push("child binding unexpectedly VALID under current single-session guards — update this probe's expectation");
+// POST-A1 EXPECTATION (flipped 2026-10-19): binding-as-authority is live,
+// so a shared-instance CHILD binding is VALID — before AND after the parent
+// delete. Row survival AND control authority are both observed here; the
+// deeper control/approval/recovery flows remain prototype/integration scope.
+const childValidAfterParentDelete = results.childProvenanceAfter?.bindingValid === true;
+if (!childValidAfterParentDelete)
+	failures.push("child binding NOT valid after parent delete — A1 regression or probe setup issue");
 console.log(JSON.stringify(results, null, 1));
 if (failures.length) {
 	console.error("FK-PROBE FAILURES:", failures.join("; "));
 	process.exit(1);
 }
 console.log(
-	"FK-PROBE PASS — row survival observed on both dialects; child binding is REJECTED by the current single-session guard (expected finding, design A1 motivation). Controllability after parent deletion remains prototype scope; the child reuses the parent's launch id until migration 0015.",
+	"FK-PROBE PASS — row survival AND child control authority (via binding) observed after parent deletion, on both dialects. Deeper control/approval/recovery flows remain integration scope; the child reuses the parent's launch id until migration 0015.",
 );
 process.exit(0);

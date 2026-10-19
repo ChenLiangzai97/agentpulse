@@ -13,6 +13,7 @@ import {
 	supervisors,
 } from "../../db/schema/index.js";
 import {
+	assertSessionControlOrigin,
 	inspectOpenCodeProvenance,
 	reserveOpenCodeInstance,
 } from "../opencode-control-provenance.js";
@@ -91,10 +92,10 @@ async function seedParentAndChild() {
 }
 
 describe("binding-as-authority (isolated prototype, real DB)", () => {
-	test("child authority resolves while the CURRENT guard rejects it — and survives parent deletion", async () => {
+	test("child authority resolves (A1 makes the binding-as-authority path live) — and survives parent deletion", async () => {
 		await seedParentAndChild();
-		// Current single-session guard: invalid (A1 evidence).
-		expect((await inspectOpenCodeProvenance("ba-child"))?.bindingValid).toBe(false);
+		// POST-A1: the shared-instance child is valid through its binding.
+		expect((await inspectOpenCodeProvenance("ba-child"))?.bindingValid).toBe(true);
 		// Prototype authority: valid.
 		const before = await bindingAuthorityForSession("ba-child");
 		expect(before.ok).toBe(true);
@@ -121,5 +122,76 @@ describe("binding-as-authority (isolated prototype, real DB)", () => {
 		const stopped = await bindingAuthorityForSession("ba-child");
 		expect(stopped.ok).toBe(false);
 		if (!stopped.ok) expect(stopped.reason).toBe("instance_not_live");
+	});
+});
+
+describe("A1 main-path authorization regression (real assertSessionControlOrigin paths)", () => {
+	beforeEach(async () => {
+		await getDb().delete(providerInstances);
+	});
+
+	test("a shared-instance CHILD passes the REAL control-origin assertion — and survives parent deletion", async () => {
+		await seedParentAndChild();
+		// current-guard evidence (pre-A1 this was false; A1 makes the child real)
+		expect((await inspectOpenCodeProvenance("ba-child"))?.bindingValid).toBe(true);
+		// the real assertion with an actor
+		const adminActor = { label: "user", userId: null, role: "admin", mode: "solo" } as const;
+		await expect(assertSessionControlOrigin("ba-child", adminActor)).resolves.toBeUndefined();
+		// parent deletion keeps the child controllable THROUGH the REAL path
+		await getDb().delete(sessions).where(eq(sessions.sessionId, "ba-parent"));
+		expect((await inspectOpenCodeProvenance("ba-child"))?.bindingValid).toBe(true);
+		await expect(assertSessionControlOrigin("ba-child", adminActor)).resolves.toBeUndefined();
+	});
+
+	test("generation bump invalidates the child through the real path (instance stop semantics)", async () => {
+		const { instanceId } = await seedParentAndChild();
+		await getDb()
+			.update(providerInstances)
+			.set({ generation: 2 })
+			.where(eq(providerInstances.id, instanceId));
+		expect((await inspectOpenCodeProvenance("ba-child"))?.bindingValid).toBe(false);
+		const adminActor = { label: "user", userId: null, role: "admin", mode: "solo" } as const;
+		await expect(assertSessionControlOrigin("ba-child", adminActor)).rejects.toThrow(
+			"provider_binding_invalid",
+		);
+	});
+
+	test("external / BotMux / legacy sessions remain permanently observe-only (unchanged by A1)", async () => {
+		await getDb()
+			.insert(sessions)
+			.values({ sessionId: "a1-external", agentType: "opencode", cwd: "/tmp" });
+		await getDb()
+			.insert(sessionControlBindings)
+			.values({ sessionId: "a1-external", origin: "external_observer" });
+		await getDb()
+			.insert(sessions)
+			.values({ sessionId: "a1-legacy", agentType: "opencode", cwd: "/tmp" });
+		const adminActor = { label: "user", userId: null, role: "admin", mode: "solo" } as const;
+		await expect(assertSessionControlOrigin("a1-external", adminActor)).rejects.toThrow(
+			"session_observe_only",
+		);
+		// no binding row at all → legacy_unknown origin, observe-only
+		const provenance = await inspectOpenCodeProvenance("a1-legacy");
+		expect(provenance?.origin).toBe("legacy_unknown");
+		expect(provenance?.bindingValid).toBe(false);
+	});
+
+	test("fake metadata does NOT promote an external session (no metadata authority)", async () => {
+		await getDb()
+			.insert(sessions)
+			.values({
+				sessionId: "a1-fake",
+				agentType: "opencode",
+				cwd: "/tmp",
+				metadata: { origin: "agentpulse_launch", controlCapabilities: { send: true } },
+			});
+		await getDb()
+			.insert(sessionControlBindings)
+			.values({ sessionId: "a1-fake", origin: "external_observer" });
+		expect((await inspectOpenCodeProvenance("a1-fake"))?.bindingValid).toBe(false);
+		const adminActor = { label: "user", userId: null, role: "admin", mode: "solo" } as const;
+		await expect(assertSessionControlOrigin("a1-fake", adminActor)).rejects.toThrow(
+			"session_observe_only",
+		);
 	});
 });

@@ -209,9 +209,17 @@ export async function inspectOpenCodeProvenance(sessionId: string) {
 				.from(launchRequests)
 				.where(eq(launchRequests.id, instance.launchRequestId))
 		: [];
-	const valid = Boolean(
-		session?.agentType === "opencode" &&
-			instance?.agentType === "opencode" &&
+	// A1 binding-as-authority (fork design §A1): the provider instance is
+	// the PROCESS authority; a session's control authority comes from ITS
+	// binding. The ORIGINAL single-session shape (instance.sessionId ===
+	// sessionId, launch correlation === sessionId) keeps validating the
+	// launching session unchanged. A FORK CHILD on the same instance
+	// validates through its binding instead: binding.nativeSessionId is the
+	// child's native identity, the instance/generation must be live, and the
+	// child's own managed row must agree. The launch checks stay PARENT-
+	// scoped — a child never claims the parent's correlation id.
+	const parentPathValid = Boolean(
+		instance?.agentType === "opencode" &&
 			instance.sessionId === sessionId &&
 			instance.generation === binding.generation &&
 			instance.state === "running" &&
@@ -225,6 +233,19 @@ export async function inspectOpenCodeProvenance(sessionId: string) {
 			launch.claimedBySupervisorId === instance.supervisorId &&
 			!launch.metadata?.boundExistingSession,
 	);
+	const childPathValid =
+		!parentPathValid &&
+		Boolean(
+			session?.agentType === "opencode" &&
+				instance?.agentType === "opencode" &&
+				instance.generation === binding.generation &&
+				(instance.state === "running" || instance.state === "reserved") &&
+				session.cwd === instance.cwd &&
+				managed?.supervisorId === instance.supervisorId &&
+				managed?.providerSessionId === binding.nativeSessionId &&
+				binding.nativeSessionId !== launch?.launchCorrelationId,
+		);
+	const valid = parentPathValid || childPathValid;
 	return {
 		origin: binding.origin,
 		bindingValid: valid,
