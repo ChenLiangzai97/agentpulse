@@ -326,7 +326,7 @@ describe("single authoritative row — transactional claim & guarded release (ro
 		const snap = await 乙store.snapshot("ar2");
 		expect(snap).not.toBeNull();
 		expect(snap?.status).toBe("abort_pending");
-		const ids = new Set([乙.stopOpId, (甲 ?? 乙).stopOpId, snap!.stopOpId]);
+		const ids = new Set([乙.stopOpId, (甲 ?? 乙).stopOpId, snap ? snap.stopOpId : "missing"]);
 		expect(ids.size).toBe(1);
 	});
 
