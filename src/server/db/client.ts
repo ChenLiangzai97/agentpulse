@@ -1469,6 +1469,10 @@ function rebuildSessionChildFks(sqlite: Database): void {
 		{ table: "ai_watcher_runs", column: "session_id", onDelete: "CASCADE" },
 		{ table: "watcher_configs", column: "session_id", onDelete: "CASCADE" },
 		{ table: "opencode_forks", column: "parent_session_id", onDelete: "SET NULL" },
+		// Repair for DBs where the first 0015 shipped the fork tables without
+		// FKs: the child cascade is rebuilt too (preserving the parent FK the
+		// previous rebuild just installed).
+		{ table: "opencode_forks", column: "child_session_id", onDelete: "CASCADE" },
 	];
 
 	for (const { table, column, onDelete } of targets) {
@@ -1566,12 +1570,14 @@ function rebuildTableWithFk(
 		if (c.pk) parts.push("PRIMARY KEY");
 		return parts.join(" ");
 	});
-	// Preserve EVERY foreign key the table already had (PRAGMA order is
-	// reverse-of-declaration; re-declaring in reverse restores declaration
-	// order), replacing only the target column's rule with the requested
-	// ON DELETE. Rebuilding one FK must never drop the others (round-32
-	// review catch: rebuilding opencode_forks.parent_session_id to SET NULL
-	// used to lose the child CASCADE).
+	// Preserve the SINGLE-COLUMN foreign keys this table actually declares
+	// (PRAGMA order is reverse-of-declaration; re-declaring in reverse
+	// restores declaration order), replacing only the target column's rule.
+	// Scope limits (round-33 review): composite FK groups and ON UPDATE
+	// rules are NOT preserved here — this covers exactly the constraint
+	// shapes our tables use today. Extending the rebuild to new tables
+	// requires preserving the original DDL or adding matching regressions;
+	// no claim of full FK-semantics preservation is made.
 	const existingFks = sqlite.prepare(`PRAGMA foreign_key_list('${table}')`).all() as Array<{
 		table: string;
 		from: string;
