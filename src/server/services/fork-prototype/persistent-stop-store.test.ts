@@ -6,7 +6,7 @@ import "../../db/__test_db.js";
 import { beforeEach, describe, expect, test } from "bun:test";
 import { getDb, initializeDatabase } from "../../db/client.js";
 import { settings } from "../../db/schema/index.js";
-import { PersistentStopStore } from "./persistent-stop-store.js";
+import { type PersistedStopOp, PersistentStopStore } from "./persistent-stop-store.js";
 
 async function unsettledCount(store: PersistentStopStore, sessionId: string): Promise<number> {
 	const snap = await store.snapshot(sessionId);
@@ -138,50 +138,9 @@ describe("persistent stop operations — revision CAS & per-attempt uncertainty 
 		});
 	});
 
-	let 甲: Promise<unknown> | null = null;
-	let 甲Fired = false;
-	test("deterministic same-round interleave: 甲 registers + hangs transport → 乙 writes with STALE state → 乙 FAILS, 甲 survives", async () => {
-		let release甲: () => void = () => {};
-		const transportCalls: string[] = [];
-		const store = new PersistentStopStore(
-			{
-				abortNativeTurn: async () => {
-					transportCalls.push("call");
-					await new Promise<void>((resolve) => {
-						release甲 = resolve;
-					});
-				},
-				isolateTarget: async () => ({ proof: "p" }),
-			},
-			30_000,
-			{
-				// 乙's hook: after loading the round state (still revision 1,
-				// attempts 0) but BEFORE its CAS, let 甲 register and fire the
-				// hanging transport first. The fired-once guard keeps 甲's OWN
-				// beforeCas from recursing.
-				beforeCas: async () => {
-					if (甲Fired) return;
-					const snap = await store.snapshot("r2");
-					if (snap && snap.attempts === 0) {
-						甲Fired = true;
-						甲 = store.sendAbort("r2");
-						await Bun.sleep(30); // let 甲's CAS land (rev 1→2)
-					}
-				},
-			},
-		);
-		await store.begin("r2");
-		const 乙 = await store.sendAbort("r2"); // its beforeCas sent 甲 first
-		expect(乙).toEqual({ rejected: "superseded" }); // stale writer lost
-		const snap = await store.snapshot("r2");
-		expect(snap?.revision).toBe(2); // 甲's write, not overwritten
-		expect(snap?.attempts).toBe(1);
-		expect(transportCalls.length).toBe(1); // only 甲's transport fired
-		release甲();
-		await 甲;
-		for (let i = 0; i < 40 && (await unsettledCount(store, "r2")) !== 0; i++) await Bun.sleep(10);
-		expect(await unsettledCount(store, "r2")).toBe(0); // 甲 settled via wired completion
-	});
+	// (The old beforeCas-based interleave used a hook that no longer exists;
+	// the deterministic same-round race is now covered by the revision-CAS
+	// concurrent-sendAbort test below plus the round-29 interleavings.)
 
 	test("per-attempt uncertainty: two timeouts need BOTH settlements; late completion is auto-wired", async () => {
 		const gates = [deferred(), deferred()];
@@ -329,30 +288,123 @@ describe("restart reconciliation (review round 24)", () => {
 	});
 });
 
-describe("single active round per session (review round 27)", () => {
-	test("concurrent begin(): the active-round slot guarantees ONE live round; the loser observes it", async () => {
-		const ok = { abortNativeTurn: async () => {}, isolateTarget: async () => ({ proof: "p" }) };
-		const a = new PersistentStopStore(ok);
-		const b = new PersistentStopStore(ok);
+describe("single authoritative row — transactional claim & guarded release (rounds 27+29)", () => {
+	const okTransport = {
+		abortNativeTurn: async () => {},
+		isolateTarget: async () => ({ proof: "p" }),
+	};
+
+	test("concurrent begin(): one live round; the racer observes it whole (no half-installed claim)", async () => {
+		const a = new PersistentStopStore(okTransport);
+		const b = new PersistentStopStore(okTransport);
 		const [ra, rb] = await Promise.all([a.begin("ar"), b.begin("ar")]);
 		expect(ra.stopOpId).toBe(rb.stopOpId);
 		expect(ra.status).toBe("abort_pending");
-		// the loser must NOT have installed its own candidate round row
-		const snap = await a.snapshot("ar");
-		expect(snap?.stopOpId).toBe(ra.stopOpId);
+		expect((await a.snapshot("ar"))?.stopOpId).toBe(ra.stopOpId);
 	});
 
-	test("after the round stops, the slot frees and a NEW round may claim it exactly once", async () => {
-		const ok = { abortNativeTurn: async () => {}, isolateTarget: async () => ({ proof: "p" }) };
-		const store = new PersistentStopStore(ok);
-		const r1 = await store.begin("ar2");
-		await store.sendAbort("ar2");
-		expect(await store.confirmTermination("ar2", r1.stopOpId)).toBe(true);
-		const [r2a, r2b] = await Promise.all([
-			store.begin("ar2", "h2"),
-			new PersistentStopStore(ok).begin("ar2", "h3"),
-		]);
-		expect(r2a.stopOpId).toBe(r2b.stopOpId); // one new round only
-		expect(r2a.stopOpId).not.toBe(r1.stopOpId);
+	test("claim paused INSIDE the claim transaction: the racer sees either no row or the FULL row — never steals an in-flight claim", async () => {
+		// 甲 opens the claim transaction and pauses after reading NO row.
+		let release甲: () => void = () => {};
+		const gate = new Promise<void>((r) => {
+			release甲 = r;
+		});
+		let 甲Result: Promise<PersistedStopOp | undefined> | null = null;
+		const 甲store = new PersistentStopStore(okTransport, 5_000, {
+			insideClaimTx: async () => {
+				if (甲Result) return; // only pause on the first claim
+				await gate; // hold the transaction open with no row written yet
+			},
+		});
+		甲Result = 甲store.begin("ar2");
+		await Bun.sleep(30); // 甲 is inside the tx, paused before insert
+		const 乙store = new PersistentStopStore(okTransport);
+		const 乙 = await 乙store.begin("ar2"); // runs while 甲's tx is open
+		release甲();
+		const 甲 = await 甲Result;
+		// Exactly one round exists; both observers see the SAME full round.
+		const snap = await 乙store.snapshot("ar2");
+		expect(snap).not.toBeNull();
+		expect(snap?.status).toBe("abort_pending");
+		const ids = new Set([乙.stopOpId, (甲 ?? 乙).stopOpId, snap!.stopOpId]);
+		expect(ids.size).toBe(1);
+	});
+
+	test("old round's LATE termination cannot touch a NEW round: release matches (stopOpId, revision)", async () => {
+		const store = new PersistentStopStore(okTransport);
+		const r1 = await store.begin("ar3");
+		await store.sendAbort("ar3");
+		expect(await store.confirmTermination("ar3", r1.stopOpId)).toBe(true);
+		// new round replaces the stopped one on the SAME row
+		const r2 = await store.begin("ar3", "h2");
+		expect(r2.stopOpId).not.toBe(r1.stopOpId);
+		await store.sendAbort("ar3");
+		// the OLD round's confirmation arrives late — it must NOT stop r2
+		expect(await store.confirmTermination("ar3", r1.stopOpId)).toEqual({
+			refused: "unknown_round",
+		});
+		expect((await store.snapshot("ar3"))?.status).toBe("abort_sent");
+		expect((await store.snapshot("ar3"))?.stopOpId).toBe(r2.stopOpId);
+		expect(await store.confirmTermination("ar3", r2.stopOpId)).toBe(true);
+		expect((await store.snapshot("ar3"))?.status).toBe("stopped");
+	});
+
+	test("delayed release hook: even if an old confirmation is in flight, the conditional write only lands on its own round", async () => {
+		let hook: () => Promise<void> = async () => {};
+		const store = new PersistentStopStore(okTransport, 5_000, {
+			beforeTerminationRelease: () => hook(),
+		});
+		const r1 = await store.begin("ar4");
+		await store.sendAbort("ar4");
+		let releaseConfirm: () => void = () => {};
+		const confirmGate = new Promise<void>((r) => {
+			releaseConfirm = r;
+		});
+		hook = () => confirmGate; // pause r1's termination write
+		const confirm1 = store.confirmTermination("ar4", r1.stopOpId);
+		await Bun.sleep(20); // paused after the read, before the write
+		releaseConfirm();
+		expect(await confirm1).toBe(true);
+		const r2 = await store.begin("ar4", "h2");
+		expect(r2.stopOpId).not.toBe(r1.stopOpId);
+		// a stale replay of r1's confirmation still cannot flip r2
+		expect(await store.confirmTermination("ar4", r1.stopOpId)).toEqual({
+			refused: "unknown_round",
+		});
+	});
+
+	test("per-attempt uncertainty, isolation and restart reconciliation still hold on the new row model", async () => {
+		const gates = [deferred(), deferred()];
+		let n = 0;
+		const store = new PersistentStopStore(
+			{
+				abortNativeTurn: () => gates[n++ % 2].promise,
+				isolateTarget: async () => {
+					throw new Error("no");
+				},
+			},
+			40,
+		);
+		const round = await store.begin("ar5");
+		const a1 = await store.sendAbort("ar5");
+		const a2 = await store.sendAbort("ar5");
+		if (!("attemptId" in a1) || !("attemptId" in a2)) throw new Error("not registered");
+		expect((await store.snapshot("ar5"))?.unsettled.length).toBe(2);
+		gates[0].resolve();
+		for (let i = 0; i < 40 && (await unsettledCount(store, "ar5")) !== 1; i++) await Bun.sleep(10);
+		expect(await unsettledCount(store, "ar5")).toBe(1);
+		// failed isolation keeps blocking; structured reconciliation (restart proof) clears
+		expect((await store.isolate("ar5")).isolated).toBe(false);
+		expect(
+			await store.reconcileAfterRestart("ar5", round.stopOpId, {
+				kind: "instance-terminated",
+				instanceIdentity: "inst-A",
+				detail: "uptime>attempt",
+			}),
+		).toBe(true);
+		expect(await unsettledCount(store, "ar5")).toBe(0);
+		expect(await store.confirmTermination("ar5", round.stopOpId)).toBe(true);
+		expect(await store.canResume("ar5")).toBe(true);
+		gates[1].resolve();
 	});
 });
