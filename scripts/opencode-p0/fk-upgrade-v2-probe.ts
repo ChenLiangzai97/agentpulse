@@ -122,7 +122,7 @@ if (PHASE === "upgrade") {
 	// migration array + FK rebuild; we do NOT touch __drizzle_migrations here.
 	// (The old ledger is irrelevant to the legacy path; the FK rebuild is the
 	// supported repair entry for legacy installs.)
-	delete process.env.AGENTPULSE_LEGACY_INIT;
+	process.env.AGENTPULSE_LEGACY_INIT = "";
 	const { initializeDatabase } = await import(`${root}/src/server/db/client.js`);
 	await initializeDatabase();
 	console.log("UPGRADE DONE");
