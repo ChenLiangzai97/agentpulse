@@ -23,7 +23,8 @@ export async function applyForkIdempotencyPrototypeIndex(): Promise<void> {
 	};
 	const query = sql.raw(FORK_IDEMPOTENCY_INDEX_SQL);
 	if (typeof db.run === "function") await db.run(query);
-	else await db.execute(query);
+	else if (db.execute) await db.execute(query);
+	else throw new Error("no raw execution method on this driver");
 }
 
 export type ForkIdempotencyResolution =
