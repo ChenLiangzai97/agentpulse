@@ -102,8 +102,7 @@ CREATE INDEX idx_opencode_forks_parent ON opencode_forks(parent_session_id);
 - **持久唯一约束**：`CREATE UNIQUE INDEX uq_fork_action_idem ON control_actions(requested_by_user_id, idempotency_key) WHERE action_type='opencode_fork' AND idempotency_key IS NOT NULL`（双方言 partial unique；SQLite 支持，PG 支持；legacy 路径补同款语句）。作用域=Actor（requested_by_user_id，solo 下 NULL 视为同一 owner，用 COALESCE 键或 owner 列冗余）。
 - **请求体冲突**：action metadata 存 `requestHash`（messageId+parentSessionId 规范化哈希）；同键不同 hash → 409 `fork_key_conflict`。
 - **结果台账**：fork 成功回报落地 `opencode_forks` 行（含 action_id）即为持久结果；动作状态以台账为准对账。
-- **崩溃窗口对账**（原生 fork 已发生、回报丢失）：服务端在受理时生成 `forkTitle = agentpulse-fork:<actionId>` 并作为原生 fork 的 title 传入；对账时 Supervisor 按该 title 扫描实例的原生会话列表，命中者按 A3/C 流程采纳为该 action 的结果（并核验父前缀，见 C）；未命中 → 保持 unknown，**不自动重发**（沿用原则）。
-- 锁串行仅去抖并发，不承担崩溃后去重——去重由唯一约束+台账+title 对账承担。
+> **[已废弃 2026-10-19]** title 自动对账：实测证明原生 fork 忽略调用方 title（另行 PATCH 才能改名，且可变可多匹配）——本段不再有效。现行方案见「v2.1 §1（含评审收窄）」：unknown 永不自动重发，恢复=用户中介采纳（四条件+全量来源复验）。
 
 ## C. copyOf 授信链（不靠事后同文猜测）
 
@@ -126,7 +125,7 @@ CREATE INDEX idx_opencode_forks_parent ON opencode_forks(parent_session_id);
 
 - drizzle **0015**（sqlite + postgres 同内容）：`opencode_forks`、`opencode_fork_requests`、`uq_fork_action_idem` partial unique、`managed_sessions.launch_request_id` 放宽（PG 侧 DROP NOT NULL + ADD COLUMN 兼容；SQLite 重建表或新列可空+应用层保证）、父删除规则（见 F）所需列。
 - 旧库 legacy init 路径追加等价语句（CREATE TABLE IF NOT EXISTS + CREATE UNIQUE INDEX IF NOT EXISTS + ALTER）。
-- 一次性清洗：A4 的受管子会话若已被 observer 摄取为外部行，迁移时删除重复外部行（保留绑定权威行）。
+> **[已废弃 2026-10-19]** 迁移删除外部重复行：现行方案为**仅隔离标记**（quarantine），同源证明+用户确认后才合并，永不静默删除（见 0015 草案第 6 条）。
 
 ## F. 父删除后的子分支规则
 
@@ -151,7 +150,7 @@ CREATE INDEX idx_opencode_forks_parent ON opencode_forks(parent_session_id);
 - 改名只能走**另行** `PATCH /session/{id} {title}`（实测 200 生效）→ **fork 与改名之间存在真实崩溃窗口**；
 - title **可变**且**可多匹配**（把父改名成同一标记后列表命中 2 条）→ title 不构成唯一证据。
 
-结论（按评审措辞收紧）：崩溃窗口（原生 fork 成功、回报丢失）**当前未验证可靠的自动对账手段**（title 实测否定是其一；内容前缀+时间窗在并发 fork 下不唯一）。策略：
+结论（现行有效）：崩溃窗口（原生 fork 成功、回报丢失）**当前未验证可靠的自动对账手段**（title 实测否定是其一；内容前缀+时间窗在并发 fork 下不唯一）。策略：
 - 该 action 保持 `unknown`，永不自动重发；
 - UI 提供**用户中介采纳**——用户确认只解决"候选选择"，**不替代任何来源校验**。候选必须同时满足：
   1. 位于**该受管实例内**（instanceId 匹配本 action 目标实例）；

@@ -328,3 +328,31 @@ describe("restart reconciliation (review round 24)", () => {
 		).toBe(false);
 	});
 });
+
+describe("single active round per session (review round 27)", () => {
+	test("concurrent begin(): the active-round slot guarantees ONE live round; the loser observes it", async () => {
+		const ok = { abortNativeTurn: async () => {}, isolateTarget: async () => ({ proof: "p" }) };
+		const a = new PersistentStopStore(ok);
+		const b = new PersistentStopStore(ok);
+		const [ra, rb] = await Promise.all([a.begin("ar"), b.begin("ar")]);
+		expect(ra.stopOpId).toBe(rb.stopOpId);
+		expect(ra.status).toBe("abort_pending");
+		// the loser must NOT have installed its own candidate round row
+		const snap = await a.snapshot("ar");
+		expect(snap?.stopOpId).toBe(ra.stopOpId);
+	});
+
+	test("after the round stops, the slot frees and a NEW round may claim it exactly once", async () => {
+		const ok = { abortNativeTurn: async () => {}, isolateTarget: async () => ({ proof: "p" }) };
+		const store = new PersistentStopStore(ok);
+		const r1 = await store.begin("ar2");
+		await store.sendAbort("ar2");
+		expect(await store.confirmTermination("ar2", r1.stopOpId)).toBe(true);
+		const [r2a, r2b] = await Promise.all([
+			store.begin("ar2", "h2"),
+			new PersistentStopStore(ok).begin("ar2", "h3"),
+		]);
+		expect(r2a.stopOpId).toBe(r2b.stopOpId); // one new round only
+		expect(r2a.stopOpId).not.toBe(r1.stopOpId);
+	});
+});

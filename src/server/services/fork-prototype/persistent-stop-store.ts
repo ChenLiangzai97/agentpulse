@@ -47,6 +47,11 @@ export interface StopTransport {
 }
 
 const KEY = (sessionId: string) => `forkproto.stopop.${sessionId}`;
+/** Authority pointer: at most ONE active (non-stopped) round per session.
+ * Rounds write their ledger rows separately; this pointer is what begin()
+ * claims and what every CAS also guards, so two concurrent new rounds
+ * cannot both succeed. */
+const ACTIVE = (sessionId: string) => `forkproto.stopop.active.${sessionId}`;
 
 async function load(sessionId: string): Promise<PersistedStopOp | null> {
 	const [row] = await getDb()
@@ -123,6 +128,33 @@ export class PersistentStopStore {
 			isolationProof: null,
 			requestHash: requestHash ?? null,
 		};
+		// Claim the session's single ACTIVE-round slot FIRST (insert-win).
+		// Its value names the owning round; a stopped round releases it.
+		await getDb()
+			.insert(settings)
+			.values({ key: ACTIVE(sessionId), value: { stopOpId: candidate.stopOpId } })
+			.onConflictDoNothing({ target: settings.key });
+		const [active] = await getDb()
+			.select()
+			.from(settings)
+			.where(eq(settings.key, ACTIVE(sessionId)));
+		const activeOwner = (active?.value as { stopOpId?: string } | undefined)?.stopOpId;
+		if (activeOwner && activeOwner !== candidate.stopOpId) {
+			// Someone else owns the active round — is it still live?
+			const owner = await load(sessionId);
+			if (owner && owner.stopOpId === activeOwner && owner.status !== "stopped") return owner;
+			// Stale pointer (owner stopped/absent): CAS-takeover the slot —
+			// the WHERE matches the pointer's CURRENT owner value.
+			const won = await getDb()
+				.update(settings)
+				.set({ value: { stopOpId: candidate.stopOpId } })
+				.where(and(eq(settings.key, ACTIVE(sessionId)), jsonPathEq("$.stopOpId", activeOwner)))
+				.returning({ key: settings.key });
+			if (won.length === 0) {
+				const racer = await load(sessionId);
+				if (racer && racer.status !== "stopped") return racer;
+			}
+		}
 		await getDb()
 			.insert(settings)
 			.values({ key: KEY(sessionId), value: candidate })
@@ -235,7 +267,14 @@ export class PersistentStopStore {
 				revision: current.revision + 1,
 				status: "stopped",
 			};
-			if (await casUpdate(current, next)) return true;
+			if (await casUpdate(current, next)) {
+				// Release the active-round slot (best effort; a stale pointer
+				// is cleaned up by the next begin()'s CAS takeover).
+				await getDb()
+					.delete(settings)
+					.where(eq(settings.key, ACTIVE(sessionId)));
+				return true;
+			}
 		}
 		return false;
 	}
@@ -301,8 +340,7 @@ export class PersistentStopStore {
 		stopOpId: string,
 		proof: { kind: string; instanceIdentity: string; detail?: string },
 	): Promise<boolean | { refused: "unknown_round" | "invalid_proof" }> {
-		if (!proof?.kind || !proof?.instanceIdentity)
-			return { refused: "invalid_proof" };
+		if (!proof?.kind || !proof?.instanceIdentity) return { refused: "invalid_proof" };
 		const current = await load(sessionId);
 		if (!current || current.stopOpId !== stopOpId) return { refused: "unknown_round" };
 		if (current.unsettled.length === 0) return false;
