@@ -262,3 +262,39 @@ describe("persistent stop operations — revision CAS & per-attempt uncertainty 
 		expect(snap?.unsettled.length).toBe(0);
 	});
 });
+
+describe("restart reconciliation (review round 24)", () => {
+	test("unsettled attempts do NOT settle themselves across a restart; a proof token clears them", async () => {
+		const gate = deferred();
+		const boot = {
+			abortNativeTurn: () => gate.promise,
+			isolateTarget: async () => ({ proof: "p" }),
+		};
+		const before = new PersistentStopStore(boot, 40);
+		const round = await before.begin("rr");
+		await before.sendAbort("rr"); // times out → unsettled
+		expect((await before.snapshot("rr"))?.unsettled.length).toBe(1);
+		// "restart": a fresh store — the in-process promise is gone forever.
+		const after = new PersistentStopStore(boot, 40);
+		expect((await after.snapshot("rr"))?.unsettled.length).toBe(1); // still unsettled
+		expect(await after.confirmTermination("rr", round.stopOpId)).toEqual({ refused: "uncertain" });
+		// reconciliation WITH proof clears and records it
+		expect(
+			await after.reconcileAfterRestart("rr", "instance-started-after-attempt(uptime=12s)"),
+		).toBe(true);
+		const snap = await after.snapshot("rr");
+		expect(snap?.unsettled.length).toBe(0);
+		expect(snap?.isolationProof).toContain("uptime");
+		expect(await after.confirmTermination("rr", round.stopOpId)).toBe(true);
+		expect(await after.canResume("rr")).toBe(true);
+		gate.resolve();
+	});
+
+	test("reconcile without unsettled attempts is a no-op (no fabricated certainty)", async () => {
+		const boot = { abortNativeTurn: async () => {}, isolateTarget: async () => ({ proof: "p" }) };
+		const store = new PersistentStopStore(boot);
+		await store.begin("rr2");
+		await store.sendAbort("rr2");
+		expect(await store.reconcileAfterRestart("rr2", "proof")).toBe(false);
+	});
+});

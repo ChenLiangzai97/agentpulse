@@ -1,0 +1,68 @@
+{
+ "cli_version": "1.18.35",
+ "captured_at": "2026-10-19",
+ "records": [
+  {
+   "session": "SES",
+   "label": "session created",
+   "t": 2.16
+  },
+  {
+   "status": "busy",
+   "label": "turn 1 running",
+   "t": 3.18
+  },
+  {
+   "http": "2XX_EMPTY",
+   "empty": true,
+   "label": "abort returned",
+   "t": 3.19
+  },
+  {
+   "seconds": 7.89,
+   "final_status": "unknown",
+   "label": "termination observed via status",
+   "t": 11.08
+  },
+  {
+   "text": "P0_DONE",
+   "turn_completed_despite_abort": true,
+   "label": "turn 1 final text",
+   "t": 11.09
+  },
+  {
+   "status": "busy",
+   "label": "turn 2 running",
+   "t": 12.1
+  },
+  {
+   "status": "2XX_EMPTY",
+   "empty": true,
+   "label": "late abort http",
+   "t": 12.1
+  },
+  {
+   "status": "unknown",
+   "turn2_present": true,
+   "turn2_reply_completed": true,
+   "label": "turn 2 outcome",
+   "t": 19.33
+  },
+  {
+   "http": "2XX_EMPTY",
+   "detail": "",
+   "label": "graceful http shutdown endpoint",
+   "t": 19.33
+  },
+  {
+   "pid": 4185687,
+   "label": "isolateTarget=SIGTERM instance",
+   "t": 19.33
+  },
+  {
+   "pid": 4185687,
+   "label": "instance terminated via SIGKILL (zombie reaped by parent — isolation confirmed)",
+   "t": 31.84
+  }
+ ]
+}

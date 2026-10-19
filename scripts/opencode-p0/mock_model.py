@@ -4,6 +4,7 @@ import json,os,time
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 
 RECORD=os.environ.get('P0_RECORD_FILE')
+SLOW_EVERY=os.environ.get('P0_SLOW_EVERY')
 class Handler(BaseHTTPRequestHandler):
  abort_started = False
  def log_message(self,*args):pass
@@ -27,6 +28,8 @@ class Handler(BaseHTTPRequestHandler):
   tool=None
   if 'P0_ABORT' in content and body.get('stream') and not done:
    Handler.abort_started=True;time.sleep(15)
+  if SLOW_EVERY and body.get('stream'):
+   time.sleep(8)
   if not done and body.get('tools'):
    if 'P0_PERMISSION' in content:tool=('bash',{'command':'printf P0_PERMISSION_OUTPUT','description':'P0 safe permission probe'})
    elif 'P0_QUESTION' in content:tool=('question',{'questions':[{'question':'Pick fixture options','header':'P0 fixture','options':[{'label':'Alpha','description':'A'},{'label':'Beta','description':'B'}],'multiple':True,'custom':True},{'question':'Enter fixture note','header':'P0 note','options':[{'label':'Default','description':'Use default'}],'custom':True}]})

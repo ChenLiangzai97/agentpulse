@@ -283,4 +283,26 @@ export class PersistentStopStore {
 	async snapshot(sessionId: string): Promise<PersistedStopOp | null> {
 		return load(sessionId);
 	}
+
+	/**
+	 * Restart reconciliation (review round 24): in-process promises die with
+	 * the process, so unsettled attempts NEVER settle themselves after a
+	 * crash/restart. The restart itself is provable isolation evidence — the
+	 * abort target (the native instance) died with the process — so the
+	 * caller supplies a proof token (e.g. instance-start-time > attempt
+	 * issue time, or supervisor-reported instance death) and the unsettled
+	 * set clears WITH that proof recorded. Without a proof the round stays
+	 * blocked; this never silently fabricates certainty.
+	 */
+	async reconcileAfterRestart(sessionId: string, proof: string): Promise<boolean> {
+		const current = await load(sessionId);
+		if (!current || current.unsettled.length === 0) return false;
+		const next: PersistedStopOp = {
+			...current,
+			revision: current.revision + 1,
+			unsettled: [],
+			isolationProof: proof,
+		};
+		return casUpdate(current, next);
+	}
 }
