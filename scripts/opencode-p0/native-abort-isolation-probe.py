@@ -25,24 +25,39 @@ def note(label, **kw):
     records.append(kw)
     print(f"[{kw['t']:7.2f}] {label}: " + json.dumps({k: v for k, v in kw.items() if k not in ("label", "t")}, ensure_ascii=False)[:160])
 
-def call(base, path, body=None, method=None, timeout=20):
+def call(base, path, body=None, method=None, timeout=20, want=None):
+    """Records the REAL http method, status, Content-Type and a body snippet.
+    POST must be passed explicitly — urllib defaults to GET when data is
+    None, which silently turned earlier abort probes into GETs (round-25
+    review catch). Nothing is inferred from JSON parse failures."""
+    real_method = method or ("POST" if body is not None else "GET")
+    data = None
+    headers = {"Content-Type": "application/json"}
+    import base64 as _b64
+    headers["Authorization"] = "Basic " + _b64.b64encode(("opencode:" + p.PASSWORD).encode()).decode()
+    if body is not None:
+        data = json.dumps(body).encode()
+    elif real_method == "POST":
+        data = b""  # explicit POST with an empty body
+    req = urllib.request.Request(base + path, data=data, headers=headers, method=real_method)
     try:
-        r = p.request(base, path, body, method, timeout=timeout)
-        return {"status": 200, "response": r}
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req, timeout=timeout) as resp:
+            raw = resp.read()
+            ct = resp.headers.get("Content-Type", "")
+            snippet = raw[:120].decode(errors="replace")
+            parsed = None
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                except Exception:
+                    parsed = None
+            return {"status": resp.status, "method": real_method, "content_type": ct,
+                    "body_snippet": snippet, "response": parsed, "empty": len(raw) == 0}
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode(errors="replace")[:200]
-        # 2xx-with-empty-body must not read as a transport failure
-        if 200 <= exc.code < 300:
-            return {"status": exc.code, "response": None, "empty": True}
-        return {"status": exc.code, "error": raw}
+        return {"status": exc.code, "method": real_method, "content_type": exc.headers.get("Content-Type", ""), "error": raw}
     except Exception as exc:
-        # JSON parse failures tell us the body wasn't JSON — the status is
-        # unknown here, so never upgrade this to a fake 200.
-        if "Expecting value" in str(exc):
-            # urlopen only raises HTTPError for >=400, so reaching the JSON
-            # parse means the request SUCCEEDED with a non-JSON/empty body.
-            return {"status": "2XX_EMPTY", "response": None, "empty": True}
-        return {"status": "ERR", "error": str(exc)[:200]}
+        return {"status": "ERR", "method": real_method, "error": str(exc)[:200]}
 
 def status_of(base, sid):
     r = call(base, "/session/status")
@@ -84,8 +99,8 @@ try:
     time.sleep(1.0)
     busy = status_of(base, s1)
     note("turn 1 running", status=busy)
-    abort1 = call(base, f"/session/{s1}/abort")
-    note("abort returned", http=abort1["status"], empty=bool(abort1.get("empty")))
+    abort1 = call(base, f"/session/{s1}/abort", method="POST")
+    note("abort returned", http=abort1["status"], method=abort1.get("method"), ct=abort1.get("content_type"), empty=bool(abort1.get("empty")), body=abort1.get("body_snippet", "")[:60])
     t0 = time.time()
     terminated = None
     while time.time() - t0 < 20:
@@ -94,7 +109,7 @@ try:
             terminated = round(time.time() - t0, 2)
             break
         time.sleep(0.2)
-    note("termination observed via status", seconds=terminated, final_status=st if terminated else "busy")
+    note("termination observed via status", seconds=terminated, final_status=(st if terminated is not None else "busy"))
     msgs1 = call(base, f"/session/{s1}/message")["response"]
     last_state = None
     turn1_completed = None
@@ -107,14 +122,18 @@ try:
             idx = msgs1.index(m)
             if idx + 1 < len(msgs1):
                 turn1_completed = bool(msgs1[idx + 1]["info"].get("time", {}).get("completed"))
-    note("turn 1 final text", text=last_state, turn_completed_despite_abort=turn1_completed)
+    reply_done = any(
+        part.get("type") == "text" and part.get("text") == "P0_DONE"
+        for m in msgs1 for part in m["parts"]
+    )
+    note("turn 1 final text", text=last_state, reply_flagged_completed=turn1_completed, model_reply_delivered=reply_done)
 
     # ── 2) late abort vs a NEW turn
     call(base, f"/session/{s1}/prompt_async", {"messageID": "msg_np2", "parts": [{"type": "text", "text": "slow turn two (the one that must survive)"}]})
     time.sleep(1.0)
     note("turn 2 running", status=status_of(base, s1))
-    late = call(base, f"/session/{s1}/abort")
-    note("late abort http", status=late["status"], empty=bool(late.get("empty")))
+    late = call(base, f"/session/{s1}/abort", method="POST")
+    note("late abort http", status=late["status"], method=late.get("method"), ct=late.get("content_type"), empty=bool(late.get("empty")), body=late.get("body_snippet", "")[:60])
     t0 = time.time()
     while time.time() - t0 < 30:
         if status_of(base, s1) != "busy":
@@ -127,11 +146,15 @@ try:
         idx2 = msgs2.index(turn2[0])
         if idx2 + 1 < len(msgs2):
             turn2_done = bool(msgs2[idx2 + 1]["info"].get("time", {}).get("completed"))
-    note("turn 2 outcome", status=status_of(base, s1), turn2_present=bool(turn2), turn2_reply_completed=turn2_done)
+    reply2_done = any(
+        part.get("type") == "text" and part.get("text") == "P0_DONE"
+        for m in msgs2 for part in m["parts"]
+    )
+    note("turn 2 outcome", status=status_of(base, s1), turn2_present=bool(turn2), turn2_reply_completed=turn2_done, model_reply_delivered=reply2_done)
 
     # ── 3) isolateTarget semantics: instance stop is the reliable isolation
-    stop = call(base, "/shutdown")  # probe: is there any graceful HTTP stop?
-    note("graceful http shutdown endpoint", http=stop["status"], detail=str(stop.get("error", ""))[:60])
+    stop = call(base, "/shutdown", method="POST")  # probe: graceful HTTP stop?
+    note("graceful http shutdown endpoint", http=stop["status"], ct=stop.get("content_type"), body=str(stop.get("body_snippet", stop.get("error", "")))[:60])
 except Exception as exc:
     note("probe error", error=str(exc)[:200])
 finally:

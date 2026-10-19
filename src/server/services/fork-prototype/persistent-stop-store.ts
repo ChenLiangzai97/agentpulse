@@ -285,24 +285,35 @@ export class PersistentStopStore {
 	}
 
 	/**
-	 * Restart reconciliation (review round 24): in-process promises die with
-	 * the process, so unsettled attempts NEVER settle themselves after a
-	 * crash/restart. The restart itself is provable isolation evidence — the
-	 * abort target (the native instance) died with the process — so the
-	 * caller supplies a proof token (e.g. instance-start-time > attempt
-	 * issue time, or supervisor-reported instance death) and the unsettled
-	 * set clears WITH that proof recorded. Without a proof the round stays
-	 * blocked; this never silently fabricates certainty.
+	 * Restart reconciliation (review rounds 24+25): in-process promises die
+	 * with the process, so unsettled attempts NEVER settle themselves after a
+	 * crash/restart. A restart of the CONTROL process alone proves nothing
+	 * about the old abort target — the PRODUCTION contract is a verifiable
+	 * evidence object bound to THIS round and the OLD target's identity
+	 * (e.g. {kind:"instance-terminated", instanceIdentity, verifiedBy}).
+	 * This prototype only enforces the structural binding (round id match,
+	 * kind + target identity present); the actual verification (process
+	 * generation / uptime / supervisor attestation) is a main-path
+	 * integration responsibility and is NOT implemented here.
 	 */
-	async reconcileAfterRestart(sessionId: string, proof: string): Promise<boolean> {
+	async reconcileAfterRestart(
+		sessionId: string,
+		stopOpId: string,
+		proof: { kind: string; instanceIdentity: string; detail?: string },
+	): Promise<boolean | { refused: "unknown_round" | "invalid_proof" }> {
+		if (!proof?.kind || !proof?.instanceIdentity)
+			return { refused: "invalid_proof" };
 		const current = await load(sessionId);
-		if (!current || current.unsettled.length === 0) return false;
+		if (!current || current.stopOpId !== stopOpId) return { refused: "unknown_round" };
+		if (current.unsettled.length === 0) return false;
+		const token = `${proof.kind}:${proof.instanceIdentity}${proof.detail ? `:${proof.detail}` : ""}`;
 		const next: PersistedStopOp = {
 			...current,
 			revision: current.revision + 1,
 			unsettled: [],
-			isolationProof: proof,
+			isolationProof: token,
 		};
-		return casUpdate(current, next);
+		const won = await casUpdate(current, next);
+		return won;
 	}
 }

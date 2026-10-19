@@ -278,13 +278,36 @@ describe("restart reconciliation (review round 24)", () => {
 		const after = new PersistentStopStore(boot, 40);
 		expect((await after.snapshot("rr"))?.unsettled.length).toBe(1); // still unsettled
 		expect(await after.confirmTermination("rr", round.stopOpId)).toEqual({ refused: "uncertain" });
-		// reconciliation WITH proof clears and records it
+		// wrong round id refused; incomplete proofs refused (no string bypass)
 		expect(
-			await after.reconcileAfterRestart("rr", "instance-started-after-attempt(uptime=12s)"),
+			await after.reconcileAfterRestart("rr", `stale-${round.stopOpId}`, {
+				kind: "instance-terminated",
+				instanceIdentity: "inst-1",
+			}),
+		).toEqual({ refused: "unknown_round" });
+		expect(
+			await after.reconcileAfterRestart("rr", round.stopOpId, {
+				kind: "",
+				instanceIdentity: "inst-1",
+			} as never),
+		).toEqual({ refused: "invalid_proof" });
+		expect(
+			await after.reconcileAfterRestart("rr", round.stopOpId, {
+				kind: "instance-terminated",
+				instanceIdentity: "",
+			} as never),
+		).toEqual({ refused: "invalid_proof" });
+		// round-bound structured proof clears and records the token
+		expect(
+			await after.reconcileAfterRestart("rr", round.stopOpId, {
+				kind: "instance-terminated",
+				instanceIdentity: "inst-1",
+				detail: "uptime=12s>attempt",
+			}),
 		).toBe(true);
 		const snap = await after.snapshot("rr");
 		expect(snap?.unsettled.length).toBe(0);
-		expect(snap?.isolationProof).toContain("uptime");
+		expect(snap?.isolationProof).toContain("inst-1");
 		expect(await after.confirmTermination("rr", round.stopOpId)).toBe(true);
 		expect(await after.canResume("rr")).toBe(true);
 		gate.resolve();
@@ -295,6 +318,13 @@ describe("restart reconciliation (review round 24)", () => {
 		const store = new PersistentStopStore(boot);
 		await store.begin("rr2");
 		await store.sendAbort("rr2");
-		expect(await store.reconcileAfterRestart("rr2", "proof")).toBe(false);
+		const rr2 = await store.snapshot("rr2");
+		if (!rr2) throw new Error("round missing");
+		expect(
+			await store.reconcileAfterRestart("rr2", rr2.stopOpId, {
+				kind: "instance-terminated",
+				instanceIdentity: "inst-2",
+			}),
+		).toBe(false);
 	});
 });
