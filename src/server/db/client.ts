@@ -1566,6 +1566,29 @@ function rebuildTableWithFk(
 		if (c.pk) parts.push("PRIMARY KEY");
 		return parts.join(" ");
 	});
+	// Preserve EVERY foreign key the table already had (PRAGMA order is
+	// reverse-of-declaration; re-declaring in reverse restores declaration
+	// order), replacing only the target column's rule with the requested
+	// ON DELETE. Rebuilding one FK must never drop the others (round-32
+	// review catch: rebuilding opencode_forks.parent_session_id to SET NULL
+	// used to lose the child CASCADE).
+	const existingFks = sqlite.prepare(`PRAGMA foreign_key_list('${table}')`).all() as Array<{
+		table: string;
+		from: string;
+		to: string;
+		on_delete: string | null;
+	}>;
+	const seenFk = new Set<string>();
+	for (let i = existingFks.length - 1; i >= 0; i--) {
+		const fk = existingFks[i];
+		const dedupe = `${fk.table}:${fk.from}:${fk.to}`;
+		if (seenFk.has(dedupe)) continue;
+		seenFk.add(dedupe);
+		if (fk.from === column) continue; // replaced below with the new rule
+		colDdl.push(
+			`FOREIGN KEY ("${fk.from}") REFERENCES ${fk.table}(${fk.to}) ON DELETE ${fk.on_delete ?? "NO ACTION"}`,
+		);
+	}
 	colDdl.push(`FOREIGN KEY ("${column}") REFERENCES sessions(session_id) ON DELETE ${onDelete}`);
 
 	const colNames = cols.map((c) => `"${c.name}"`).join(", ");

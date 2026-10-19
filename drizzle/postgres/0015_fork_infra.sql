@@ -4,7 +4,9 @@ CREATE TABLE "opencode_forks" (
 	"parent_label_json" text,
 	"fork_point_message_id" text,
 	"request_action_id" text,
-	"created_at" text DEFAULT CURRENT_TIMESTAMP NOT NULL
+	"created_at" text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	CONSTRAINT "opencode_forks_child_session_id_sessions_session_id_fk" FOREIGN KEY ("child_session_id") REFERENCES "sessions"("session_id") ON UPDATE no action ON DELETE cascade,
+	CONSTRAINT "opencode_forks_parent_session_id_sessions_session_id_fk" FOREIGN KEY ("parent_session_id") REFERENCES "sessions"("session_id") ON UPDATE no action ON DELETE set null
 );--> statement-breakpoint
 CREATE INDEX "idx_opencode_forks_parent" ON "opencode_forks" ("parent_session_id");--> statement-breakpoint
 CREATE TABLE "opencode_fork_requests" (
@@ -12,6 +14,7 @@ CREATE TABLE "opencode_fork_requests" (
 	"request_hash" text NOT NULL,
 	"parent_snapshot_json" text,
 	"child_map_json" text,
-	"created_at" text DEFAULT CURRENT_TIMESTAMP NOT NULL
+	"created_at" text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+	CONSTRAINT "opencode_fork_requests_action_id_control_actions_id_fk" FOREIGN KEY ("action_id") REFERENCES "control_actions"("id") ON UPDATE no action ON DELETE cascade
 );--> statement-breakpoint
 CREATE UNIQUE INDEX "uq_fork_action_idem" ON "control_actions" (COALESCE("requested_by_user_id",''),"idempotency_key") WHERE "action_type" = 'opencode_fork' AND "idempotency_key" IS NOT NULL;
