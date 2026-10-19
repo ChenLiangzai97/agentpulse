@@ -10,11 +10,20 @@ import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../db/client.js";
 import { controlActions } from "../../db/schema/index.js";
 
-export const FORK_IDEMPOTENCY_INDEX_SQLITE =
+export const FORK_IDEMPOTENCY_INDEX_SQL =
 	"CREATE UNIQUE INDEX IF NOT EXISTS uq_fork_action_idem ON control_actions(COALESCE(requested_by_user_id,''), idempotency_key) WHERE action_type = 'opencode_fork' AND idempotency_key IS NOT NULL";
 
 export async function applyForkIdempotencyPrototypeIndex(): Promise<void> {
-	await getDb().run(sql.raw(FORK_IDEMPOTENCY_INDEX_SQLITE));
+	// The statement is portable across both dialects as written. The drivers
+	// expose different execution methods: bun-sqlite has .run(), postgres-js
+	// has .execute() — use whichever exists.
+	const db = getDb() as unknown as {
+		run?: (q: unknown) => Promise<unknown>;
+		execute?: (q: unknown) => Promise<unknown>;
+	};
+	const query = sql.raw(FORK_IDEMPOTENCY_INDEX_SQL);
+	if (typeof db.run === "function") await db.run(query);
+	else await db.execute(query);
 }
 
 export type ForkIdempotencyResolution =
@@ -71,7 +80,9 @@ export async function resolveForkActionIdempotency(input: {
 	} catch (error) {
 		// Concurrent racer hit the unique index first: re-read and decide on
 		// the persisted row instead of surfacing the constraint as an error.
-		const message = error instanceof Error ? error.message : String(error);
+		// PG keeps the engine text in .cause under drizzle's "Failed query".
+		const cause = String((error as { cause?: unknown }).cause ?? "");
+		const message = `${error instanceof Error ? error.message : String(error)} ${cause}`;
 		if (/UNIQUE constraint failed|duplicate key|unique/i.test(message)) {
 			const winner = await getDb()
 				.select()

@@ -16,7 +16,8 @@
  *    round blocked.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { type SQL, and, eq, sql } from "drizzle-orm";
+import { config } from "../../config.js";
 import { getDb } from "../../db/client.js";
 import { settings } from "../../db/schema/index.js";
 
@@ -55,6 +56,23 @@ async function load(sessionId: string): Promise<PersistedStopOp | null> {
 	return row ? (row.value as PersistedStopOp) : null;
 }
 
+/**
+ * Dialect-adapted JSON path comparison. Types matter on both engines:
+ *  - SQLite json_extract preserves the JSON value's type — numeric fields
+ *    must compare against a numeric bind (INTEGER = TEXT is false);
+ *  - PostgreSQL ->> always yields TEXT — compare against the string form.
+ */
+function jsonPathEq(path: string, value: string | number): SQL {
+	if (config.dialect === "postgres") {
+		// PG has no $.path form: ->> takes a single key; #>> takes a path
+		// array literal. "$.stopOpId" → "{stopOpId}".
+		const arrayPath = `{${path.slice(2)}}`;
+		return sql`(${settings.value} #>> ${arrayPath}) = ${String(value)}`;
+	}
+	if (typeof value === "number") return sql`json_extract(${settings.value}, ${path}) = ${value}`;
+	return sql`json_extract(${settings.value}, ${path}) = ${value}`;
+}
+
 /** Revision CAS: mutate ONLY while the row still shows (stopOpId, revision). */
 async function casUpdate(expected: PersistedStopOp, next: PersistedStopOp): Promise<boolean> {
 	const rows = await getDb()
@@ -63,18 +81,19 @@ async function casUpdate(expected: PersistedStopOp, next: PersistedStopOp): Prom
 		.where(
 			and(
 				eq(settings.key, KEY(expected.sessionId)),
-				eq(sql`json_extract(${settings.value}, '$.stopOpId')`, expected.stopOpId),
-				eq(sql`json_extract(${settings.value}, '$.revision')`, expected.revision),
+				jsonPathEq("$.stopOpId", expected.stopOpId),
+				jsonPathEq("$.revision", expected.revision),
 			),
 		)
 		.returning({ key: settings.key });
 	return rows.length > 0;
 }
 
-/** Post-write verification keyed on a writer-UNIQUE marker (the attempt id):
- * under interleaved builders the returning() signal alone proved unreliable
- * in this driver, and revision alone cannot distinguish two writers that
- * computed the same next revision from the same observed state. */
+/** Defense-in-depth ONLY (the atomic conditional write above is the real
+ * guard): verifies this writer's unique attempt id landed in the row. The
+ * round-22 duplicate-success anomaly was fully explained by the missing
+ * revision bump — a minimal standalone repro confirmed the driver's
+ * returning() reports zero rows for non-matching updates correctly. */
 async function writeLanded(
 	sessionId: string,
 	marker: string,
@@ -131,6 +150,10 @@ export class PersistentStopStore {
 		const attemptId = `att-${randomUUID()}`;
 		const registered: PersistedStopOp = {
 			...observed,
+			// The revision bump is the atomic-write token: without it every
+			// same-round writer matches the WHERE clause and overwrites the
+			// previous one (the round-22 root cause — NOT a driver issue).
+			revision: observed.revision + 1,
 			attempts: observed.attempts + 1,
 			status: "abort_sent",
 			unsettled: [...observed.unsettled, attemptId],

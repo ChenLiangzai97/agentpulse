@@ -42,9 +42,16 @@ describe("durable fork idempotency (real DB)", () => {
 			})
 			.then(
 				() => "inserted",
-				(error: unknown) => (error instanceof Error ? error.message : String(error)),
+				(error: unknown) => {
+					// drizzle wraps driver errors; PG keeps the engine text in
+					// .cause while .message says "Failed query: …".
+					const cause = (error as { cause?: unknown }).cause;
+					return `${error instanceof Error ? error.message : String(error)} ${String(cause)}`;
+				},
 			);
-		expect(duplicate).toContain("UNIQUE constraint failed");
+		// SQLite says "UNIQUE constraint failed", PG says "duplicate key value
+		// violates unique index" — accept both engine phrasings.
+		expect(/UNIQUE constraint failed|duplicate key|unique/i.test(duplicate)).toBe(true);
 	});
 
 	test("replay with the same hash returns the existing action; different hash conflicts", async () => {
