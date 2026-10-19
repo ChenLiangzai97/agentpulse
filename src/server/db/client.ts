@@ -1148,6 +1148,26 @@ async function runLegacySqliteInit(sqlite: Database): Promise<void> {
 		"ALTER TABLE launch_requests ADD COLUMN idempotency_key TEXT",
 		"ALTER TABLE launch_requests ADD COLUMN idempotency_owner TEXT",
 		"CREATE UNIQUE INDEX IF NOT EXISTS uq_launch_idempotency ON launch_requests(idempotency_owner, idempotency_key)",
+		// Fork infra (drizzle 0015): lineage + request ledger + fork-action
+		// idempotency. parent_session_id is nullable (ON DELETE SET NULL is
+		// SQLite table-rebuild territory — enforced by the rebuild below).
+		`CREATE TABLE IF NOT EXISTS opencode_forks (
+			child_session_id TEXT PRIMARY KEY REFERENCES sessions(session_id) ON DELETE CASCADE,
+			parent_session_id TEXT REFERENCES sessions(session_id) ON DELETE SET NULL,
+			parent_label_json TEXT,
+			fork_point_message_id TEXT,
+			request_action_id TEXT,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		"CREATE INDEX IF NOT EXISTS idx_opencode_forks_parent ON opencode_forks(parent_session_id)",
+		`CREATE TABLE IF NOT EXISTS opencode_fork_requests (
+			action_id TEXT PRIMARY KEY REFERENCES control_actions(id) ON DELETE CASCADE,
+			request_hash TEXT NOT NULL,
+			parent_snapshot_json TEXT,
+			child_map_json TEXT,
+			created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`,
+		"CREATE UNIQUE INDEX IF NOT EXISTS uq_fork_action_idem ON control_actions(COALESCE(requested_by_user_id,''), idempotency_key) WHERE action_type = 'opencode_fork' AND idempotency_key IS NOT NULL",
 	];
 
 	// Vector search opt-in. The embeddings table only materializes when
@@ -1432,17 +1452,26 @@ async function runFtsBootstrap(sqlite: Database): Promise<void> {
  * row count without aborting boot — operators can clean up stragglers.
  */
 function rebuildSessionChildFks(sqlite: Database): void {
-	const targets: ReadonlyArray<{ table: string; column: string }> = [
-		{ table: "events", column: "session_id" },
-		{ table: "managed_sessions", column: "session_id" },
-		{ table: "control_actions", column: "session_id" },
-		{ table: "watcher_proposals", column: "session_id" },
-		{ table: "ai_hitl_requests", column: "session_id" },
-		{ table: "ai_watcher_runs", column: "session_id" },
-		{ table: "watcher_configs", column: "session_id" },
+	// onDelete: CASCADE rows are rebuilt to cascade; SET NULL rows (fork
+	// lineage keeps traceability when the parent is deleted) are rebuilt to
+	// set-null. Both preserve the full column/index/trigger shape via
+	// rebuildTableWithFk below.
+	const targets: ReadonlyArray<{
+		table: string;
+		column: string;
+		onDelete: "CASCADE" | "SET NULL";
+	}> = [
+		{ table: "events", column: "session_id", onDelete: "CASCADE" },
+		{ table: "managed_sessions", column: "session_id", onDelete: "CASCADE" },
+		{ table: "control_actions", column: "session_id", onDelete: "CASCADE" },
+		{ table: "watcher_proposals", column: "session_id", onDelete: "CASCADE" },
+		{ table: "ai_hitl_requests", column: "session_id", onDelete: "CASCADE" },
+		{ table: "ai_watcher_runs", column: "session_id", onDelete: "CASCADE" },
+		{ table: "watcher_configs", column: "session_id", onDelete: "CASCADE" },
+		{ table: "opencode_forks", column: "parent_session_id", onDelete: "SET NULL" },
 	];
 
-	for (const { table, column } of targets) {
+	for (const { table, column, onDelete } of targets) {
 		try {
 			const exists = sqlite
 				.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?")
@@ -1459,11 +1488,11 @@ function rebuildSessionChildFks(sqlite: Database): void {
 			const sessionFk = fkRows.find(
 				(r) => r.table === "sessions" && r.from === column && r.to === "session_id",
 			);
-			if (sessionFk && sessionFk.on_delete === "CASCADE") {
+			if (sessionFk && sessionFk.on_delete === onDelete) {
 				continue;
 			}
 
-			rebuildTableWithCascade(sqlite, table, column);
+			rebuildTableWithFk(sqlite, table, column, onDelete);
 		} catch (err) {
 			// Don't abort boot if a single rebuild fails — log loudly and
 			// continue. Operators see the warning; the next slice ships
@@ -1494,6 +1523,15 @@ function formatDefault(raw: string): string {
 }
 
 function rebuildTableWithCascade(sqlite: Database, table: string, column: string): void {
+	rebuildTableWithFk(sqlite, table, column, "CASCADE");
+}
+
+function rebuildTableWithFk(
+	sqlite: Database,
+	table: string,
+	column: string,
+	onDelete: "CASCADE" | "SET NULL",
+): void {
 	type ColRow = {
 		cid: number;
 		name: string;
@@ -1528,12 +1566,12 @@ function rebuildTableWithCascade(sqlite: Database, table: string, column: string
 		if (c.pk) parts.push("PRIMARY KEY");
 		return parts.join(" ");
 	});
-	colDdl.push(`FOREIGN KEY ("${column}") REFERENCES sessions(session_id) ON DELETE CASCADE`);
+	colDdl.push(`FOREIGN KEY ("${column}") REFERENCES sessions(session_id) ON DELETE ${onDelete}`);
 
 	const colNames = cols.map((c) => `"${c.name}"`).join(", ");
 	const newTable = `${table}__new`;
 
-	console.log(`[db] Rebuilding ${table} with ON DELETE CASCADE on ${column}`);
+	console.log(`[db] Rebuilding ${table} with ON DELETE ${onDelete} on ${column}`);
 
 	sqlite.exec("PRAGMA foreign_keys = OFF;");
 	try {
