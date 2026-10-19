@@ -179,3 +179,46 @@ CREATE INDEX idx_opencode_forks_parent ON opencode_forks(parent_session_id);
 ## 4. observer 跳过作用域（按评审收窄）
 
 跳过条件 = **(来源实例所属 supervisor/host, native session id) 组合**命中受管绑定（`uq_control_binding_native` 按 instance 归属主机），不按裸 native id 跨来源跳过。既有外部重复行**不在迁移中删除**：先证明同源（同 host、同 native id、时间窗）且内容重复才合并，独有笔记/关联保留；无把握隔离保留并打标，交用户处置。
+
+---
+
+# 0015 迁移草案与主路径接入设计终稿（2026-10-19，待评审）
+
+状态：**草案**。实施前提：本设计经 codex 评审通过；在此之前主路径零改动。
+
+## 0. 证据→契约映射（全部为已实测事实，含边界限定）
+
+| 实测（证据文件） | 落入契约 |
+|---|---|
+| POST abort 200 app/json "true"；busy 立即离开（采样精度内） | abort 仅是"请求已受理"；**终止判定只认会话状态离开 busy + 后续事件流静默** |
+| 被中止轮 flagged completed 但模型回复未送达 | "completed"不作为交付证据；worklog 事实层已按此设计 |
+| 无轮次绑定的主动 abort 可杀死到达时刻正在运行的轮（**非**延迟抵达完整注入，更深层窗口未证） | 停止会话必须**先取消排队动作 + 失效审批**再发 abort；恢复在不确定尝试隔离前保持关闭 |
+| 无 HTTP 优雅停机；本环境 SIGTERM 12s 无效、SIGKILL 有效（环境特定） | isolateTarget=终止实例（SIGKILL 兜底）+ 存活确认；不在无停机保证的路径上承诺优雅停止 |
+| 控制进程重启后内存 promise 消失 | unsettled 对账仅凭结构化隔离证据（绑定 round+旧目标身份）开锁；**格式校验≠验证** |
+
+## 1. 0015 迁移内容（双方言 + legacy 路径）
+
+1. `opencode_forks`（谱系）：child_session_id PK / parent_session_id **NULLable ON DELETE SET NULL** / parent_label_json（不可变标签：父名+父原生会话+分叉点）/ fork_point_message_id / request_action_id / created_at；索引 (parent_session_id)。
+2. `opencode_fork_requests`（受理台账）：action_id PK / parent_snapshot_json（执行前快照：msg id+part 哈希+事件时间）/ request_hash / child_map_json（映射一次构建）/ stop_前状态字段；与 control_actions 的 action_id 对应。
+3. `control_actions` 部分 unique：`uq_fork_action_idem ON (COALESCE(requested_by_user_id,''), idempotency_key) WHERE action_type='opencode_fork' AND idempotency_key IS NOT NULL`（与原型语句逐字一致）。
+4. `managed_sessions.launch_request_id` 放宽为 NULL（SQLite 重建表迁移；PG DROP NOT NULL）；correlation_source 增 'opencode_fork'。
+5. 停止轮次持久表 `opencode_stop_rounds`：session_id+stop_op_id PK / revision / status / unsettled_json(attemptId[]) / isolation_proof_json；CAS 以 (stop_op_id, revision) 为条件（原型验证过的方言适配：SQLite json_extract 数值绑定 / PG #>> 路径数组）。
+6. 一次性清洗：受管绑定已占用的 native 会话若存在 observer 外部行，**仅标记**（quarantine 字段），不删除（同源证明后另行合并）。
+7. legacy init 路径追加等价 DDL；journal 登记 0015。
+
+## 2. 主路径接入清单（按依赖序，每步独立提交+测试）
+
+1. **A1 绑定权威**：`inspectOpenCodeProvenance` 改为绑定寻址（binding→instance/generation 校验），fk-chain-probe 断言翻转；授权叠加层（Actor/owner/supervisor/来源）在绑定解析之上，绝不以解析替代授权。
+2. **A3 快照路由**：acceptOpenCodeSnapshot 按 snapshot.nativeSessionId 匹配绑定归属；无绑定且非父→拒绝。
+3. **A4 observer 跳过**：(supervisor/host, native id) 组合命中绑定才跳过；重复行仅隔离标记。
+4. **A6 provider 寻址**：action 入队时由绑定解析 nativeSessionId 写入 metadata；provider 校验归属后执行。
+5. **fork 端点**：POST /sessions/:id/opencode/fork {messageId?, idempotencyKey} → 0015 台账 + 幂等 resolver（竞争回读赢家）→ control action；执行前快照由 Supervisor 在 fork 调用前一刻拉取存档；子会话+绑定+谱系一次事务建立。
+6. **copyOf 摄取**：首快照经前缀映射器（歧义即停）→ 事件 metadata.copyOf=父事件 id、createdAt 取父原始时间；映射持久化后不再推断。
+7. **停止语义**：取消排队动作→失效审批→abort（abort 仅为受理）→以会话状态+事件静默为终止证据→停止轮次落库；恢复=显式且受 unresolved-uncertainty 门控；isolateTarget 实现为杀实例+存活确认（结构化 proof 核验**真实**旧目标身份后才开锁——此为开放恢复的硬前提）。
+8. **A7/A8**：恢复枚举实例全部绑定；空闲回收全员判定。
+
+## 3. 显式不承诺（本轮不做）
+
+- 延迟抵达 abort 的完整故障注入（更深层窗口未证，保守门控兜底）
+- 跨机 fork、外部会话 fork、title 自动对账（已实证否定）
+- "有 proof 字段=验证完成"——实际核验（进程代数/uptime/supervisor 证明）在步骤 7 落地并测试前，恢复保持关闭
