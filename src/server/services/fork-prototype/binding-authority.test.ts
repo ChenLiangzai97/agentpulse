@@ -92,18 +92,16 @@ async function seedParentAndChild() {
 }
 
 describe("binding-as-authority (isolated prototype, real DB)", () => {
-	test("child authority resolves (A1 makes the binding-as-authority path live) — and survives parent deletion", async () => {
+	test("child path CLOSED until the 0015 fork ledger — resolution is a lookup, not authorization", async () => {
 		await seedParentAndChild();
-		// POST-A1: the shared-instance child is valid through its binding.
-		expect((await inspectOpenCodeProvenance("ba-child"))?.bindingValid).toBe(true);
-		// Prototype authority: valid.
-		const before = await bindingAuthorityForSession("ba-child");
-		expect(before.ok).toBe(true);
-		// Delete the parent session — rows + child authority survive.
+		// The resolution helper still resolves (lookup only)…
+		const resolved = await bindingAuthorityForSession("ba-child");
+		expect(resolved.ok).toBe(true);
+		// …but the REAL provenance check rejects the child until the ledger
+		// ships: no binding-only shortcut.
+		expect((await inspectOpenCodeProvenance("ba-child"))?.bindingValid).toBe(false);
 		await getDb().delete(sessions).where(eq(sessions.sessionId, "ba-parent"));
-		const after = await bindingAuthorityForSession("ba-child");
-		expect(after.ok).toBe(true);
-		if (after.ok) expect(after.authority.nativeSessionId).toBe("ses_c");
+		expect((await inspectOpenCodeProvenance("ba-child"))?.bindingValid).toBe(false);
 	});
 
 	test("authority checks generation and instance liveness (recovery semantics)", async () => {
@@ -130,17 +128,17 @@ describe("A1 main-path authorization regression (real assertSessionControlOrigin
 		await getDb().delete(providerInstances);
 	});
 
-	test("a shared-instance CHILD passes the REAL control-origin assertion — and survives parent deletion", async () => {
+	test("a shared-instance CHILD is rejected by the REAL assertion until the fork ledger lands", async () => {
 		await seedParentAndChild();
-		// current-guard evidence (pre-A1 this was false; A1 makes the child real)
-		expect((await inspectOpenCodeProvenance("ba-child"))?.bindingValid).toBe(true);
-		// the real assertion with an actor
 		const adminActor = { label: "user", userId: null, role: "admin", mode: "solo" } as const;
-		await expect(assertSessionControlOrigin("ba-child", adminActor)).resolves.toBeUndefined();
-		// parent deletion keeps the child controllable THROUGH the REAL path
+		await expect(assertSessionControlOrigin("ba-child", adminActor)).rejects.toThrow(
+			"provider_binding_invalid",
+		);
+		// parent deletion changes nothing for the closed child path
 		await getDb().delete(sessions).where(eq(sessions.sessionId, "ba-parent"));
-		expect((await inspectOpenCodeProvenance("ba-child"))?.bindingValid).toBe(true);
-		await expect(assertSessionControlOrigin("ba-child", adminActor)).resolves.toBeUndefined();
+		await expect(assertSessionControlOrigin("ba-child", adminActor)).rejects.toThrow(
+			"provider_binding_invalid",
+		);
 	});
 
 	test("generation bump invalidates the child through the real path (instance stop semantics)", async () => {

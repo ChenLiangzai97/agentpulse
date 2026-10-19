@@ -71,19 +71,19 @@ if (instanceRows !== 1) failures.push("provider instance row lost");
 if (parentManaged !== 0) failures.push("parent managed row unexpectedly kept");
 if (childManaged !== 1) failures.push("child managed row lost");
 if (launchRows !== 1) failures.push("launch row lost");
-// POST-A1 EXPECTATION (flipped 2026-10-19): binding-as-authority is live,
-// so a shared-instance CHILD binding is VALID — before AND after the parent
-// delete. Row survival AND control authority are both observed here; the
-// deeper control/approval/recovery flows remain prototype/integration scope.
-const childValidAfterParentDelete = results.childProvenanceAfter?.bindingValid === true;
-if (!childValidAfterParentDelete)
-	failures.push("child binding NOT valid after parent delete — A1 regression or probe setup issue");
+// POST-A1-CORRECTED EXPECTATION: the child branch is CLOSED until the 0015
+// fork ledger lands — the shared-instance child stays INVALID (binding-only
+// shortcut rejected; no parent-failure downgrade). Row survival is still
+// observed; control authority for children opens WITH the ledger.
+const childRejectedWithoutLedger = results.childProvenanceAfter?.bindingValid === false;
+if (!childRejectedWithoutLedger)
+	failures.push("child binding unexpectedly VALID without the fork ledger — guard regression");
 console.log(JSON.stringify(results, null, 1));
 if (failures.length) {
 	console.error("FK-PROBE FAILURES:", failures.join("; "));
 	process.exit(1);
 }
 console.log(
-	"FK-PROBE PASS — row survival AND child control authority (via binding) observed after parent deletion, on both dialects. Deeper control/approval/recovery flows remain integration scope; the child reuses the parent's launch id until migration 0015.",
+	"FK-PROBE PASS — row survival observed; child control stays CLOSED until the 0015 fork ledger (no binding-only shortcut, no parent-failure downgrade), on both dialects.",
 );
 process.exit(0);

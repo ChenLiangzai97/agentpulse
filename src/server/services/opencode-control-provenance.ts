@@ -209,18 +209,29 @@ export async function inspectOpenCodeProvenance(sessionId: string) {
 				.from(launchRequests)
 				.where(eq(launchRequests.id, instance.launchRequestId))
 		: [];
-	// A1 binding-as-authority (fork design §A1): the provider instance is
-	// the PROCESS authority; a session's control authority comes from ITS
-	// binding. The ORIGINAL single-session shape (instance.sessionId ===
-	// sessionId, launch correlation === sessionId) keeps validating the
-	// launching session unchanged. A FORK CHILD on the same instance
-	// validates through its binding instead: binding.nativeSessionId is the
-	// child's native identity, the instance/generation must be live, and the
-	// child's own managed row must agree. The launch checks stay PARENT-
-	// scoped — a child never claims the parent's correlation id.
+	// A1 binding-as-authority (fork design §A1) — EXPLICIT identity branches.
+	// The provider instance is the PROCESS authority. Identity decides which
+	// path applies; a failure in one path NEVER falls through to the other:
+	//
+	//  • PARENT path — this session IS the instance's launching session
+	//    (instance.sessionId === sessionId). The original checks apply
+	//    verbatim: managed launch origin, claim, correlation id, generation,
+	//    cwd, supervisor agreement. A failure here is a failure — no
+	//    downgrade.
+	//
+	//  • CHILD path — a fork child on the same instance. It requires a
+	//    TRUSTED fork creation record (the 0015 opencode_forks ledger).
+	//    Until that ledger ships, the child path is CLOSED: no binding-only
+	//    shortcut exists. When it opens, it will verify the ledger row for
+	//    THIS session (child_session_id), the instance's managed launch
+	//    origin (parent-scoped launch checks), supervisor and generation.
+	const isInstanceLaunchingSession =
+		instance?.agentType === "opencode" && instance.sessionId === sessionId;
+	const childPathValid = false; // CLOSED until the 0015 fork ledger lands
 	const parentPathValid = Boolean(
-		instance?.agentType === "opencode" &&
-			instance.sessionId === sessionId &&
+		isInstanceLaunchingSession &&
+			session?.agentType === "opencode" &&
+			instance?.agentType === "opencode" &&
 			instance.generation === binding.generation &&
 			instance.state === "running" &&
 			session.cwd === instance.cwd &&
@@ -233,18 +244,6 @@ export async function inspectOpenCodeProvenance(sessionId: string) {
 			launch.claimedBySupervisorId === instance.supervisorId &&
 			!launch.metadata?.boundExistingSession,
 	);
-	const childPathValid =
-		!parentPathValid &&
-		Boolean(
-			session?.agentType === "opencode" &&
-				instance?.agentType === "opencode" &&
-				instance.generation === binding.generation &&
-				(instance.state === "running" || instance.state === "reserved") &&
-				session.cwd === instance.cwd &&
-				managed?.supervisorId === instance.supervisorId &&
-				managed?.providerSessionId === binding.nativeSessionId &&
-				binding.nativeSessionId !== launch?.launchCorrelationId,
-		);
 	const valid = parentPathValid || childPathValid;
 	return {
 		origin: binding.origin,
