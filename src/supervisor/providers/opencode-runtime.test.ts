@@ -1168,12 +1168,19 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 				messageID,
 				parts: [{ type: "text", text: "P0_ABORT" }],
 			});
+			// The turn identity is captured BEFORE the abort.
+			const turnMessageId = await runtime.lastUserMessageId(child.id);
+			expect(turnMessageId).toBe(messageID);
 			// Busy without a local claim: the empty claim set must NOT be treated as
 			// terminated.
-			expect(await runtime.waitForNativeTermination(child.id, 1500)).toBe(false);
+			expect(await runtime.waitForNativeTermination(child.id, messageID, 1500)).toBe(false);
+			// A NEWER user turn invalidates the identity: unknown, not success.
+			expect(await runtime.waitForNativeTermination(child.id, "msg_other_turn", 800)).toBe(false);
+			// A MISSING target is unknown, never success.
+			expect(await runtime.waitForNativeTermination("ses_missing_target", messageID, 600)).toBe(false);
 			// Abort it natively (standalone attempt), then require REAL evidence.
 			await runtime.abort(child.id);
-			expect(await runtime.waitForNativeTermination(child.id, 20_000)).toBe(true);
+			expect(await runtime.waitForNativeTermination(child.id, messageID, 20_000)).toBe(true);
 			await runtime.stop();
 		} finally {
 			mock.kill();

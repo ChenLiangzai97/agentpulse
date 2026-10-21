@@ -305,11 +305,15 @@ export function createManagedOpenCodeProvider(
 				)
 					throw new Error("opencode_session_unsettled");
 				if (targetNative && targetNative !== runtime.nativeSessionId) {
+					// Bind the wait to the turn running BEFORE the abort.
+					const turnMessageId = await runtime.lastUserMessageId(targetNative);
 					await runtime.abort(targetNative);
 					// CONSERVATIVE: success requires NATIVE terminal evidence (quiet
 					// target, no running tool, last step completed/cancelled) after the
 					// abort — an HTTP 200 or an empty local set is not enough.
-					const confirmed = await runtime.waitForNativeTermination(targetNative, 15_000);
+					const confirmed = turnMessageId
+						? await runtime.waitForNativeTermination(targetNative, turnMessageId, 15_000)
+						: false;
 					if (
 						!confirmed ||
 						runtime.abortPending(targetNative) ||

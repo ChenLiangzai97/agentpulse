@@ -3,8 +3,12 @@
  * permit registers a short lease BEFORE returning, and STOP must acquire the
  * same in-process mutex and see zero active leases before it may advance the
  * epoch. A permit that lost the race (STOP already advanced) is refused by the
- * transactional epoch check. Single-process control plane by design; leases
- * expire so a crashed supervisor cannot wedge STOP forever.
+ * transactional epoch check. Single-process control plane by design.
+ *
+ * EXPIRY IS NOT SAFETY: an expired lease stays UNKNOWN and keeps blocking; only
+ * an accepted terminal result for the same action+token releases it. A stopped
+ * STOP must be reconciled explicitly (unknownLeases()), never auto-unblocked by
+ * time.
  */
 export const EXECUTION_LEASE_MS = 60_000;
 

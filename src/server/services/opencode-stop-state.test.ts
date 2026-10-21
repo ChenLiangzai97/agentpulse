@@ -169,19 +169,28 @@ test("the RESULT fence refuses stale successes and only a current STOP success m
 	const stop = await queueOpenCodeAction(parentId, "stop", {}, actor);
 	await getDb()
 		.update(controlActions)
-		.set({ status: "running", claimedBySupervisorId: "stop-host" })
+		.set({
+			status: "running",
+			claimedBySupervisorId: "stop-host",
+			metadata: { ...(stop.metadata as Record<string, unknown>), claimToken: "stop-token" },
+		})
 		.where(eq(controlActions.id, stop.id));
 	// A stale stop (old epoch) reporting success must NOT transition to stopped.
 	await getDb()
 		.update(controlActions)
 		.set({
-			metadata: { ...(stop.metadata as Record<string, unknown>), controlEpoch: 0 },
+			metadata: {
+				...((stop.metadata as Record<string, unknown>) ?? {}),
+				controlEpoch: 0,
+				claimToken: "stop-token",
+			},
 		})
 		.where(eq(controlActions.id, stop.id));
 	const refused = await updateControlAction({
 		actionId: stop.id,
 		supervisorId: "stop-host",
 		status: "succeeded",
+		claimToken: "stop-token",
 	});
 	expect(refused?.status).toBe("failed");
 	expect(refused?.error).toBe("opencode_session_stopped");
@@ -191,7 +200,11 @@ test("the RESULT fence refuses stale successes and only a current STOP success m
 		.update(controlActions)
 		.set({
 			status: "running",
-			metadata: { ...(stop.metadata as Record<string, unknown>), controlEpoch: 1 },
+			metadata: {
+				...((stop.metadata as Record<string, unknown>) ?? {}),
+				controlEpoch: 1,
+				claimToken: "stop-token",
+			},
 			claimedBySupervisorId: "stop-host",
 		})
 		.where(eq(controlActions.id, stop.id));
@@ -199,6 +212,7 @@ test("the RESULT fence refuses stale successes and only a current STOP success m
 		actionId: stop.id,
 		supervisorId: "stop-host",
 		status: "succeeded",
+		claimToken: "stop-token",
 	});
 	expect(accepted?.status).toBe("succeeded");
 	expect((await bindingOf(parentId))?.stopState).toBe("stopped");
@@ -396,4 +410,38 @@ test("a RUNNING action defers STOP after a control-service restart (no leases in
 	await expect(queueOpenCodeAction(parentId, "stop", {}, actor)).rejects.toThrow(
 		"opencode_stop_deferred",
 	);
+});
+
+test("token enforcement: stale/missing token heartbeats are refused and cannot replace protected metadata", async () => {
+	const { parentId } = await seed();
+	await queueOpenCodeAction(parentId, "prompt", { prompt: "token test" }, actor);
+	const claimed = await claimNextControlAction("stop-host");
+	const token = String((claimed?.metadata as Record<string, unknown>)?.claimToken ?? "");
+	// Missing token (heartbeat) -> refused.
+	await expect(
+		updateControlAction({ actionId: claimed?.id ?? "", supervisorId: "stop-host", status: "running" }),
+	).resolves.toBeNull();
+	// Stale token -> refused.
+	await expect(
+		updateControlAction({
+			actionId: claimed?.id ?? "",
+			supervisorId: "stop-host",
+			status: "running",
+			claimToken: "old-token",
+		}),
+	).resolves.toBeNull();
+	// Correct token + an attempt to REPLACE protected fields: the merge strips them.
+	const accepted = await updateControlAction({
+		actionId: claimed?.id ?? "",
+		supervisorId: "stop-host",
+		status: "running",
+		claimToken: token,
+		metadata: { claimToken: "forged", controlEpoch: 99, progress: "ok" },
+	});
+	expect(accepted?.status).toBe("running");
+	const [row] = await getDb().select().from(controlActions).where(eq(controlActions.id, claimed?.id ?? ""));
+	const meta = row?.metadata as Record<string, unknown>;
+	expect(meta.claimToken).toBe(token);
+	expect(meta.controlEpoch).toBe(0);
+	expect(meta.progress).toBe("ok");
 });

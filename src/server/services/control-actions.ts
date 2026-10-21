@@ -621,18 +621,20 @@ export async function updateControlAction(input: {
 			return null;
 		const meta = (current.metadata ?? {}) as Record<string, unknown>;
 		const controlEpoch = typeof meta.controlEpoch === "number" ? meta.controlEpoch : null;
-		// TOKEN BINDING: a result from an OLD claim (same supervisor) must not
-		// overwrite the current running attempt.
-		if (
-			input.status !== "running" &&
-			typeof meta.claimToken === "string" &&
-			(input.claimToken ?? null) !== meta.claimToken
-		)
-			return null;
 		const managed =
 			meta.agentType === "opencode" ||
 			controlEpoch !== null ||
 			current.actionType.startsWith("opencode_");
+		// TOKEN BINDING for EVERY managed report (including running heartbeats): a
+		// report without the exact token issued with THIS claim is refused, so an
+		// old attempt can never touch a newer one.
+		if (
+			managed &&
+			(typeof meta.claimToken !== "string" ||
+				typeof input.claimToken !== "string" ||
+				input.claimToken !== meta.claimToken)
+		)
+			return null;
 		let status = input.status;
 		let error = input.error ?? null;
 		const [binding] = current.sessionId ? await selectBindingForUpdate(tx, current.sessionId) : [];
@@ -649,12 +651,35 @@ export async function updateControlAction(input: {
 			}
 		}
 		const timestamp = nowIso();
+		// Server-issued control fields can NEVER be replaced by a report's
+		// metadata; only non-protected keys are merged in.
+		const PROTECTED = new Set([
+			"claimToken",
+			"controlEpoch",
+			"agentType",
+			"instanceId",
+			"generation",
+			"nativeSessionId",
+			"forkRequestHash",
+			"resultChildSessionId",
+			"finalizedByClaimToken",
+		]);
+		const incoming: Record<string, unknown> = {};
+		for (const [key, value] of Object.entries(input.metadata ?? {}))
+			if (!PROTECTED.has(key)) incoming[key] = value;
+		const metadata = {
+			...((current.metadata ?? {}) as Record<string, unknown>),
+			...incoming,
+		};
+		const tokenCondition = managed
+			? sql`${jsonExtractText(controlActions.metadata, "$.claimToken")} = ${input.claimToken}`
+			: undefined;
 		const [updated] = await tx
 			.update(controlActions)
 			.set({
 				status,
 				error,
-				metadata: input.metadata ?? current.metadata,
+				metadata,
 				finishedAt: status === "running" ? null : timestamp,
 				updatedAt: timestamp,
 			})
@@ -663,6 +688,7 @@ export async function updateControlAction(input: {
 					eq(controlActions.id, input.actionId),
 					eq(controlActions.claimedBySupervisorId, input.supervisorId),
 					eq(controlActions.status, "running"),
+					...(tokenCondition ? [tokenCondition] : []),
 				),
 			)
 			.returning();

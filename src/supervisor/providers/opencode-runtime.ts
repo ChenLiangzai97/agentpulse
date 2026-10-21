@@ -93,8 +93,14 @@ export interface OpenCodeRuntime {
 	captureForkSnapshot(forkPointMessageId?: string | null): Promise<ForkSnapshot>;
 	/** Holds the instance/source session for the whole capture+fork window. */
 	withExclusiveFork<T>(run: () => Promise<T>): Promise<T>;
-	/** Conservative native termination evidence after an abort. */
-	waitForNativeTermination(target: string, timeoutMs?: number): Promise<boolean>;
+	/** Last user-message id of the target (turn identity). */
+	lastUserMessageId(target: string): Promise<string | null>;
+	/** Conservative native termination evidence bound to a turn identity. */
+	waitForNativeTermination(
+		target: string,
+		turnMessageId: string,
+		timeoutMs?: number,
+	): Promise<boolean>;
 	/** Parent->child message map for the execution-time copyOf window. */
 	captureChildMap(childNativeSessionId: string, parentSnapshot: ForkSnapshot): Promise<ForkChildMap>;
 	/** Root-session full fork only; the child stays unaddressable until confirmed. */
@@ -575,13 +581,29 @@ export class OpenCodeRuntimePool {
 				 * exclusive at the fork point, so the child history is the parent
 				 * prefix: child[i] <-> parent[i], never by id lookup.
 				 */
+				/** Last user-message id of the target (the turn identity to bind). */
+				async lastUserMessageId(target: string) {
+					const view = await runtime.snapshot();
+					const list =
+						target === native.id
+							? view.messages
+							: (view.children ?? []).find((child) => child.session.id === target)?.messages;
+					if (!list) return null;
+					for (const item of [...list].reverse()) {
+						const info = (item as { info?: { id?: unknown; role?: unknown } }).info;
+						if (info?.role === "user" && typeof info.id === "string") return info.id;
+					}
+					return null;
+				},
 				/**
-				 * NATIVE termination evidence AFTER an abort: two consecutive
-				 * observations where the target is not busy, has no running tool and
-				 * its last assistant step is completed/cancelled. An empty local
-				 * claim set or an HTTP 200 is never enough by itself.
+				 * NATIVE termination evidence AFTER an abort, BOUND to the turn that was
+				 * running when the abort was requested. Missing target / empty message
+				 * list / a NEWER user turn = UNKNOWN (never success). Terminality reuses
+				 * the strict whole-turn rule (completed, finish != tool-calls, no
+				 * running tool, or an error/cancel marker).
 				 */
-				async waitForNativeTermination(target: string, timeoutMs = 15_000) {
+				async waitForNativeTermination(target: string, turnMessageId: string, timeoutMs = 15_000) {
+					if (!turnMessageId) return false;
 					const deadline = Date.now() + timeoutMs;
 					let quiet = 0;
 					while (Date.now() < deadline) {
@@ -589,19 +611,24 @@ export class OpenCodeRuntimePool {
 						const list =
 							target === native.id
 								? view.messages
-								: (view.children ?? []).find((child) => child.session.id === target)?.messages ?? [];
+								: (view.children ?? []).find((child) => child.session.id === target)?.messages;
+						// Missing target or no evidence is NOT termination.
+						if (!list || list.length === 0) {
+							quiet = 0;
+							await Bun.sleep(200);
+							continue;
+						}
 						const raw = view.sessions[target]?.type;
 						const busy = raw === "busy" || raw === "retry";
-						const lastAssistant = [...list]
+						const lastUser = [...list]
 							.reverse()
-							.find(
-								(item) =>
-									(item as { info?: Record<string, unknown> }).info?.role === "assistant",
-							) as { info?: Record<string, unknown> } | undefined;
-						const info = lastAssistant?.info;
-						const time = info?.time as { completed?: unknown } | undefined;
-						const stepEnded = !info || Boolean(time?.completed) || Boolean(info.error);
-						if (!busy && !runningTools(list) && stepEnded) quiet += 1;
+							.find((item) => (item as { info?: Record<string, unknown> }).info?.role === "user") as
+							| { info?: Record<string, unknown> }
+							| undefined;
+						// The turn must not have been replaced by a newer user message.
+						const sameTurn = lastUser?.info?.id === turnMessageId;
+						const ended = sameTurn && abortTerminal(list, turnMessageId);
+						if (!busy && ended) quiet += 1;
 						else quiet = 0;
 						if (quiet >= 2) return true;
 						await Bun.sleep(200);
