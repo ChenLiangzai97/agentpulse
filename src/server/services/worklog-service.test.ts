@@ -2,7 +2,17 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import "../db/__test_db.js";
 import { eq } from "drizzle-orm";
 import { getDb, initializeDatabase } from "../db/client.js";
-import { events, aiDailySpend, llmProviders, sessions, settings } from "../db/schema/index.js";
+import {
+	events,
+	aiDailySpend,
+	llmProviders,
+	opencodeForkRequests,
+	opencodeForks,
+	sessions,
+	settings,
+} from "../db/schema/index.js";
+import { partFingerprint } from "../../shared/opencode-copy.js";
+import { loadCopiedEvents } from "./worklog-copy.js";
 import { createProvider } from "./ai/providers-service.js";
 import { upsertSetting } from "./settings-service.js";
 import {
@@ -90,7 +100,15 @@ beforeAll(async () => {
 	await initializeDatabase();
 });
 beforeEach(async () => {
-	for (const table of [events, sessions, settings, llmProviders, aiDailySpend])
+	for (const table of [
+		opencodeForkRequests,
+		opencodeForks,
+		events,
+		sessions,
+		settings,
+		llmProviders,
+		aiDailySpend,
+	])
 		await getDb().delete(table);
 	await upsertSetting("ai.enabled", true, { allowProtected: true });
 	await upsertSetting("ai.killSwitch", false, { allowProtected: true });
@@ -486,4 +504,81 @@ test("manual edit appends an adopted manual version and survives regeneration", 
 	await expect(editWorklogVersion("2026-01-01", base.versionId, "# 再改")).rejects.toThrow(
 		"delivered",
 	);
+});
+
+describe("fork copyOf and the daily window", () => {
+	test("yesterday's parent history copied today is NOT part of today's report", async () => {
+		// Asia/Shanghai day 2026-01-01 starts at 2025-12-31T16:00Z.
+		const parentContent = "yesterday parent history";
+		const newContent = "today new work";
+		const sourceData = { type: "text", text: parentContent, time: { start: 1, end: 2 } };
+		await getDb().insert(sessions).values([
+			{ sessionId: "fork-parent", agentType: "opencode", displayName: "fork-parent" },
+			{ sessionId: "fork-child", agentType: "opencode", displayName: "fork-child" },
+		]);
+		await getDb().insert(events).values([
+			{
+				sessionId: "fork-parent",
+				eventType: "UserPromptSubmit",
+				category: "prompt",
+				content: parentContent,
+				createdAt: "2025-12-31 10:00:00",
+				rawPayload: { message_id: "msg_p", source_data: sourceData },
+			},
+			{
+				// COPIED event: ingested today, happened yesterday.
+				sessionId: "fork-child",
+				eventType: "UserPromptSubmit",
+				category: "prompt",
+				content: parentContent,
+				createdAt: "2026-01-01 08:00:00",
+				rawPayload: { message_id: "msg_c", source_data: sourceData },
+			},
+			{
+				sessionId: "fork-child",
+				eventType: "AssistantMessage",
+				category: "assistant_message",
+				content: newContent,
+				createdAt: "2026-01-01 12:00:00",
+				rawPayload: {
+					message_id: "msg_c2",
+					source_data: { type: "text", text: newContent, time: { start: 3, end: 4 } },
+				},
+			},
+		]);
+		await getDb().insert(opencodeForks).values({
+			childSessionId: "fork-child",
+			parentSessionId: "fork-parent",
+			requestActionId: "fork-action",
+		});
+		await getDb().insert(opencodeForkRequests).values({
+			actionId: "fork-action",
+			requestHash: "h",
+			identity: null,
+			childMap: {
+				version: 1,
+				forkPointMessageId: null,
+				pairs: [
+					{
+						parentNativeId: "msg_p",
+						childNativeId: "msg_c",
+						parentOccurredAt: "2025-12-31T10:00:00.000Z",
+						parts: [
+							{
+								fingerprint: partFingerprint(sourceData),
+								parentOccurredAt: "2025-12-31 10:00:00",
+							},
+						],
+					},
+				],
+			},
+		});
+		// The copy mapping itself resolves...
+		expect((await loadCopiedEvents("fork-child")).size).toBe(1);
+		await runWorklog("2026-01-01", true);
+		const modelText = modelInputs.join("\n");
+		// ...but the copied turn does not enter the day's extraction at all.
+		expect(modelText).not.toContain(parentContent);
+		expect(modelText).toContain(newContent);
+	});
 });

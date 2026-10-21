@@ -1,3 +1,4 @@
+import { partFingerprint } from "../../shared/opencode-copy.js";
 import type { ForkChildMap, ForkSnapshot } from "./fork-snapshot.js";
 import { markAbort, newClaimState, observeClaim } from "./session-claim.js";
 import { randomBytes } from "node:crypto";
@@ -441,10 +442,25 @@ export class OpenCodeRuntimePool {
 						const info = (item as { info?: { id?: unknown; time?: { created?: unknown } } })
 							?.info;
 						const created = Number(info?.time?.created ?? 0);
+						const occurredAt =
+							created > 0 ? new Date(created).toISOString() : new Date(0).toISOString();
+						const parts = Array.isArray((item as { parts?: unknown[] }).parts)
+							? ((item as { parts: unknown[] }).parts as {
+									time?: { start?: number; end?: number };
+								}[])
+							: [];
 						return {
 							nativeId: String(info?.id ?? ""),
 							contentHash: createHash("sha256").update(JSON.stringify(item)).digest("hex"),
-							occurredAt: created > 0 ? new Date(created).toISOString() : new Date(0).toISOString(),
+							occurredAt,
+							parts: parts.map((part) => {
+								const start = Number(part?.time?.start ?? 0);
+								return {
+									fingerprint: partFingerprint(part),
+									occurredAt:
+										start > 0 ? new Date(start).toISOString() : occurredAt,
+								};
+							}),
 						};
 					});
 					return {
@@ -490,10 +506,23 @@ export class OpenCodeRuntimePool {
 						pairs: childMessages.map((item, index) => {
 							const parentMessage = parentSnapshot.messages[index];
 							if (!parentMessage) throw new Error("opencode_fork_child_prefix_invalid");
+							const childParts = Array.isArray((item as { parts?: unknown[] }).parts)
+								? ((item as { parts: unknown[] }).parts as {
+										time?: { start?: number };
+									}[])
+								: [];
 							return {
 								parentNativeId: parentMessage.nativeId,
 								childNativeId: String((item as { info?: { id?: unknown } })?.info?.id ?? ""),
 								parentOccurredAt: parentMessage.occurredAt,
+								parts: childParts.map((part, partIndex) => {
+									const parentPart = parentMessage.parts[partIndex];
+									if (!parentPart) throw new Error("opencode_fork_child_prefix_invalid");
+									return {
+										fingerprint: parentPart.fingerprint,
+										parentOccurredAt: parentPart.occurredAt,
+									};
+								}),
 							};
 						}),
 					};

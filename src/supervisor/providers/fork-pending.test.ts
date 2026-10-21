@@ -9,7 +9,14 @@ const snapshot = {
 	version: 1 as const,
 	instanceId: "instance-1",
 	nativeSessionId: "ses_parent",
-	messages: [{ nativeId: "msg_1", contentHash: "h", occurredAt: "2026-01-01T00:00:00.000Z" }],
+	messages: [
+		{
+			nativeId: "msg_1",
+			contentHash: "h",
+			occurredAt: "2026-01-01T00:00:00.000Z",
+			parts: [{ fingerprint: "p1", occurredAt: "2026-01-01T00:00:00.000Z" }],
+		},
+	],
 	forkPointMessageId: null,
 };
 

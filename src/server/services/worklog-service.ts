@@ -256,6 +256,7 @@ export async function runWorklog(
 				// Provenance of events COPIED by a fork: dedupe anchor + original
 				// occurrence time. Empty for ordinary sessions.
 				const copies = await loadCopiedEvents(session.sessionId);
+				const forkChild = copies.size > 0;
 				let after = 0;
 				let chunk = "";
 				// The chunk's real events by id — the only admissible evidence
@@ -331,8 +332,15 @@ export async function runWorklog(
 							and(
 								eq(events.sessionId, session.sessionId),
 								gt(events.id, after),
-								gte(events.createdAt, toDbTimestamp(window.start)),
-								lt(events.createdAt, toDbTimestamp(window.end)),
+								// Fork children are filtered by EFFECTIVE time below:
+								// copied events are ingested today but belong to the
+								// parent's original day, so the SQL window cannot decide.
+								...(forkChild
+									? []
+									: [
+											gte(events.createdAt, toDbTimestamp(window.start)),
+											lt(events.createdAt, toDbTimestamp(window.end)),
+										]),
 								inArray(events.category, ["prompt", "assistant_message", "tool_event"]),
 							),
 						)
@@ -340,6 +348,17 @@ export async function runWorklog(
 						.limit(100);
 					if (!batch.length) break;
 					for (const event of batch) {
+						const copy = copies.get(event.id);
+						// EFFECTIVE occurrence time: a copy belongs to the day its
+						// ORIGINAL event happened, not the day it was ingested.
+						const occurredAt = copy?.occurredAt ?? event.createdAt;
+						if (
+							forkChild &&
+							(occurredAt < toDbTimestamp(window.start) || occurredAt >= toDbTimestamp(window.end))
+						) {
+							after = event.id;
+							continue;
+						}
 						// Tool lines surface the mechanical status and an output
 						// excerpt so extraction can cite real verification output.
 						const toolSuffix =
@@ -361,7 +380,7 @@ export async function runWorklog(
 						chunkEvents.set(event.id, {
 							id: event.id,
 							category: event.category ?? "unknown",
-							createdAt: event.createdAt,
+							createdAt: occurredAt,
 							content: event.content,
 							eventType: event.eventType,
 							toolResponse: event.toolResponse,
