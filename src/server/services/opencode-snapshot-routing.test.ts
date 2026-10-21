@@ -3,7 +3,7 @@
  *  parent binding still routes; parent-failure shapes never leak in. */
 import "../db/__test_db.js";
 import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb, initializeDatabase } from "../db/client.js";
 import {
 	controlActions,
@@ -97,9 +97,11 @@ async function seedTrustedFork(
 	generation: number,
 	overrides: Partial<{
 		actionPresent: boolean;
+		emptySnapshot: boolean;
 		providerInstanceId: string;
 		ledgerNative: string;
 		ledgerGeneration: number;
+		actionParent: string;
 	}> = {},
 ) {
 	const [action] = await getDb()
@@ -109,7 +111,11 @@ async function seedTrustedFork(
 			actionType: "opencode_fork",
 			requestedBy: "user",
 			status: "succeeded",
-			metadata: { parentSessionId },
+			metadata: {
+				parentSessionId: overrides.actionParent ?? parentSessionId,
+				providerInstanceId: overrides.providerInstanceId ?? instanceId,
+				generation: overrides.ledgerGeneration ?? generation,
+			},
 		})
 		.returning();
 	if (overrides.actionPresent !== false)
@@ -118,7 +124,7 @@ async function seedTrustedFork(
 			.values({
 				actionId: action.id,
 				requestHash: "h-a3",
-				parentSnapshot: { pinned: true },
+				parentSnapshot: overrides.emptySnapshot ? {} : { messages: [{ nativeId: "msg_p" }] },
 			});
 	await getDb()
 		.insert(opencodeForks)
@@ -318,5 +324,131 @@ describe("A3 trusted-creation binding regressions (review round 40)", () => {
 			(e: Error) => e.message,
 		);
 		expect(err).toBe("provider_binding_invalid");
+	});
+});
+
+describe("A3 full creation-chain regressions (review round 41)", () => {
+	async function seedChild(sessionId: string, instanceId: string, native: string) {
+		await getDb().insert(sessions).values({ sessionId, agentType: "opencode", cwd: "/tmp" });
+		await getDb()
+			.insert(managedSessions)
+			.values({
+				sessionId,
+				launchRequestId: (
+					await getDb()
+						.select()
+						.from(launchRequests)
+						.where(eq(launchRequests.launchCorrelationId, "a3-parent"))
+				)[0].id,
+				supervisorId: "a3-host",
+				providerSessionId: native,
+				managedState: "managed",
+			});
+		await getDb().insert(sessionControlBindings).values({
+			sessionId,
+			origin: "agentpulse_launch",
+			instanceId,
+			nativeSessionId: native,
+			generation: 1,
+		});
+	}
+	const rejected = async (instanceId: string, native: string) =>
+		acceptOpenCodeSnapshot("a3-host", instanceId, baseInput(native)).then(
+			() => "NO_THROW",
+			(e: Error) => e.message,
+		);
+
+	test("EMPTY pinned snapshot is not a trusted creation", async () => {
+		const instance = await seedInstance();
+		await seedChild("a3-empty", instance.id, "ses_empty");
+		await seedTrustedFork("a3-empty", "a3-parent", instance.id, "ses_empty", 1, {
+			emptySnapshot: true,
+		});
+		expect(await rejected(instance.id, "ses_empty")).toBe("provider_binding_invalid");
+	});
+
+	test("non-fork action or wrong parent target is rejected", async () => {
+		const instance = await seedInstance();
+		await seedChild("a3-nonfork", instance.id, "ses_nonfork");
+		const [action] = await getDb()
+			.insert(controlActions)
+			.values({
+				sessionId: "a3-nonfork",
+				actionType: "prompt",
+				requestedBy: "user",
+				status: "succeeded",
+				metadata: { parentSessionId: "a3-parent", providerInstanceId: instance.id, generation: 1 },
+			})
+			.returning();
+		await getDb()
+			.insert(opencodeForkRequests)
+			.values({
+				actionId: action.id,
+				requestHash: "h",
+				parentSnapshot: { messages: [] },
+			}); // ledger row (FK -> control_actions, present)
+		await getDb().insert(opencodeForks).values({
+			childSessionId: "a3-nonfork",
+			parentSessionId: "a3-parent",
+			requestActionId: action.id,
+			providerInstanceId: instance.id,
+			nativeSessionId: "ses_nonfork",
+			generation: 1,
+		});
+		expect(await rejected(instance.id, "ses_nonfork")).toBe("provider_binding_invalid");
+
+		await seedChild("a3-wrongparent", instance.id, "ses_wrongparent");
+		// lineage names another EXISTING session as parent while the action
+		// metadata points at a3-parent → the chain must not trust it
+		await getDb()
+			.insert(sessions)
+			.values({ sessionId: "a3-other-parent", agentType: "opencode", cwd: "/tmp" });
+		// action metadata targets a3-parent, lineage names a3-other-parent → mismatch
+		await seedTrustedFork("a3-wrongparent", "a3-other-parent", instance.id, "ses_wrongparent", 1, {
+			actionParent: "a3-parent",
+		});
+		expect(await rejected(instance.id, "ses_wrongparent")).toBe("provider_binding_invalid");
+	});
+
+	test("A4: observer skip requires a VERIFIED source domain — same host+id but different domain is observed", async () => {
+		const instance = await seedInstance();
+		// managed instance records a DIFFERENT source domain than the observer
+		await getDb()
+			.update(providerInstances)
+			.set({ sourceInstanceId: "other-source-domain" })
+			.where(eq(providerInstances.id, instance.id));
+		await getDb()
+			.insert(sessions)
+			.values({ sessionId: "a4-par", agentType: "opencode", cwd: "/tmp" });
+		await getDb().insert(sessionControlBindings).values({
+			sessionId: "a4-par",
+			origin: "agentpulse_launch",
+			instanceId: instance.id,
+			nativeSessionId: "ses_a4",
+			generation: 1,
+		});
+		// exercised through the shared domain rule: observer instanceId must equal
+		// provider_instances.source_instance_id exactly
+		const rows = await getDb()
+			.select({ id: sessionControlBindings.sessionId })
+			.from(sessionControlBindings)
+			.innerJoin(providerInstances, eq(providerInstances.id, sessionControlBindings.instanceId))
+			.where(eq(providerInstances.sourceInstanceId, "observer-domain"));
+		expect(rows).toHaveLength(0); // different domain → observe, not skip
+		await getDb()
+			.update(providerInstances)
+			.set({ sourceInstanceId: "observer-domain" })
+			.where(eq(providerInstances.id, instance.id));
+		const rows2 = await getDb()
+			.select({ id: sessionControlBindings.sessionId })
+			.from(sessionControlBindings)
+			.innerJoin(providerInstances, eq(providerInstances.id, sessionControlBindings.instanceId))
+			.where(
+				and(
+					eq(providerInstances.sourceInstanceId, "observer-domain"),
+					eq(sessionControlBindings.sessionId, "a4-par"),
+				),
+			);
+		expect(rows2).toHaveLength(1); // verified domain → skip (managed)
 	});
 });

@@ -209,11 +209,12 @@ describe("A1/A3 shared trusted-fork-child validation", () => {
 				actionType: "opencode_fork",
 				requestedBy: "user",
 				status: "succeeded",
+				metadata: { parentSessionId: "ba-parent", providerInstanceId: instanceId, generation: 1 },
 			})
 			.returning();
 		await getDb()
 			.insert(opencodeForkRequests)
-			.values({ actionId: action.id, requestHash: "h", parentSnapshot: { pinned: true } });
+			.values({ actionId: action.id, requestHash: "h", parentSnapshot: { messages: [] } });
 		await getDb().insert(opencodeForks).values({
 			childSessionId: "ba-child",
 			parentSessionId: "ba-parent",

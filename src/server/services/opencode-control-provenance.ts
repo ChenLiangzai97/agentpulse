@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import type { Actor } from "../auth/actor.js";
 import { getDb } from "../db/client.js";
 import {
+	controlActions,
 	launchRequests,
 	managedSessions,
 	opencodeForkRequests,
@@ -227,14 +228,39 @@ export async function trustedForkChildIssue(params: {
 	if (ledger.generation === null || ledger.generation !== bindingGeneration)
 		return "fork_ledger_generation_mismatch";
 	if (ledger.generation !== instance.generation) return "fork_ledger_instance_generation_mismatch";
-	// execution ledger: the fork ACTION must have a recorded request (with the
-	// pinned parent snapshot) — a bare lineage row is not a trusted creation.
+	// FULL creation chain (review round 41): the fork ACTION must be a real,
+	// SUCCEEDED opencode_fork on this child, whose execution ledger row carries
+	// a NON-EMPTY pinned parent snapshot and whose recorded target agrees with
+	// the lineage (parent session, instance, generation). A bare lineage row or
+	// an action without the pinned snapshot is not a trusted creation.
 	const [request] = await getDb()
-		.select({ actionId: opencodeForkRequests.actionId })
+		.select()
 		.from(opencodeForkRequests)
 		.where(eq(opencodeForkRequests.actionId, ledger.requestActionId))
 		.limit(1);
 	if (!request) return "fork_request_missing";
+	const snapshot = request.parentSnapshot;
+	if (!snapshot || typeof snapshot !== "object" || Object.keys(snapshot).length === 0)
+		return "fork_request_snapshot_empty";
+	const [action] = await getDb()
+		.select()
+		.from(controlActions)
+		.where(eq(controlActions.id, ledger.requestActionId))
+		.limit(1);
+	if (!action) return "fork_action_missing";
+	if (action.actionType !== "opencode_fork") return "fork_action_not_fork";
+	if (action.status !== "succeeded") return "fork_action_not_succeeded";
+	if (action.sessionId !== childSessionId) return "fork_action_child_mismatch";
+	const meta = (action.metadata ?? {}) as Record<string, unknown>;
+	// Parent identity anchor is the INSTANCE's launching session — the fork's
+	// parent by definition. The lineage's parent_session_id may be NULL after
+	// the parent session is deleted (SET NULL keeps the row traceable), so it
+	// is compared only when present.
+	if (meta.parentSessionId !== instance.sessionId) return "fork_action_parent_mismatch";
+	if (ledger.parentSessionId !== null && ledger.parentSessionId !== instance.sessionId)
+		return "fork_ledger_parent_mismatch";
+	if (meta.providerInstanceId !== instance.id) return "fork_action_instance_mismatch";
+	if (meta.generation !== ledger.generation) return "fork_action_generation_mismatch";
 	// parent-domain invariants on the INSTANCE (parent session row may be gone)
 	const [launch] = await getDb()
 		.select()

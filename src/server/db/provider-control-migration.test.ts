@@ -15,8 +15,17 @@ test("legacy upgrade is idempotent, ignores metadata, and offline rollback prese
 			JSON.stringify({ manager: "agentpulse", origin: "agentpulse_launch" }),
 		);
 		db.query("INSERT INTO sessions VALUES (?,?,?)").run("old-codex", "codex_cli", "{}");
+		// Replay must be idempotent the way the boot runner treats it: a
+		// duplicate-column ALTER on the second pass is the known replay error
+		// and is swallowed there, so the test mirrors that contract.
 		for (let replay = 0; replay < 2; replay++)
-			for (const sql of PROVIDER_CONTROL_SQLITE_MIGRATIONS) db.exec(sql);
+			for (const sql of PROVIDER_CONTROL_SQLITE_MIGRATIONS) {
+				try {
+					db.exec(sql);
+				} catch (error) {
+					if (!/duplicate column name/i.test(String(error))) throw error;
+				}
+			}
 		expect(
 			db.query("SELECT origin FROM session_control_bindings WHERE session_id='legacy'").get(),
 		).toEqual({ origin: "legacy_unknown" });

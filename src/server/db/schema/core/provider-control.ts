@@ -32,6 +32,8 @@ export const providerInstancesSqlite = sqliteTable(
 		generation: integer("generation").notNull().default(1),
 		state: text("state").notNull().default("reserved"),
 		protocolVersion: text("protocol_version"),
+		/** OpenCode source domain (observer instanceId) this process serves, when verifiable. */
+		sourceInstanceId: text("source_instance_id"),
 		createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 	},
 	(t) => ({ generationCheck: check("provider_instances_generation", sql`${t.generation} > 0`) }),
@@ -56,6 +58,7 @@ export const providerInstancesPg = pgTable(
 		generation: pgInteger("generation").notNull().default(1),
 		state: pgText("state").notNull().default("reserved"),
 		protocolVersion: pgText("protocol_version"),
+		sourceInstanceId: pgText("source_instance_id"),
 		createdAt: tsColumn("postgres", "created_at"),
 	},
 	(t) => ({ generationCheck: pgCheck("provider_instances_generation", sql`${t.generation} > 0`) }),

@@ -5,13 +5,7 @@ import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import {
-	events,
-	providerInstances,
-	sessionControlBindings,
-	sessions,
-	supervisors,
-} from "../db/schema/index.js";
+import { events, providerInstances, sessionControlBindings, sessions } from "../db/schema/index.js";
 import { withTransaction } from "../db/with-transaction.js";
 import { toSessionEventDtos } from "./event-dto.js";
 import type { NormalizedEvent } from "./event-normalizer.js";
@@ -226,16 +220,19 @@ export class OpenCodeObserver {
 	 * the same native id on a DIFFERENT host is a different session.
 	 */
 	private async isManagedOnThisHost(nativeId: string): Promise<boolean> {
+		// SOURCE-DOMAIN proof (not hostname): the provider instance must record
+		// THIS observer's source instance id. A same-hostname source with a
+		// different storage domain, or an instance with no recorded domain
+		// (NULL), is NOT proven — the observer keeps observing.
 		const rows = await getDb()
 			.select({ id: sessionControlBindings.sessionId })
 			.from(sessionControlBindings)
 			.innerJoin(providerInstances, eq(providerInstances.id, sessionControlBindings.instanceId))
-			.innerJoin(supervisors, eq(supervisors.id, providerInstances.supervisorId))
 			.where(
 				and(
 					eq(sessionControlBindings.nativeSessionId, nativeId),
 					eq(sessionControlBindings.origin, "agentpulse_launch"),
-					eq(supervisors.hostName, this.sourceHost),
+					eq(providerInstances.sourceInstanceId, this.instanceId),
 				),
 			)
 			.limit(1);
