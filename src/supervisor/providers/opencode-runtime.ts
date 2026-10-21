@@ -85,7 +85,13 @@ export interface OpenCodeRuntime {
 	/** Registers a child from an AUTHENTICATED fork result (never from snapshots). */
 	registerManagedChild(nativeSessionId: string): void;
 	/** Durable claims whose outcome is still unknown (reconciliation surface). */
-	unsettledClaims(): { nativeSessionId: string; messageID: string; kind: "prompt" | "command" }[];
+	unsettledClaims(): {
+		nativeSessionId: string;
+		messageID: string;
+		kind: "prompt" | "command";
+		/** The attempt was an abort: native outcome is UNKNOWN until reconciled. */
+		abortRequested: boolean;
+	}[];
 	abortPending(target: string): boolean;
 	/** Claim-record cleanup failures (files left for reconciliation). */
 	cleanupIssues(): { claimId: string; path: string; error: string }[];
@@ -340,7 +346,10 @@ export class OpenCodeRuntimePool {
 			// Claims whose outcome was never established survive a crash/restart as
 			// durable records. They BLOCK execution for their target until a later
 			// observation proves the turn ended (reconciliation).
-			const unsettled = new Map<string, { messageID: string; kind: "prompt" | "command" }>();
+			const unsettled = new Map<
+				string,
+				{ messageID: string; kind: "prompt" | "command"; abortRequested: boolean }
+			>();
 			let claimsQuarantined = false;
 			const cleanupIssues: { claimId: string; path: string; error: string }[] = [];
 			// Freeze a target while ANY abort attempt is unresolved. An attempt is
@@ -378,6 +387,7 @@ export class OpenCodeRuntimePool {
 						unsettled.set(record.nativeSessionId, {
 							messageID: record.messageID,
 							kind: record.kind,
+							abortRequested: record.abortRequested === true,
 						});
 					} catch {
 						// Unreadable/corrupt: quarantine the instance, keep the file.
@@ -455,7 +465,11 @@ export class OpenCodeRuntimePool {
 				} catch (error) {
 					// Cannot delete the durable record: FAIL CLOSED now (block the
 					// target) and keep the attempt observable.
-					unsettled.set(id, { messageID: claim.messageID, kind: claim.state.kind });
+					unsettled.set(id, {
+						messageID: claim.messageID,
+						kind: claim.state.kind,
+						abortRequested: claim.state.abortRequested,
+					});
 					cleanupIssues.push({
 						claimId: claim.id,
 						path: claim.recordPath,

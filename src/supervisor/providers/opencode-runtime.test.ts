@@ -685,9 +685,11 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 				await Bun.sleep(100);
 			}
 			expect(await readdir(join(stateDirectory, "claims", instanceId))).toEqual([]);
-			// An IN-FLIGHT claim is persisted and survives the stop.
+			// An IN-FLIGHT claim is persisted and survives the stop; an abort marks
+			// the durable record so a restart knows the native outcome is UNKNOWN.
 			await first.prompt("P0_ABORT");
 			const oldNative = first.nativeSessionId;
+			await first.abort();
 			await first.stop();
 			const second = await makePool().start({
 				instanceId,
