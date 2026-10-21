@@ -4,7 +4,14 @@ import { createHash } from "node:crypto";
 import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { and, eq } from "drizzle-orm";
-import { events, sessions } from "../db/schema/index.js";
+import { getDb } from "../db/client.js";
+import {
+	events,
+	providerInstances,
+	sessionControlBindings,
+	sessions,
+	supervisors,
+} from "../db/schema/index.js";
 import { withTransaction } from "../db/with-transaction.js";
 import { toSessionEventDtos } from "./event-dto.js";
 import type { NormalizedEvent } from "./event-normalizer.js";
@@ -142,8 +149,16 @@ export class OpenCodeObserver {
 	private source: Database;
 	private watermark = 0;
 	readonly instanceId: string;
-	constructor(path: string, instanceId = `${hostname()}:${resolve(path)}`) {
+	/** Source host identity — the observer-skip scope is (thisHost, nativeId),
+	 * never a bare native id across sources (fork design §A4). */
+	readonly sourceHost: string;
+	constructor(
+		path: string,
+		instanceId = `${hostname()}:${resolve(path)}`,
+		sourceHost = hostname(),
+	) {
 		this.instanceId = hash(instanceId).slice(0, 20);
+		this.sourceHost = sourceHost;
 		this.source = new Database(path, { readonly: true, create: false });
 		try {
 			for (const [table, required] of Object.entries({
@@ -204,7 +219,33 @@ export class OpenCodeObserver {
 		return { sessions: read.snapshots.length, changedEvents };
 	}
 
+	/**
+	 * A4: a native session claimed by an AgentPulse-managed binding ON THIS
+	 * SOURCE HOST belongs to the managed domain — the observer must not also
+	 * ingest it as an external opencode:row. Scope is (sourceHost, nativeId):
+	 * the same native id on a DIFFERENT host is a different session.
+	 */
+	private async isManagedOnThisHost(nativeId: string): Promise<boolean> {
+		const rows = await getDb()
+			.select({ id: sessionControlBindings.sessionId })
+			.from(sessionControlBindings)
+			.innerJoin(providerInstances, eq(providerInstances.id, sessionControlBindings.instanceId))
+			.innerJoin(supervisors, eq(supervisors.id, providerInstances.supervisorId))
+			.where(
+				and(
+					eq(sessionControlBindings.nativeSessionId, nativeId),
+					eq(sessionControlBindings.origin, "agentpulse_launch"),
+					eq(supervisors.hostName, this.sourceHost),
+				),
+			)
+			.limit(1);
+		return rows.length > 0;
+	}
+
 	private async importSession({ session, messages, parts }: Snapshot): Promise<number> {
+		// Managed-domain sessions are owned by the snapshot/control path; the
+		// observer skips them on this host (no duplicate external rows).
+		if (await this.isManagedOnThisHost(session.id)) return 0;
 		const sessionId = this.sessionId(session.id);
 		const byMessage = new Map(messages.map((message) => [message.id, message]));
 		const converted = parts.flatMap((part) => {

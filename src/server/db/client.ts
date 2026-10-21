@@ -1157,6 +1157,9 @@ async function runLegacySqliteInit(sqlite: Database): Promise<void> {
 			parent_label_json TEXT,
 			fork_point_message_id TEXT,
 			request_action_id TEXT,
+			provider_instance_id TEXT,
+			native_session_id TEXT,
+			generation INTEGER,
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
 		"CREATE INDEX IF NOT EXISTS idx_opencode_forks_parent ON opencode_forks(parent_session_id)",
@@ -1168,6 +1171,11 @@ async function runLegacySqliteInit(sqlite: Database): Promise<void> {
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
 		)`,
 		"CREATE UNIQUE INDEX IF NOT EXISTS uq_fork_action_idem ON control_actions(COALESCE(requested_by_user_id,''), idempotency_key) WHERE action_type = 'opencode_fork' AND idempotency_key IS NOT NULL",
+		// Repair for DBs created by the first 0015 (ledger without the trusted
+		// creation binding columns).
+		"ALTER TABLE opencode_forks ADD COLUMN provider_instance_id TEXT",
+		"ALTER TABLE opencode_forks ADD COLUMN native_session_id TEXT",
+		"ALTER TABLE opencode_forks ADD COLUMN generation INTEGER",
 	];
 
 	// Vector search opt-in. The embeddings table only materializes when

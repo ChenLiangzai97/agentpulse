@@ -4,6 +4,9 @@ CREATE TABLE `opencode_forks` (
 	`parent_label_json` text,
 	`fork_point_message_id` text,
 	`request_action_id` text,
+	`provider_instance_id` text,
+	`native_session_id` text,
+	`generation` integer,
 	`created_at` text DEFAULT (datetime('now')) NOT NULL,
 	FOREIGN KEY (`child_session_id`) REFERENCES `sessions`(`session_id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`parent_session_id`) REFERENCES `sessions`(`session_id`) ON UPDATE no action ON DELETE set null

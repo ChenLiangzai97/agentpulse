@@ -5,6 +5,7 @@ import { getDb } from "../db/client.js";
 import {
 	launchRequests,
 	managedSessions,
+	opencodeForkRequests,
 	opencodeForks,
 	providerInstances,
 	sessionControlBindings,
@@ -183,6 +184,72 @@ export async function advanceOpenCodeGeneration(
 	return rows[0];
 }
 
+/**
+ * Shared trusted-fork-child validation (single source of truth for A1 and A3).
+ * A child binding is trusted ONLY when the 0015 ledger ties the trusted fork
+ * CREATION to this exact instance + native child identity + generation, the
+ * execution ledger (opencode_fork_requests) has the action row, and the
+ * instance's parent-domain launch invariants hold. The parent SESSION row may
+ * be deleted — instance/launch association must survive that.
+ *
+ * Returns null when trusted, or a machine reason when not.
+ */
+export async function trustedForkChildIssue(params: {
+	childSessionId: string;
+	bindingInstanceId: string | null;
+	bindingNativeSessionId: string | null;
+	bindingGeneration: number | null;
+	instance: {
+		id: string;
+		generation: number;
+		supervisorId: string;
+		launchRequestId: string;
+		sessionId: string;
+	};
+	snapshotNativeSessionId?: string;
+}): Promise<null | string> {
+	const { childSessionId, bindingInstanceId, bindingNativeSessionId, bindingGeneration } = params;
+	const { instance } = params;
+	const [ledger] = await getDb()
+		.select()
+		.from(opencodeForks)
+		.where(eq(opencodeForks.childSessionId, childSessionId))
+		.limit(1);
+	if (!ledger) return "no_fork_ledger";
+	if (!ledger.requestActionId) return "fork_ledger_without_action";
+	if (ledger.providerInstanceId !== instance.id) return "fork_ledger_instance_mismatch";
+	if (ledger.providerInstanceId !== bindingInstanceId)
+		return "fork_ledger_binding_instance_mismatch";
+	if (!ledger.nativeSessionId || ledger.nativeSessionId !== bindingNativeSessionId)
+		return "fork_ledger_native_mismatch";
+	if (params.snapshotNativeSessionId && ledger.nativeSessionId !== params.snapshotNativeSessionId)
+		return "fork_ledger_snapshot_native_mismatch";
+	if (ledger.generation === null || ledger.generation !== bindingGeneration)
+		return "fork_ledger_generation_mismatch";
+	if (ledger.generation !== instance.generation) return "fork_ledger_instance_generation_mismatch";
+	// execution ledger: the fork ACTION must have a recorded request (with the
+	// pinned parent snapshot) — a bare lineage row is not a trusted creation.
+	const [request] = await getDb()
+		.select({ actionId: opencodeForkRequests.actionId })
+		.from(opencodeForkRequests)
+		.where(eq(opencodeForkRequests.actionId, ledger.requestActionId))
+		.limit(1);
+	if (!request) return "fork_request_missing";
+	// parent-domain invariants on the INSTANCE (parent session row may be gone)
+	const [launch] = await getDb()
+		.select()
+		.from(launchRequests)
+		.where(eq(launchRequests.id, instance.launchRequestId))
+		.limit(1);
+	if (!launch) return "launch_missing";
+	if (launch.agentType !== "opencode") return "launch_not_opencode";
+	if (launch.requestedLaunchMode !== "managed_opencode") return "launch_not_managed";
+	if (launch.launchCorrelationId !== instance.sessionId) return "launch_parent_domain_mismatch";
+	if (launch.claimedBySupervisorId !== instance.supervisorId) return "launch_claim_mismatch";
+	if (launch.metadata?.boundExistingSession) return "launch_bound_existing_session";
+	return null;
+}
+
 export async function inspectOpenCodeProvenance(sessionId: string) {
 	const [session] = await getDb().select().from(sessions).where(eq(sessions.sessionId, sessionId));
 	const [binding] = await getDb()
@@ -232,17 +299,24 @@ export async function inspectOpenCodeProvenance(sessionId: string) {
 	// naming THIS session as the child. Verified below (async) — the parent-
 	// scoped launch checks still apply to the INSTANCE (managed_opencode etc.),
 	// and the child's own managed row must agree on supervisor + native id.
-	let childLedgerRow: { childSessionId: string } | undefined;
-	if (!isInstanceLaunchingSession && binding.instanceId) {
-		const ledgerRows = await getDb()
-			.select({ childSessionId: opencodeForks.childSessionId })
-			.from(opencodeForks)
-			.where(eq(opencodeForks.childSessionId, sessionId))
-			.limit(1);
-		childLedgerRow = ledgerRows[0];
-	}
+	const childTrustIssue =
+		!isInstanceLaunchingSession && instance && binding.instanceId
+			? await trustedForkChildIssue({
+					childSessionId: sessionId,
+					bindingInstanceId: binding.instanceId,
+					bindingNativeSessionId: binding.nativeSessionId,
+					bindingGeneration: binding.generation,
+					instance: {
+						id: instance.id,
+						generation: instance.generation,
+						supervisorId: instance.supervisorId,
+						launchRequestId: instance.launchRequestId,
+						sessionId: instance.sessionId,
+					},
+				})
+			: "not_a_child_candidate";
 	const childPathValid = Boolean(
-		childLedgerRow &&
+		childTrustIssue === null &&
 			session?.agentType === "opencode" &&
 			instance?.agentType === "opencode" &&
 			instance.sessionId !== sessionId &&
@@ -250,11 +324,7 @@ export async function inspectOpenCodeProvenance(sessionId: string) {
 			(instance.state === "running" || instance.state === "reserved") &&
 			session.cwd === instance.cwd &&
 			managed?.supervisorId === instance.supervisorId &&
-			managed?.providerSessionId === binding.nativeSessionId &&
-			launch?.agentType === "opencode" &&
-			launch.requestedLaunchMode === "managed_opencode" &&
-			launch.claimedBySupervisorId === instance.supervisorId &&
-			!launch.metadata?.boundExistingSession,
+			managed?.providerSessionId === binding.nativeSessionId,
 	);
 	const parentPathValid = Boolean(
 		isInstanceLaunchingSession &&

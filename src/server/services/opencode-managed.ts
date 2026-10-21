@@ -9,7 +9,6 @@ import {
 	events,
 	controlActions,
 	managedSessions,
-	opencodeForks,
 	providerInstances,
 	providerInteractions,
 	sessionControlBindings,
@@ -24,6 +23,7 @@ import {
 	assertSessionControlOrigin,
 	inspectOpenCodeProvenance,
 	recordExternalOpenCodeSession,
+	trustedForkChildIssue,
 } from "./opencode-control-provenance.js";
 import { normalizeOpenCodePart } from "./opencode-observer.js";
 
@@ -145,11 +145,22 @@ export async function acceptOpenCodeSnapshot(
 					b.sessionId !== instanceSessionId,
 			);
 			if (!child) return undefined;
-			const ledger = await getDb()
-				.select({ child: opencodeForks.childSessionId })
-				.from(opencodeForks)
-				.where(eq(opencodeForks.childSessionId, child.sessionId));
-			return ledger.length > 0 ? child : undefined;
+			// SAME trusted-creation validation as the authorization path.
+			const issue = await trustedForkChildIssue({
+				childSessionId: child.sessionId,
+				bindingInstanceId: child.instanceId,
+				bindingNativeSessionId: child.nativeSessionId,
+				bindingGeneration: child.generation,
+				instance: {
+					id: instance.id,
+					generation: instance.generation,
+					supervisorId: instance.supervisorId,
+					launchRequestId: instance.launchRequestId,
+					sessionId: instance.sessionId,
+				},
+				snapshotNativeSessionId: rawInput.nativeSessionId,
+			});
+			return issue === null ? child : undefined;
 		})());
 	if (
 		!binding ||

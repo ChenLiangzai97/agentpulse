@@ -193,3 +193,39 @@ describe("A1 main-path authorization regression (real assertSessionControlOrigin
 		);
 	});
 });
+
+describe("A1/A3 shared trusted-fork-child validation", () => {
+	const adminActor = { label: "user", userId: null, role: "admin", mode: "solo" } as const;
+
+	test("a FULLY trusted child (ledger+request+instance/native/generation) passes the REAL assertion", async () => {
+		const { instanceId } = await seedParentAndChild();
+		const { controlActions, opencodeForkRequests, opencodeForks } = await import(
+			"../../db/schema/index.js"
+		);
+		const [action] = await getDb()
+			.insert(controlActions)
+			.values({
+				sessionId: "ba-child",
+				actionType: "opencode_fork",
+				requestedBy: "user",
+				status: "succeeded",
+			})
+			.returning();
+		await getDb()
+			.insert(opencodeForkRequests)
+			.values({ actionId: action.id, requestHash: "h", parentSnapshot: { pinned: true } });
+		await getDb().insert(opencodeForks).values({
+			childSessionId: "ba-child",
+			parentSessionId: "ba-parent",
+			requestActionId: action.id,
+			providerInstanceId: instanceId,
+			nativeSessionId: "ses_c",
+			generation: 1,
+		});
+		expect((await inspectOpenCodeProvenance("ba-child"))?.bindingValid).toBe(true);
+		await expect(assertSessionControlOrigin("ba-child", adminActor)).resolves.toBeUndefined();
+		// parent deletion keeps the child authorized (instance/launch association survives)
+		await getDb().delete(sessions).where(eq(sessions.sessionId, "ba-parent"));
+		expect((await inspectOpenCodeProvenance("ba-child"))?.bindingValid).toBe(true);
+	});
+});

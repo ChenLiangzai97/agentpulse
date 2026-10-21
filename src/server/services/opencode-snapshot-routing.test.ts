@@ -6,8 +6,10 @@ import { beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { eq } from "drizzle-orm";
 import { getDb, initializeDatabase } from "../db/client.js";
 import {
+	controlActions,
 	launchRequests,
 	managedSessions,
+	opencodeForkRequests,
 	opencodeForks,
 	providerInstances,
 	sessionControlBindings,
@@ -32,6 +34,7 @@ const baseInput = (nativeSessionId: string, generation = 1) => ({
 beforeAll(() => initializeDatabase());
 beforeEach(async () => {
 	for (const t of [
+		opencodeForkRequests,
 		opencodeForks,
 		sessionControlBindings,
 		providerInstances,
@@ -75,17 +78,60 @@ async function seedInstance() {
 	await getDb()
 		.insert(sessions)
 		.values({ sessionId: "a3-parent", agentType: "opencode", cwd: "/tmp" });
-	await getDb()
-		.insert(managedSessions)
-		.values({
-			sessionId: "a3-parent",
-			launchRequestId: launch.id,
-			supervisorId: "a3-host",
-			providerSessionId: "ses_parent",
-			managedState: "managed",
-		});
+	await getDb().insert(managedSessions).values({
+		sessionId: "a3-parent",
+		launchRequestId: launch.id,
+		supervisorId: "a3-host",
+		providerSessionId: "ses_parent",
+		managedState: "managed",
+	});
 	await bindCreatedOpenCodeSession("a3-host", instance.id, "ses_parent", 1);
 	return instance;
+}
+
+async function seedTrustedFork(
+	childSessionId: string,
+	parentSessionId: string,
+	instanceId: string,
+	nativeSessionId: string,
+	generation: number,
+	overrides: Partial<{
+		actionPresent: boolean;
+		providerInstanceId: string;
+		ledgerNative: string;
+		ledgerGeneration: number;
+	}> = {},
+) {
+	const [action] = await getDb()
+		.insert(controlActions)
+		.values({
+			sessionId: childSessionId,
+			actionType: "opencode_fork",
+			requestedBy: "user",
+			status: "succeeded",
+			metadata: { parentSessionId },
+		})
+		.returning();
+	if (overrides.actionPresent !== false)
+		await getDb()
+			.insert(opencodeForkRequests)
+			.values({
+				actionId: action.id,
+				requestHash: "h-a3",
+				parentSnapshot: { pinned: true },
+			});
+	await getDb()
+		.insert(opencodeForks)
+		.values({
+			childSessionId,
+			parentSessionId,
+			forkPointMessageId: null,
+			requestActionId: action.id,
+			providerInstanceId: overrides.providerInstanceId ?? instanceId,
+			nativeSessionId: overrides.ledgerNative ?? nativeSessionId,
+			generation: overrides.ledgerGeneration ?? generation,
+		});
+	return action;
 }
 
 describe("A3 snapshot routing", () => {
@@ -113,15 +159,13 @@ describe("A3 snapshot routing", () => {
 		await getDb()
 			.insert(sessions)
 			.values({ sessionId: "a3-child-noledger", agentType: "opencode", cwd: "/tmp" });
-		await getDb()
-			.insert(sessionControlBindings)
-			.values({
-				sessionId: "a3-child-noledger",
-				origin: "agentpulse_launch",
-				instanceId: instance.id,
-				nativeSessionId: "ses_orphan_child",
-				generation: 1,
-			});
+		await getDb().insert(sessionControlBindings).values({
+			sessionId: "a3-child-noledger",
+			origin: "agentpulse_launch",
+			instanceId: instance.id,
+			nativeSessionId: "ses_orphan_child",
+			generation: 1,
+		});
 		const err2 = await acceptOpenCodeSnapshot(
 			"a3-host",
 			instance.id,
@@ -152,23 +196,14 @@ describe("A3 snapshot routing", () => {
 				providerSessionId: "ses_child",
 				managedState: "managed",
 			});
-		await getDb()
-			.insert(sessionControlBindings)
-			.values({
-				sessionId: "a3-child",
-				origin: "agentpulse_launch",
-				instanceId: instance.id,
-				nativeSessionId: "ses_child",
-				generation: 1,
-			});
-		await getDb()
-			.insert(opencodeForks)
-			.values({
-				childSessionId: "a3-child",
-				parentSessionId: "a3-parent",
-				forkPointMessageId: null,
-				requestActionId: null,
-			});
+		await getDb().insert(sessionControlBindings).values({
+			sessionId: "a3-child",
+			origin: "agentpulse_launch",
+			instanceId: instance.id,
+			nativeSessionId: "ses_child",
+			generation: 1,
+		});
+		await seedTrustedFork("a3-child", "a3-parent", instance.id, "ses_child", 1);
 		const out = await acceptOpenCodeSnapshot("a3-host", instance.id, {
 			...baseInput("ses_child"),
 			// catalog persists only when commands are present — include them so
@@ -188,15 +223,13 @@ describe("A3 snapshot routing", () => {
 		await getDb()
 			.insert(sessions)
 			.values({ sessionId: "a3-child-g", agentType: "opencode", cwd: "/tmp" });
-		await getDb()
-			.insert(sessionControlBindings)
-			.values({
-				sessionId: "a3-child-g",
-				origin: "agentpulse_launch",
-				instanceId: instance.id,
-				nativeSessionId: "ses_child_g",
-				generation: 1,
-			});
+		await getDb().insert(sessionControlBindings).values({
+			sessionId: "a3-child-g",
+			origin: "agentpulse_launch",
+			instanceId: instance.id,
+			nativeSessionId: "ses_child_g",
+			generation: 1,
+		});
 		await getDb()
 			.insert(opencodeForks)
 			.values({ childSessionId: "a3-child-g", parentSessionId: "a3-parent" });
@@ -209,5 +242,81 @@ describe("A3 snapshot routing", () => {
 			(e: Error) => e.message,
 		);
 		expect(err3).toBe("provider_binding_invalid");
+	});
+});
+
+describe("A3 trusted-creation binding regressions (review round 40)", () => {
+	async function seedChildBinding(sessionId: string, instanceId: string, native: string) {
+		await getDb().insert(sessions).values({ sessionId, agentType: "opencode", cwd: "/tmp" });
+		await getDb()
+			.insert(managedSessions)
+			.values({
+				sessionId,
+				launchRequestId: (
+					await getDb()
+						.select()
+						.from(launchRequests)
+						.where(eq(launchRequests.launchCorrelationId, "a3-parent"))
+				)[0].id,
+				supervisorId: "a3-host",
+				providerSessionId: native,
+				managedState: "managed",
+			});
+		await getDb().insert(sessionControlBindings).values({
+			sessionId,
+			origin: "agentpulse_launch",
+			instanceId,
+			nativeSessionId: native,
+			generation: 1,
+		});
+	}
+
+	test("ledger row bound to ANOTHER instance cannot authorize a child on this instance", async () => {
+		const instance = await seedInstance();
+		await seedChildBinding("a3-x", instance.id, "ses_x");
+		// ledger claims a DIFFERENT instance id — cross-instance misattachment
+		await seedTrustedFork("a3-x", "a3-parent", instance.id, "ses_x", 1, {
+			providerInstanceId: "some-other-instance",
+		});
+		const err = await acceptOpenCodeSnapshot("a3-host", instance.id, baseInput("ses_x")).then(
+			() => "NO_THROW",
+			(e: Error) => e.message,
+		);
+		expect(err).toBe("provider_binding_invalid");
+	});
+
+	test("lineage that records a fork ACTION with no execution ledger row is NOT trusted", async () => {
+		const instance = await seedInstance();
+		await seedChildBinding("a3-y", instance.id, "ses_y");
+		await seedTrustedFork("a3-y", "a3-parent", instance.id, "ses_y", 1, { actionPresent: false });
+		const err = await acceptOpenCodeSnapshot("a3-host", instance.id, baseInput("ses_y")).then(
+			() => "NO_THROW",
+			(e: Error) => e.message,
+		);
+		expect(err).toBe("provider_binding_invalid");
+	});
+
+	test("incomplete lineage (native id / generation mismatch) is rejected", async () => {
+		const instance = await seedInstance();
+		await seedChildBinding("a3-z", instance.id, "ses_z");
+		await seedTrustedFork("a3-z", "a3-parent", instance.id, "ses_z", 1, {
+			ledgerNative: "ses_OTHER",
+		});
+		const err = await acceptOpenCodeSnapshot("a3-host", instance.id, baseInput("ses_z")).then(
+			() => "NO_THROW",
+			(e: Error) => e.message,
+		);
+		expect(err).toBe("provider_binding_invalid");
+	});
+
+	test("generation drift between lineage and instance is rejected", async () => {
+		const instance = await seedInstance();
+		await seedChildBinding("a3-g2", instance.id, "ses_g2");
+		await seedTrustedFork("a3-g2", "a3-parent", instance.id, "ses_g2", 1, { ledgerGeneration: 7 });
+		const err = await acceptOpenCodeSnapshot("a3-host", instance.id, baseInput("ses_g2")).then(
+			() => "NO_THROW",
+			(e: Error) => e.message,
+		);
+		expect(err).toBe("provider_binding_invalid");
 	});
 });
