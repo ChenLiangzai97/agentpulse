@@ -294,18 +294,19 @@ export function createControlActionHandler(
 		}
 
 		if (action.metadata?.agentType === "opencode") {
-			let reported = false;
+			// REPORT OWNERSHIP is claimed BEFORE the call starts: a thrown report
+			// (lost response) means "started, outcome unknown" and the outer catch
+			// must NOT send a second (failed) report.
+			let reportOwned = false;
 			try {
 				if (!providers.openCodeControl) throw new Error("OpenCode provider unavailable");
 				await providers.openCodeControl(action, async (body: { status: "succeeded" | "failed"; error?: string }) => {
+					reportOwned = true;
 					await report(action, body);
-					reported = true;
 				});
-				if (!reported) await report(action, { status: "succeeded" });
+				if (!reportOwned) await report(action, { status: "succeeded" });
 			} catch (error) {
-				// If the provider already reported (resume reports inside its lock),
-				// the outcome is settled/unknown — never send a second report.
-				if (!reported)
+				if (!reportOwned)
 					await report(action, {
 						status: "failed",
 						error: error instanceof Error ? error.message : "OpenCode action failed",

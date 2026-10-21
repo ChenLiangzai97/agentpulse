@@ -400,7 +400,7 @@ export function createManagedOpenCodeProvider(
 						await report({ status: "succeeded" });
 					} catch (error) {
 						// Unknown outcome: keep the target frozen, never unlock first.
-						runtime.markResumeUncertain(resumeTarget);
+						await runtime.markResumeUncertain(resumeTarget);
 						throw error;
 					}
 					runtime.touch();

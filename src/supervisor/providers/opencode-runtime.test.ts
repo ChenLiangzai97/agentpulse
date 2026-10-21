@@ -1485,7 +1485,27 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 				}),
 			).rejects.toThrow("report_response_lost");
 			await expect(runtime.prompt("after lost report")).rejects.toThrow("opencode_resume_pending");
+			// The uncertainty is DURABLE and is not bypassed by another resume.
+			expect(runtime.uncertainResumes()).toContain(runtime.nativeSessionId);
+			await expect(
+				runtime.withResumeLock(runtime.nativeSessionId, async () => "x"),
+			).rejects.toThrow("opencode_resume_uncertain");
+			// A restart still refuses until an explicit reconciliation clears it.
 			await runtime.stop();
+			const restarted = await pool.start({
+				instanceId: "resume-lock-instance",
+				generation: 1,
+				sessionId: "resume-lock-session-2",
+				cwd,
+				title: "resume lock restarted",
+			});
+			expect(restarted.uncertainResumes()).toContain(runtime.nativeSessionId);
+			await expect(
+				restarted.withResumeLock(runtime.nativeSessionId, async () => "x"),
+			).rejects.toThrow("opencode_resume_uncertain");
+			await restarted.clearResumeUncertain(runtime.nativeSessionId);
+			expect(restarted.uncertainResumes()).toEqual([]);
+			await restarted.stop();
 		} finally {
 			mock.kill();
 			await rm(root, { recursive: true, force: true });

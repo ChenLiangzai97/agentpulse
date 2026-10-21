@@ -95,7 +95,10 @@ export interface OpenCodeRuntime {
 	abortPending(target: string): boolean;
 	reconcileUnsettled(target: string): Promise<boolean>;
 	withResumeLock<T>(target: string, run: () => Promise<T>): Promise<T>;
-	markResumeUncertain(target: string): void;
+	markResumeUncertain(target: string): Promise<void>;
+	uncertainResumes(): string[];
+	/** Clears an uncertain resume ONLY after an external, verified reconciliation. */
+	clearResumeUncertain(target: string): Promise<void>;
 	unsettledAbortAttempts(): {
 		attemptId: string;
 		nativeSessionId: string;
@@ -370,6 +373,11 @@ export class OpenCodeRuntimePool {
 			// A resume whose report outcome is UNKNOWN: permanently frozen until an
 			// explicit reconciliation clears it.
 			const resumeUncertain = new Set<string>();
+			const uncertainDirectory = join(
+				this.config.stateDirectory,
+				"resume-uncertain",
+				input.instanceId.replace(/[^A-Za-z0-9_-]/g, "_"),
+			);
 			// INDEPENDENT durable abort attempts (survive restarts; multiple per
 			// target; a standalone abort has no claim record of its own).
 			const attemptsDirectory = join(
@@ -420,6 +428,28 @@ export class OpenCodeRuntimePool {
 						claimId: record.claimId,
 						createdAt: record.createdAt,
 					});
+				} catch {
+					claimsQuarantined = true;
+				}
+			}
+			await mkdir(uncertainDirectory, { recursive: true, mode: 0o700 });
+			for (const name of await readdir(uncertainDirectory).catch(() => [] as string[])) {
+				if (!name.endsWith(".json")) continue;
+				try {
+					const record = JSON.parse(
+						await readFile(join(uncertainDirectory, name), "utf8"),
+					) as Record<string, unknown>;
+					if (
+						record.version !== 1 ||
+						record.instanceId !== input.instanceId ||
+						record.generation !== input.generation ||
+						typeof record.nativeSessionId !== "string" ||
+						!/^ses_[A-Za-z0-9_-]+$/.test(record.nativeSessionId)
+					) {
+						claimsQuarantined = true;
+						continue;
+					}
+					resumeUncertain.add(record.nativeSessionId);
 				} catch {
 					claimsQuarantined = true;
 				}
@@ -859,15 +889,33 @@ export class OpenCodeRuntimePool {
 				 * token/epoch fence cover the report boundary).
 				 */
 				/** Unknown resume outcome: keep the target frozen until reconciliation. */
-				markResumeUncertain(target: string) {
+				async markResumeUncertain(target: string) {
 					resumeUncertain.add(target);
-					cleanupIssues.push({
-						claimId: target,
-						path: "",
-						error: "resume_report_uncertain",
+					const path = join(uncertainDirectory, `${encodeURIComponent(target)}.json`);
+					await writePrivateFileAtomic(
+						path,
+						JSON.stringify({
+							version: 1,
+							instanceId: input.instanceId,
+							generation: input.generation,
+							nativeSessionId: target,
+							createdAt: new Date().toISOString(),
+						}),
+					).catch((error: unknown) => {
+						cleanupIssues.push({
+							claimId: target,
+							path,
+							error: error instanceof Error ? error.message : "resume_uncertain_persist_failed",
+						});
 					});
+					cleanupIssues.push({ claimId: target, path, error: "resume_report_uncertain" });
+				},
+				uncertainResumes() {
+					return [...resumeUncertain];
 				},
 				async withResumeLock<T>(target: string, run: () => Promise<T>): Promise<T> {
+					if (resumeUncertain.has(target))
+						throw new Error("opencode_resume_uncertain");
 					if (target !== native.id && !knownSessions.has(target))
 						throw new Error("opencode_unknown_native_session");
 					if (resumeLocked.has(target)) throw new Error("opencode_resume_pending");
@@ -879,6 +927,10 @@ export class OpenCodeRuntimePool {
 					} finally {
 						resumeLocked.delete(target);
 					}
+				},
+				async clearResumeUncertain(target: string) {
+					resumeUncertain.delete(target);
+					await unlink(join(uncertainDirectory, `${encodeURIComponent(target)}.json`)).catch(() => {});
 				},
 				unsettledAbortAttempts() {
 					return [...persistedAttempts.values()];
