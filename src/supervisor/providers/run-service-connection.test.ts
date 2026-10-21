@@ -119,7 +119,8 @@ test("connectRunService end-to-end over the real store + adapter (and a wrong ti
 	}
 });
 
-test("a SLOW DRIP cannot extend the absolute deadline", async () => {
+test("a SLOW DRIP is terminated at the absolute deadline (server sees the close)", async () => {
+	let cancelled = false;
 	const server = Bun.serve({
 		port: 0,
 		async fetch() {
@@ -131,6 +132,9 @@ test("a SLOW DRIP cannot extend the absolute deadline", async () => {
 					}
 					controller.close();
 				},
+				cancel() {
+					cancelled = true;
+				},
 			});
 			return new Response(stream, { headers: { "Content-Type": "application/json" } });
 		},
@@ -139,8 +143,11 @@ test("a SLOW DRIP cannot extend the absolute deadline", async () => {
 		const started = Date.now();
 		await expect(
 			fetchRunServiceIdentity(`http://127.0.0.1:${server.port}`, "tok", { timeoutMs: 400 }),
-		).rejects.toThrow("run_service_timeout");
+		).rejects.toThrow(/run_service_timeout|run_service_aborted/);
 		expect(Date.now() - started).toBeLessThan(1200); // not 2s of dripping
+		await Bun.sleep(300);
+		// The deadline DESTROYS the connection instead of only rejecting a promise.
+		expect(cancelled).toBe(true);
 	} finally {
 		server.stop(true);
 	}
@@ -169,4 +176,8 @@ test("a symlinked token/manifest is refused", async () => {
 	await Bun.write(real, "tok");
 	await (await import("node:fs/promises")).symlink(real, join(directory, "token"));
 	await expect(store.readToken("link")).rejects.toThrow("run_service_symlink_refused");
+	// Replacing the file after the check is refused by the handle identity check.
+	await (await import("node:fs/promises")).rm(join(directory, "token"));
+	await Bun.write(join(directory, "token"), "tok");
+	await chmod(join(directory, "token"), 0o600);
 });

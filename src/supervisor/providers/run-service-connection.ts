@@ -8,6 +8,7 @@
  *   cannot be forwarded elsewhere) and always has a timeout.
  */
 import { chmod, lstat, mkdir, open, rename } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { processStartTicks } from "./opencode-recovery.js";
@@ -42,15 +43,21 @@ const requirePrivate = (info: {
 	if ((info.mode & 0o077) !== 0) throw new Error("run_service_not_private");
 };
 
-/** Read through a FILE HANDLE after lstat/fstat checks (no TOCTOU/на symlink). */
+/**
+ * Read through a FILE HANDLE: O_NOFOLLOW refuses a symlink at open time and the
+ * handle must be the SAME inode/device we lstat'ed (a mid-flight replacement is
+ * refused). Directory-chain validation happens in the caller before this.
+ */
 const readPrivateFile = async (path: string): Promise<string> => {
 	const before = await lstat(path);
 	requirePrivate(before, "file");
-	const handle = await open(path, "r");
+	const handle = await open(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
 	try {
 		const after = await handle.stat();
 		if (!after.isFile() || after.uid !== process.getuid?.() || (after.mode & 0o077) !== 0)
 			throw new Error("run_service_not_private");
+		if (before.dev !== after.dev || before.ino !== after.ino)
+			throw new Error("run_service_file_replaced");
 		return await handle.readFile({ encoding: "utf8" });
 	} finally {
 		await handle.close();
@@ -59,6 +66,12 @@ const readPrivateFile = async (path: string): Promise<string> => {
 
 export function createRunServiceStore(root: string) {
 	const dir = (instanceId: string) => runServiceDirectory(root, instanceId);
+	const assertChain = async (instanceId: string) => {
+		const base = resolve(root);
+		for (const path of [base, join(base, "instances"), dir(instanceId)]) {
+			requirePrivate(await lstat(path), "dir");
+		}
+	};
 	return {
 		async ensure(instanceId: string) {
 			const base = resolve(root);
@@ -92,11 +105,11 @@ export function createRunServiceStore(root: string) {
 			await writeExclusive(manifestPath, JSON.stringify(manifest));
 		},
 		async readManifest(instanceId: string): Promise<RunServiceManifest> {
-			requirePrivate(await lstat(dir(instanceId)), "dir");
+			await assertChain(instanceId);
 			return JSON.parse(await readPrivateFile(join(dir(instanceId), "manifest.json"))) as RunServiceManifest;
 		},
 		async readToken(instanceId: string): Promise<string> {
-			requirePrivate(await lstat(dir(instanceId)), "dir");
+			await assertChain(instanceId);
 			return (await readPrivateFile(join(dir(instanceId), "token"))).trim();
 		},
 	};
@@ -117,7 +130,13 @@ export async function fetchRunServiceIdentity(
 	return new Promise((resolvePromise, reject) => {
 		// req.setTimeout is an IDLE timeout; the absolute deadline is what a slow
 		// drip cannot extend.
-		const deadline = setTimeout(() => reject(new Error("run_service_timeout")), timeoutMs);
+		let responseRef: { destroy: (error?: Error) => void } | null = null;
+		const deadline = setTimeout(() => {
+			// Actively terminate the connection: a drip must not keep it alive.
+			responseRef?.destroy(new Error("run_service_timeout"));
+			req.destroy(new Error("run_service_timeout"));
+			reject(new Error("run_service_timeout"));
+		}, timeoutMs);
 		deadline.unref?.();
 		const req = httpRequest(
 			{
@@ -130,6 +149,7 @@ export async function fetchRunServiceIdentity(
 				},
 			},
 			(response) => {
+				responseRef = response;
 				let text = "";
 				let size = 0;
 				response.on("data", (chunk: Buffer) => {
