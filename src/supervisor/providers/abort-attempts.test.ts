@@ -46,10 +46,26 @@ test("an abandoned attempt (request never sent) never freezes the target", () =>
 	expect(attempts.frozen("ses")).toBe(false);
 });
 
-test("a standalone attempt (no claim) freezes until the request responds", () => {
+test("a standalone attempt is settled only by a VERIFIED observation after the response", () => {
 	const attempts = new AbortAttempts();
-	attempts.begin("ses", "a1", "", true); // nothing to end later
+	attempts.begin("ses", "a1", ""); // no claim to end
 	expect(attempts.frozen("ses")).toBe(true);
-	attempts.respond("ses", "a1");
+	// Quiet observation BEFORE the response must not clear it.
+	expect(attempts.settleResponded("ses")).toEqual([]);
+	expect(attempts.frozen("ses")).toBe(true);
+	expect(attempts.respond("ses", "a1")).toBe(false); // response alone is not proof
+	expect(attempts.frozen("ses")).toBe(true);
+	expect(attempts.settleResponded("ses").map((a) => a.attemptId)).toEqual(["a1"]);
 	expect(attempts.frozen("ses")).toBe(false);
+});
+
+test("claimEnded returns exactly the attempts it settled (for file cleanup)", () => {
+	const attempts = new AbortAttempts();
+	attempts.begin("ses", "a1", "c1");
+	attempts.begin("ses", "a2", "c1");
+	attempts.respond("ses", "a1");
+	const settled = attempts.claimEnded("ses", "c1");
+	expect(settled.map((attempt) => attempt.attemptId)).toEqual(["a1"]);
+	// a2 (responded=false) must still be tracked.
+	expect(attempts.pending("ses").map((attempt) => attempt.attemptId)).toEqual(["a2"]);
 });

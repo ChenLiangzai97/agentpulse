@@ -417,9 +417,21 @@ export class OpenCodeRuntimePool {
 			}
 			const removeAttemptFile = async (attemptId: string) => {
 				const path = attemptFiles.get(attemptId);
+				if (!path) return;
+				try {
+					await unlink(path);
+				} catch (error) {
+					// Keep the record visible: the file still exists and WILL freeze the
+					// target again after a restart. Surface it for reconciliation.
+					cleanupIssues.push({
+						claimId: attemptId,
+						path,
+						error: error instanceof Error ? error.message : "attempt_unlink_failed",
+					});
+					return;
+				}
 				attemptFiles.delete(attemptId);
 				persistedAttempts.delete(attemptId);
-				if (path) await unlink(path).catch(() => {});
 			};
 			// Freeze a target while ANY abort attempt is unresolved. An attempt is
 			// resolved only when BOTH the native request responded AND the claim it
@@ -519,11 +531,10 @@ export class OpenCodeRuntimePool {
 			const release = async (id: string, claim: Claim) => {
 				if (executing.get(id) !== claim) return;
 				executing.delete(id);
-				abortAttempts.claimEnded(id, claim.id);
-				for (const pendingAttempt of abortAttempts.pending(id)) {
-					// Resolved claim-bound attempts no longer block; drop their files.
-					if (!abortAttempts.frozen(id)) await removeAttemptFile(pendingAttempt.attemptId);
-				}
+				// The tracker returns EXACTLY the attempts that became settled now; a
+				// target-level frozen check would miss them (they are already removed).
+				for (const settledAttempt of abortAttempts.claimEnded(id, claim.id))
+					await removeAttemptFile(settledAttempt.attemptId);
 				if (!claim.recordPath) return;
 				try {
 					await enqueueClaimFileOp(claim.id, async () => {
@@ -717,12 +728,11 @@ export class OpenCodeRuntimePool {
 						if (!busy && ended) quiet += 1;
 						else quiet = 0;
 						if (quiet >= 2) {
-							// VERIFIED terminal evidence: the target is isolated/ended, so
-							// the outstanding abort attempts for it can be cleared.
-							for (const attempt of abortAttempts.pending(target)) {
-								abortAttempts.abandon(target, attempt.attemptId);
-								await removeAttemptFile(attempt.attemptId);
-							}
+							// The TURN ended. Only attempts whose OWN request already
+							// responded can be settled now; an in-flight abort stays UNKNOWN
+							// and keeps blocking (it could still land on a new turn).
+							for (const settledAttempt of abortAttempts.settleResponded(target))
+								await removeAttemptFile(settledAttempt.attemptId);
 							return true;
 						}
 						await Bun.sleep(200);
@@ -900,7 +910,7 @@ export class OpenCodeRuntimePool {
 					// A target with NO claim is still frozen while the request is in
 					// flight (a prompt may start during the delay and be killed by this
 					// very abort): claimEnded starts true, the response releases it.
-					abortAttempts.begin(id, attemptId, held?.id ?? "", !held);
+					abortAttempts.begin(id, attemptId, held?.id ?? "");
 					const attemptPath = join(attemptsDirectory, `${attemptId}.json`);
 					attemptFiles.set(attemptId, attemptPath);
 					await writePrivateFileAtomic(
@@ -960,11 +970,10 @@ export class OpenCodeRuntimePool {
 						});
 						throw error;
 					}
-					abortAttempts.respond(id, attemptId);
 					// A claim-bound attempt is resolved once BOTH the response and the
 					// claim end are known; a STANDALONE attempt stays persisted until a
-					// verified terminal observation (stop confirmation).
-					if (held && !abortAttempts.frozen(id)) await removeAttemptFile(attemptId);
+					// verified transport settlement or explicit isolation.
+					if (abortAttempts.respond(id, attemptId)) await removeAttemptFile(attemptId);
 					const current = executing.get(id);
 					if (held && current && current.id === held.id)
 						current.state = markAbort(current.state, snapshotSeq + 1);

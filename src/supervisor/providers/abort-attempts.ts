@@ -22,29 +22,38 @@ export class AbortAttempts {
 		this.byTarget.set(target, attempts);
 	}
 
-	respond(target: string, attemptId: string): void {
+	/** Returns true when this response settled (and removed) the attempt. */
+	respond(target: string, attemptId: string): boolean {
 		const attempt = this.byTarget.get(target)?.get(attemptId);
-		if (!attempt) return;
+		if (!attempt) return false;
 		attempt.responded = true;
-		this.settle(target, attempt);
+		return this.settle(target, attempt);
 	}
 
-	/** The claim ended; attempts bound to it may settle if they responded. */
-	claimEnded(target: string, claimId: string): void {
+	/**
+	 * The claim ended. Returns the attempts that became settled NOW, so the
+	 * caller can remove exactly their durable records (the tracker no longer
+	 * exposes them afterwards).
+	 */
+	claimEnded(target: string, claimId: string): AbortAttempt[] {
 		const attempts = this.byTarget.get(target);
-		if (!attempts) return;
+		if (!attempts) return [];
+		const settled: AbortAttempt[] = [];
 		for (const attempt of attempts.values()) {
 			if (attempt.claimId !== claimId) continue;
 			attempt.claimEnded = true;
-			this.settle(target, attempt);
+			if (this.settle(target, attempt)) settled.push(attempt);
 		}
+		return settled;
 	}
 
-	private settle(target: string, attempt: AbortAttempt): void {
-		if (!attempt.responded || !attempt.claimEnded) return;
+	/** Returns true when the attempt was settled (and removed) by this call. */
+	private settle(target: string, attempt: AbortAttempt): boolean {
+		if (!attempt.responded || !attempt.claimEnded) return false;
 		const attempts = this.byTarget.get(target);
 		attempts?.delete(attempt.attemptId);
 		if (attempts && attempts.size === 0) this.byTarget.delete(target);
+		return true;
 	}
 
 	/** The native request was NEVER sent: drop the attempt, nothing to protect. */
@@ -52,6 +61,25 @@ export class AbortAttempts {
 		const attempts = this.byTarget.get(target);
 		attempts?.delete(attemptId);
 		if (attempts && attempts.size === 0) this.byTarget.delete(target);
+	}
+
+	/**
+	 * A VERIFIED terminal observation (after the response) settles only the
+	 * attempts that already responded; an attempt whose request never responded
+	 * stays UNKNOWN and keeps blocking.
+	 */
+	settleResponded(target: string): AbortAttempt[] {
+		const attempts = this.byTarget.get(target);
+		if (!attempts) return [];
+		const settled: AbortAttempt[] = [];
+		for (const attempt of [...attempts.values()]) {
+			if (!attempt.responded) continue;
+			// A standalone attempt has no claim whose end could be awaited: the
+			// verified terminal observation is its second condition.
+			if (attempt.claimId === "") attempt.claimEnded = true;
+			if (this.settle(target, attempt)) settled.push(attempt);
+		}
+		return settled;
 	}
 
 	frozen(target: string): boolean {

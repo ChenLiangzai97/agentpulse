@@ -1025,8 +1025,19 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 			// The old turn MUST have ended while the request was still delayed —
 			// otherwise this test proves nothing about the interleaving.
 			expect(settledDuringDelay).toBe(true);
+			const turn = await runtime.lastUserMessageId(runtime.nativeSessionId);
+			expect(await runtime.waitForNativeTermination(runtime.nativeSessionId, turn ?? "", 3000)).toBe(
+				true,
+			);
+			// A VERIFIED terminal observation does NOT clear an abort whose request
+			// is still in flight (the late request could kill the next turn).
+			const attemptsDir = join(stateDirectory, "abort-attempts", instanceId);
+			expect((await readdir(attemptsDir)).length).toBe(1);
 			await expect(runtime.prompt("still frozen")).rejects.toThrow("opencode_abort_pending");
 			await aborting;
+			// Response + claim-ended: the attempt is settled and its file removed.
+			await Bun.sleep(200);
+			expect(await readdir(attemptsDir)).toEqual([]);
 			// BOTH conditions met now: the target accepts work again.
 			await runtime.prompt("P0_HELLO");
 			await runtime.snapshot();
