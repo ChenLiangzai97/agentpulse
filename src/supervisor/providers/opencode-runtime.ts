@@ -1,3 +1,4 @@
+import { markAbort, newClaimState, observeClaim } from "./session-claim.js";
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 /** Isolated OpenCode 1.18.35 runtime. Never adopts a process or accepts a caller URL. */
@@ -285,16 +286,9 @@ export class OpenCodeRuntimePool {
 			interface Claim {
 				/** Unique per attempt: an old callback may never free a new claim. */
 				id: string;
-				kind: "prompt" | "command";
-				/** Observation generation: only snapshots STARTED after this count. */
-				createdSeq: number;
-				abortSeq?: number;
-				seenBusy: boolean;
-				/** Consecutive post-claim snapshots reporting the target NOT busy. */
-				idleObservations: number;
 				/** Native user-message id sent with this request (correlation key). */
 				messageID: string;
-				abortRequested: boolean;
+				state: ReturnType<typeof newClaimState>;
 			}
 			// native id -> in-flight claim bound to the REQUEST identity.
 			const executing = new Map<string, Claim>();
@@ -371,12 +365,8 @@ export class OpenCodeRuntimePool {
 				}
 				const claim: Claim = {
 					id: crypto.randomUUID(),
-					kind,
-					createdSeq: snapshotSeq + 1,
-					seenBusy: false,
-					idleObservations: 0,
 					messageID: `msg_ap_${crypto.randomUUID().replaceAll("-", "")}`,
-					abortRequested: false,
+					state: newClaimState(kind, snapshotSeq + 1),
 				};
 				executing.set(id, claim); // synchronous: no interleaving here
 				try {
@@ -529,10 +519,7 @@ export class OpenCodeRuntimePool {
 					// HTTP acceptance is NOT termination — the claim stays held until
 					// a snapshot proves the target idle with no in-flight reply.
 					const held = executing.get(id);
-					if (held) {
-						held.abortRequested = true;
-						held.abortSeq = snapshotSeq + 1;
-					}
+					if (held) held.state = markAbort(held.state, snapshotSeq + 1);
 					runtime.touch();
 				},
 				stop: async () => {
@@ -623,55 +610,29 @@ export class OpenCodeRuntimePool {
 					// addressable set (only an authenticated fork result does).
 					// A target is no longer executing once its native status is idle.
 					for (const [id, claim] of [...executing]) {
-						// Only an observation STARTED after the claim may speak about it.
-						if (seq < claim.createdSeq) continue;
 						const current =
 							id === native.id
 								? messages
 								: (children.find((child) => child.session.id === id)?.messages ?? []);
 						const raw = status[id]?.type;
-						if (raw === "busy" || raw === "retry") {
-							claim.seenBusy = true;
-							claim.idleObservations = 0;
-							continue;
-						}
-						// OpenCode reports only ACTIVE sessions: an absent entry is a
-						// non-busy observation, never by itself a termination proof.
-						claim.idleObservations += 1;
-						const reply = assistantFor(current, claim.messageID);
-						const quiet =
-							!permissions.some((item) => (item as { sessionID?: string }).sessionID === id) &&
-							!questions.some((item) => (item as { sessionID?: string }).sessionID === id);
-						if (claim.kind === "command") {
-							// Commands have no request correlation: settle only when an
-							// observation STARTED AFTER the claim saw it busy and now
-							// idle with no running tools on the target's last step.
-							if (
-								claim.seenBusy &&
-								claim.idleObservations >= 2 &&
-								quiet &&
-								!runningTools(current)
-							)
-								executing.delete(id);
-							continue;
-						}
-						if (claim.abortRequested && (claim.abortSeq ?? Number.POSITIVE_INFINITY) <= seq) {
-							// Abort accepted: termination needs an idle observation that
-							// began after the abort, with the turn's last step finished
-							// or the request never having produced a step.
-							if (
-								quiet &&
-								claim.idleObservations >= 2 &&
-								(abortTerminal(current, claim.messageID) ||
-									(!reply && hasUserMessage(current, claim.messageID)))
-							)
-								executing.delete(id);
-							continue;
-						}
-						// A completed turn (last step finish "stop", no running tool)
-						// is positive evidence on its own; two idle observations are
-						// only required where no request correlation exists.
-						if (quiet && turnTerminal(current, claim.messageID)) executing.delete(id);
+						const observation = {
+							seq,
+							status:
+								raw === "busy" || raw === "retry"
+									? ("busy" as const)
+									: raw === undefined
+										? ("missing" as const)
+										: ("idle" as const),
+							quiet:
+								!permissions.some((item) => (item as { sessionID?: string }).sessionID === id) &&
+								!questions.some((item) => (item as { sessionID?: string }).sessionID === id),
+							turnTerminal: turnTerminal(current, claim.messageID),
+							abortTerminal: abortTerminal(current, claim.messageID),
+							runningTools: runningTools(current),
+						};
+						const outcome = observeClaim(claim.state, observation);
+						claim.state = outcome.state;
+						if (outcome.release) executing.delete(id);
 					}
 					const boundBusy = status[native.id]?.type === "busy" || status[native.id]?.type === "retry";
 					const entry = this.instances.get(input.sessionId);
