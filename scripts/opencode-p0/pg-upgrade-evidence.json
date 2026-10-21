@@ -1,0 +1,28 @@
+{
+ "probe": "ap_upgrade_probe_4c04c35e_826d_418d_af27_4cfb22303278",
+ "columnsBefore": [
+  "created_at",
+  "generation",
+  "instance_id",
+  "native_session_id",
+  "origin",
+  "session_id"
+ ],
+ "columnsAfter": [
+  "created_at",
+  "generation",
+  "instance_id",
+  "native_session_id",
+  "origin",
+  "session_id",
+  "stop_epoch",
+  "stop_state"
+ ],
+ "preservedRow": {
+  "session_id": "upgrade-1",
+  "stop_state": "active",
+  "stop_epoch": 0
+ },
+ "forUpdate": true,
+ "ok": true
+}

@@ -42,3 +42,18 @@ test("a cancel marker with a still-running tool is NOT terminal (side effects un
 	];
 	expect(abortTerminal(list, "m")).toBe(false);
 });
+
+test("an EARLIER step's running tool blocks termination even if the last step finished", () => {
+	const list = [
+		step({ role: "assistant", parentID: "m", time: { completed: 1 }, finish: "tool-calls" }, [tool("running")]),
+		step({ role: "assistant", parentID: "m", time: { completed: 2 }, finish: "stop" }, [{ type: "text" }]),
+	];
+	expect(turnTerminal(list, "m")).toBe(false);
+	expect(abortTerminal(list, "m")).toBe(false);
+});
+
+test("unknown finish values are not terminal (whitelist: stop / none)", () => {
+	const list = [step({ role: "assistant", parentID: "m", time: { completed: 1 }, finish: "length" })];
+	expect(turnTerminal(list, "m")).toBe(false);
+	expect(abortTerminal(list, "m")).toBe(false);
+});

@@ -18,14 +18,21 @@ export const runningTools = (list: unknown[]) =>
 			}),
 	);
 
-/** A completed turn: the LAST step finished with "stop" and no tool runs. */
+/** finish whitelist: "stop" or no marker; anything else is not terminal. */
+const finishIsTerminal = (finish: unknown) => finish === "stop" || finish === undefined || finish === null;
+
+/** Running tools ANYWHERE in this turn's steps (not just the last one). */
+const turnHasRunningTools = (list: unknown[], messageID: string) =>
+	runningTools(turnAssistants(list, messageID));
+
+/** A completed turn: the LAST step ended with a terminal finish and no tool runs. */
 export const turnTerminal = (list: unknown[], messageID: string) => {
 	const last = turnAssistants(list, messageID).at(-1);
 	if (!last) return false;
 	const time = last.info.time as { completed?: unknown } | undefined;
 	if (!time?.completed || last.info.error) return false;
-	if (last.info.finish === "tool-calls") return false;
-	return !runningTools([last]);
+	if (!finishIsTerminal(last.info.finish)) return false;
+	return !turnHasRunningTools(list, messageID);
 };
 
 /**
@@ -37,11 +44,11 @@ export const turnTerminal = (list: unknown[], messageID: string) => {
 export const abortTerminal = (list: unknown[], messageID: string) => {
 	const last = turnAssistants(list, messageID).at(-1);
 	if (!last) return false;
-	// An error/cancel marker proves the NATIVE turn is over; it says nothing about
-	// tool side effects, so a still-running tool still blocks the release.
-	if (last.info.error) return !runningTools([last]);
+	// An error/cancel marker proves the NATIVE turn is over; tool side effects
+	// may still be running, and an EARLIER step's tool counts too.
+	if (last.info.error) return !turnHasRunningTools(list, messageID);
 	const time = last.info.time as { completed?: unknown } | undefined;
 	if (!time?.completed) return false;
-	if (last.info.finish === "tool-calls") return false;
-	return !runningTools([last]);
+	if (!finishIsTerminal(last.info.finish)) return false;
+	return !turnHasRunningTools(list, messageID);
 };
