@@ -20,6 +20,7 @@ import {
 	sessionControlBindings,
 	sessions,
 } from "../db/schema/index.js";
+import { config } from "../config.js";
 import { jsonExtractText } from "../db/sql-helpers.js";
 import { withTransaction } from "../db/with-transaction.js";
 import { SessionControlOriginError } from "./opencode-control-provenance.js";
@@ -188,11 +189,19 @@ export async function finalizeOpenCodeFork(
 			.limit(1);
 		if (!parent || parent.agentType !== "opencode")
 			throw new SessionControlOriginError("provider_binding_invalid");
-		const [parentBinding] = await tx
+		// ROW LOCK (PG): the protected epoch must not change between this check
+		// and the transaction commit; SQLite serializes writers anyway.
+		const parentBindingQuery = tx
 			.select()
 			.from(sessionControlBindings)
 			.where(eq(sessionControlBindings.sessionId, directParentSessionId))
 			.limit(1);
+		const [parentBinding] =
+			config.dialect === "postgres"
+				? await (parentBindingQuery as unknown as { for: (mode: "update") => Promise<unknown[]> }).for(
+						"update",
+					)
+				: await parentBindingQuery;
 		if (
 			!parentBinding ||
 			parentBinding.origin !== "agentpulse_launch" ||

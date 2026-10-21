@@ -19,6 +19,7 @@ import { withTransaction } from "../db/with-transaction.js";
 import { assertCanEditSessionNotes } from "./authorization.js";
 import { toSessionEventDtos } from "./event-dto.js";
 import { notifySessionEvents, notifySessionUpdated } from "./notifier.js";
+import { activeLeases, withControlMutex } from "./control-lease.js";
 import {
 	SessionControlOriginError,
 	assertSessionControlOrigin,
@@ -528,7 +529,7 @@ export async function queueOpenCodeAction(
 	if (!binding || binding.origin !== "agentpulse_launch")
 		throw new SessionControlOriginError("session_observe_only");
 	let forkRequestHash: string | null = null;
-	const transaction = withTransaction(async (tx) => {
+	const runTransaction = () => withTransaction(async (tx) => {
 		const fence = await tx
 			.update(providerInstances)
 			.set({ protocolVersion: "1.18.35" })
@@ -578,6 +579,10 @@ export async function queueOpenCodeAction(
 		} else if (kind === "stop") {
 			if (!controlBinding) throw new SessionControlOriginError("provider_binding_invalid");
 			if (controlBinding.stopState !== "active") throw new Error("opencode_session_already_stopping");
+			// DRAIN: an execution permit already handed out must finish before the
+			// epoch advances (the permit holds the same mutex when registering);
+			// the operator's stop is retried explicitly, never executed halfway.
+			if (activeLeases(sessionId).length > 0) throw new Error("opencode_stop_deferred");
 			controlEpoch = controlBinding.stopEpoch + 1;
 			await tx
 				.update(sessionControlBindings)
@@ -973,6 +978,7 @@ export async function queueOpenCodeAction(
 		}
 		return action;
 	});
+	const transaction = kind === "stop" ? withControlMutex(runTransaction) : runTransaction();
 	if (kind === "opencode_fork" && typeof input.idempotencyKey === "string") {
 		try {
 			return await transaction;

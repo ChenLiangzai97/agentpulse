@@ -26,6 +26,7 @@ import {
 	claimNextControlAction,
 	updateControlAction,
 } from "./control-actions.js";
+import { resetExecutionLeases } from "./control-lease.js";
 import { reserveOpenCodeInstance } from "./opencode-control-provenance.js";
 import { queueOpenCodeAction } from "./opencode-managed.js";
 
@@ -33,6 +34,7 @@ const actor = { label: "user", userId: "user-1" } as never;
 
 beforeAll(() => initializeDatabase());
 beforeEach(async () => {
+	resetExecutionLeases();
 	for (const table of [
 		providerInteractionsTable,
 		eventsTable,
@@ -246,15 +248,27 @@ test("EXECUTION permit: claim -> STOP -> permit is refused (deterministic interl
 	const claimed = await claimNextControlAction("stop-host");
 	expect(claimed?.actionType).toBe("prompt");
 	const claimToken = String((claimed?.metadata as Record<string, unknown>).claimToken ?? "");
-	// Before the stop the supervisor may execute.
+	// Before the stop the supervisor may execute: the permit takes a LEASE.
 	await expect(
 		assertExecutionPermit({ actionId: claimed?.id ?? "", supervisorId: "stop-host", claimToken }),
 	).resolves.toBeTruthy();
-	// STOP lands AFTER the claim but BEFORE native execution.
+	// STOP arriving while that lease is active is DEFERRED, not applied halfway.
+	await expect(queueOpenCodeAction(parentId, "stop", {}, actor)).rejects.toThrow(
+		"opencode_stop_deferred",
+	);
+	// Finish the leased action (its result releases the lease), then STOP wins.
+	await updateControlAction({
+		actionId: claimed?.id ?? "",
+		supervisorId: "stop-host",
+		status: "failed",
+		error: "test_done",
+	});
 	await queueOpenCodeAction(parentId, "stop", {}, actor);
+	// A permit for the OLD action is refused after the STOP (either the action is
+	// no longer running or its epoch is stale) — the execution window is closed.
 	await expect(
 		assertExecutionPermit({ actionId: claimed?.id ?? "", supervisorId: "stop-host", claimToken }),
-	).rejects.toThrow("opencode_session_stopped");
+	).rejects.toThrow(/opencode_session_stopped|provider_binding_invalid/);
 });
 
 test("a managed action WITHOUT controlEpoch is isolated at claim time, never executed", async () => {
@@ -319,4 +333,16 @@ test("an EXPIRED interaction is never resurrected as pending by a later snapshot
 		.from(providerInteractionsTable)
 		.where(eq(providerInteractionsTable.sessionId, parentId));
 	expect(after?.status).toBe("expired");
+});
+
+test("two CONCURRENT claims of the same action: exactly one wins", async () => {
+	const { parentId } = await seed();
+	await queueOpenCodeAction(parentId, "prompt", { prompt: "single winner" }, actor);
+	const [a, b] = await Promise.all([
+		claimNextControlAction("stop-host"),
+		claimNextControlAction("stop-host"),
+	]);
+	const winners = [a, b].filter(Boolean);
+	expect(winners).toHaveLength(1);
+	expect(winners[0]?.actionType).toBe("prompt");
 });

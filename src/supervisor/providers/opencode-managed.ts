@@ -304,8 +304,23 @@ export function createManagedOpenCodeProvider(
 					runtime.abortPending(target)
 				)
 					throw new Error("opencode_session_unsettled");
-				if (targetNative && targetNative !== runtime.nativeSessionId)
-					return runtime.abort(targetNative);
+				if (targetNative && targetNative !== runtime.nativeSessionId) {
+					await runtime.abort(targetNative);
+					// CONSERVATIVE: report success only once the native turn's end is
+					// confirmed (claim settled + no abort attempt in flight). The
+					// server must NOT record 'stopped' on a mere HTTP 200.
+					const deadline = Date.now() + 15_000;
+					while (Date.now() < deadline) {
+						const unresolved =
+							runtime.abortPending(targetNative) ||
+							runtime
+								.unsettledClaims()
+								.some((claim) => claim.nativeSessionId === targetNative);
+						if (!unresolved) return;
+						await Bun.sleep(150);
+					}
+					throw new Error("opencode_stop_unconfirmed");
+				}
 				return stop(runtime.sessionId);
 			}
 			// Epochs are per TARGET native session: interrupting a child must not
