@@ -706,6 +706,13 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 				"opencode_unknown_native_session",
 			);
 			expect(second.unsettledClaims().length).toBe(1);
+			// The OLD target no longer exists in the restarted instance: isolation is
+			// PROVEN (GET 404) and reconciliation clears its records. The BOUND target
+			// still exists, so reconciliation must refuse it.
+			expect(await second.reconcileUnsettled(second.nativeSessionId)).toBe(false);
+			expect(await second.reconcileUnsettled(oldNative)).toBe(true);
+			expect(second.unsettledClaims()).toEqual([]);
+			expect(second.unsettledAbortAttempts()).toEqual([]);
 			await second.stop();
 		} finally {
 			mock.kill();

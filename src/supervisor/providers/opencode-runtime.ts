@@ -93,6 +93,7 @@ export interface OpenCodeRuntime {
 		abortRequested: boolean;
 	}[];
 	abortPending(target: string): boolean;
+	reconcileUnsettled(target: string): Promise<boolean>;
 	unsettledAbortAttempts(): {
 		attemptId: string;
 		nativeSessionId: string;
@@ -782,6 +783,41 @@ export class OpenCodeRuntimePool {
 				},
 				abortPending(target: string) {
 					return abortAttempts.frozen(target);
+				},
+				/**
+				 * Explicit reconciliation of an UNKNOWN target. Isolation is PROVEN
+				 * only when the native session no longer exists (GET 404) and no abort
+				 * attempt is in flight; a quiet turn is not isolation. Clears that
+				 * target's durable claim/abort records.
+				 */
+				async reconcileUnsettled(target: string) {
+					try {
+						await request(`/session/${encodeURIComponent(target)}`);
+						// The target still exists (even if an abort is in flight): NOT
+						// isolated, keep blocking.
+						return false;
+					} catch (error) {
+						if (!/opencode_http_404/.test(String((error as Error).message))) return false;
+					}
+					// Isolation proven: drop the target's abort attempts and claims.
+					for (const attempt of abortAttempts.pending(target)) {
+						abortAttempts.abandon(target, attempt.attemptId);
+						await removeAttemptFile(attempt.attemptId);
+					}
+					unsettled.delete(target);
+					for (const name of await readdir(claimsDirectory).catch(() => [] as string[])) {
+						if (!name.endsWith(".json")) continue;
+						try {
+							const record = JSON.parse(
+								await readFile(join(claimsDirectory, name), "utf8"),
+							) as { nativeSessionId?: unknown };
+							if (record.nativeSessionId === target)
+								await unlink(join(claimsDirectory, name)).catch(() => {});
+						} catch {
+							// leave for audit
+						}
+					}
+					return true;
 				},
 				unsettledAbortAttempts() {
 					return [...persistedAttempts.values()];
