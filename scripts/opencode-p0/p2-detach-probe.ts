@@ -16,6 +16,7 @@ const root = await mkdtemp(join(tmpdir(), "ap-p2-"));
 const stateDir = join(root, "agent");
 const evidence: Record<string, unknown> = {};
 let detachedPid: number | null = null;
+let detachedStartTicks: string | null = null;
 const check = (ok: boolean, label: string) => {
 	if (!ok) throw new Error(`assertion_failed:${label}`);
 };
@@ -31,6 +32,20 @@ const launcher = Bun.spawn(
 	],
 	{ stdout: "pipe", stderr: "inherit" },
 );
+// Register cleanup identity from the LAUNCHER's own report, before any manifest
+// exists: a manifest write/read failure must not leak the detached service.
+const launcherOut = await new Response(launcher.stdout).text();
+for (const line of launcherOut.split("\n")) {
+	try {
+		const parsed = JSON.parse(line) as { launchedPid?: unknown };
+		if (typeof parsed.launchedPid === "number") {
+			detachedPid = parsed.launchedPid;
+			detachedStartTicks = await processStartTicks(detachedPid);
+		}
+	} catch {
+		// ignore non-JSON lines
+	}
+}
 const code = await launcher.exited;
 check(code === 0, "launcher-exits");
 // The supervisor is GONE. Wait for the detached service's manifest.
@@ -53,6 +68,7 @@ for (let i = 0; i < 100 && !manifest; i++) {
 check(Boolean(manifest), "manifest-written");
 const m = manifest as NonNullable<typeof manifest>;
 detachedPid = m.pid;
+detachedStartTicks = m.startTicks;
 evidence.serviceSurvivedLauncherExit = true;
 evidence.pid = m.pid;
 evidence.startTicksMatch = (await processStartTicks(m.pid)) === m.startTicks;
@@ -78,9 +94,13 @@ evidence.ok = true;
 	// Cleanup ALWAYS: assertions or network failures still reclaim the detached
 	// service started by this probe.
 	if (detachedPid !== null) {
-		try {
-			process.kill(detachedPid, "SIGKILL");
-		} catch {}
+		// Verify the process identity before signalling (never kill a recycled PID).
+		const current = await processStartTicks(detachedPid);
+		if (detachedStartTicks && current === detachedStartTicks) {
+			try {
+				process.kill(detachedPid, "SIGKILL");
+			} catch {}
+		}
 	}
 	await rm(root, { recursive: true, force: true });
 }
