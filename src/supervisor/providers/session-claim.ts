@@ -60,6 +60,12 @@ export function observeClaim(
 	// Reject out-of-order and pre-claim observations outright.
 	if (seq <= state.lastAppliedSeq || seq < state.createdSeq) return { state, release: false };
 	const next: ClaimState = { ...state, lastAppliedSeq: seq };
+	// Once an abort is requested, no observation STARTED BEFORE it may settle
+	// the claim — for prompts and commands alike. It only advances the applied
+	// sequence; counters are left untouched.
+	if (state.abortRequested && state.abortSeq !== undefined && seq < state.abortSeq) {
+		return { state: { ...state, lastAppliedSeq: seq }, release: false };
+	}
 	if (observation.status === "busy") {
 		next.seenBusy = true;
 		next.idleObservations = 0;
@@ -84,6 +90,17 @@ export function observeClaim(
 	next.idleObservations += 1;
 
 	if (state.kind === "command") {
+		if (state.abortRequested) {
+			// Commands carry no request correlation: after an abort only repeated
+			// post-abort quiet observations can settle them.
+			const release =
+				state.abortSeq !== undefined &&
+				seq >= state.abortSeq &&
+				next.idleObservations >= 2 &&
+				observation.quiet &&
+				!observation.runningTools;
+			return { state: next, release };
+		}
 		const release =
 			next.seenBusy && next.idleObservations >= 2 && observation.quiet && !observation.runningTools;
 		return { state: next, release };

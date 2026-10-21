@@ -78,3 +78,25 @@ test("pre-claim observations can never settle a claim", () => {
 	expect(out.release).toBe(false);
 	expect(out.state).toBe(state);
 });
+
+test("pre-abort terminal prompt cannot settle the claim", () => {
+	let state = newClaimState("prompt", 1);
+	state = markAbort(state, 5);
+	// The turn was already terminal when the abort was requested; that result
+	// belongs to the pre-abort observation and must not release anything.
+	const out = observeClaim(state, idle(4));
+	expect(out.release).toBe(false);
+	expect(out.state.idleObservations).toBe(0);
+});
+
+test("pre-abort command idles do not count toward the post-abort threshold", () => {
+	let state = newClaimState("command", 1);
+	state = observeClaim(state, idle(2, { status: "busy" })).state;
+	state = observeClaim(state, idle(3, { status: "busy" })).state;
+	state = markAbort(state, 5);
+	expect(observeClaim(state, idle(4)).release).toBe(false); // started pre-abort
+	let out = observeClaim(state, idle(6));
+	expect(out.release).toBe(false); // first post-abort quiet idle
+	out = observeClaim(out.state, idle(7));
+	expect(out.release).toBe(true); // second post-abort quiet idle
+});

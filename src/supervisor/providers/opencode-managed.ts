@@ -19,6 +19,11 @@ export function createManagedOpenCodeProvider(
 	deps: {
 		request: (path: string, options?: RequestInit) => Promise<unknown>;
 		verdict: (sessionId: string) => string;
+		/** Authenticated server channel for the fork RESULT (never a bare id). */
+		reportForkResult?: (
+			actionId: string,
+			body: { claimToken: string; childNativeSessionId: string },
+		) => Promise<void>;
 	},
 ) {
 	const pool = new OpenCodeRuntimePool({
@@ -330,6 +335,24 @@ export function createManagedOpenCodeProvider(
 				} finally {
 					if (promptQueues.get(epochKey) === next) promptQueues.delete(epochKey);
 				}
+				return;
+			}
+			if (action.actionType === "opencode_fork") {
+				// Fork ONLY from the bound session in this slice; the child is
+				// registered from the authenticated native result, and the SERVER
+				// finalizes the transaction. The supervisor never mints ids.
+				const claimToken = metadata.claimToken;
+				if (typeof claimToken !== "string" || !claimToken)
+					throw new Error("opencode_fork_missing_claim");
+				if (targetNative && targetNative !== runtime.nativeSessionId)
+					throw new Error("opencode_fork_child_source_unsupported");
+				const created = await runtime.forkSession(undefined, {});
+				if (!deps.reportForkResult) throw new Error("opencode_fork_report_unavailable");
+				await deps.reportForkResult(action.id, {
+					claimToken,
+					childNativeSessionId: created.id,
+				});
+				runtime.touch();
 				return;
 			}
 			if (action.actionType === "opencode_command") {

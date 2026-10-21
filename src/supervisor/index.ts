@@ -185,7 +185,18 @@ async function main() {
 	const openCode = createManagedOpenCodeProvider(
 		{ ...config, id: registration.supervisor.id },
 		home,
-		{ request, verdict: (id) => gate.verdict(id) },
+		{
+			request,
+			verdict: (id) => gate.verdict(id),
+			// Fork results go to the AUTHENTICATED endpoint; the server mints all
+			// ids and commits the single transaction. Entry points stay CLOSED.
+			reportForkResult: async (actionId, body) => {
+				await request(
+					`/supervisors/${registration.supervisor.id}/control-actions/${actionId}/fork-result`,
+					{ method: "POST", body: JSON.stringify(body) },
+				);
+			},
+		},
 	);
 	for (const signal of ["SIGTERM", "SIGINT"] as const)
 		process.on(signal, () => void openCode.close().finally(() => process.exit(0)));

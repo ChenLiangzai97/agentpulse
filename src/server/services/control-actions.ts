@@ -163,6 +163,12 @@ function mapControlAction(row: typeof controlActions.$inferSelect): ControlActio
 	};
 }
 
+/** One action by id (fork-result reporting); finalize enforces supervisor scope. */
+export async function getControlAction(actionId: string) {
+	const [row] = await getDb().select().from(controlActions).where(eq(controlActions.id, actionId)).limit(1);
+	return row ? mapControlAction(row) : null;
+}
+
 export async function listControlActionsForSession(sessionId: string) {
 	const rows = await getDb()
 		.select()

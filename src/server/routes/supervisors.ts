@@ -30,7 +30,15 @@ import {
 	assertCanManageHost,
 	isHostTokenCreatorStillAllowed,
 } from "../services/authorization.js";
-import { claimNextControlAction, updateControlAction } from "../services/control-actions.js";
+import {
+	claimNextControlAction,
+	getControlAction,
+	updateControlAction,
+} from "../services/control-actions.js";
+import {
+	finalizeOpenCodeFork,
+	type FinalizeForkInput,
+} from "../services/opencode-fork-service.js";
 import { claimNextLaunchRequest, updateLaunchDispatchStatus } from "../services/launch-dispatch.js";
 import { associateObservedSession } from "../services/launch-dispatch.js";
 import { cleanMachineName } from "../services/machine-name.js";
@@ -544,6 +552,40 @@ supervisorsAgentRouter.post(
 		});
 		if (!action) return c.json({ error: "Control action not found" }, 404);
 		return c.json({ action });
+	},
+);
+
+supervisorsAgentRouter.post(
+	"/supervisors/:id/control-actions/:actionId/fork-result",
+	requireSupervisorAuth(),
+	async (c) => {
+		const supervisorId = c.req.param("id") ?? "";
+		const actionId = c.req.param("actionId") ?? "";
+		const body = await c.req.json<{ claimToken?: string; childNativeSessionId?: string }>();
+		if (!body.claimToken || !body.childNativeSessionId)
+			return c.json({ error: "fork_result_incomplete" }, 400);
+		const action = await getControlAction(actionId);
+		if (!action) return c.json({ error: "control_action_not_found" }, 404);
+		const metadata = (action.metadata ?? {}) as Record<string, unknown>;
+		const snapshot = metadata.parentSnapshot;
+		// The parent snapshot is PINNED when the fork was accepted; a report
+		// without it has no authorization evidence to verify.
+		if (!snapshot || typeof snapshot !== "object")
+			return c.json({ error: "fork_snapshot_missing" }, 409);
+		try {
+			const result = await finalizeOpenCodeFork({
+				actionId,
+				supervisorId,
+				claimToken: body.claimToken,
+				childNativeSessionId: body.childNativeSessionId,
+				parentSnapshot: snapshot as FinalizeForkInput["parentSnapshot"],
+			});
+			return c.json(result);
+		} catch (error) {
+			if (error instanceof SessionControlOriginError)
+				return c.json({ error: error.code }, error.status);
+			throw error;
+		}
 	},
 );
 
