@@ -73,7 +73,15 @@ export interface OpenCodeRuntime {
 	touch(): void;
 	/** Registers a child from an AUTHENTICATED fork result (never from snapshots). */
 	registerManagedChild(nativeSessionId: string): void;
-	/** Native fork from an addressable session; registers the child on success. */
+	/** Evidence captured in the controlled window before executing a fork. */
+	captureForkSnapshot(forkPointMessageId?: string | null): Promise<{
+		version: 1;
+		instanceId: string;
+		nativeSessionId: string;
+		messages: { nativeId: string; contentHash: string }[];
+		forkPointMessageId: string | null;
+	}>;
+	/** Root-session full fork only; the child stays unaddressable until confirmed. */
 	forkSession(
 		nativeSessionId?: string,
 		body?: Record<string, unknown>,
@@ -387,16 +395,40 @@ export class OpenCodeRuntimePool {
 			};
 			const subscriptions = new Set<() => void>();
 			const runtime: OpenCodeRuntime = {
+				/**
+				 * Evidence captured in the CONTROLLED WINDOW before the native fork.
+				 * The server verifies this exact snapshot; the action metadata mirror
+				 * is NOT accepted as evidence.
+				 */
+				async captureForkSnapshot(forkPointMessageId?: string | null) {
+					const list = await request<unknown[]>(`${nativePath}/message`);
+					const { createHash } = await import("node:crypto");
+					const messages = list.map((item) => {
+						const info = (item as { info?: { id?: unknown; role?: unknown } })?.info;
+						return {
+							nativeId: String(info?.id ?? ""),
+							contentHash: createHash("sha256").update(JSON.stringify(item)).digest("hex"),
+						};
+					});
+					return {
+						version: 1 as const,
+						instanceId: input.instanceId,
+						nativeSessionId: native.id,
+						messages,
+						forkPointMessageId: forkPointMessageId ?? null,
+					};
+				},
 				async forkSession(nativeSessionId?: string, body?: Record<string, unknown>) {
-					const path = pathFor(nativeSessionId);
-					const created = await request<{ id?: unknown; parentID?: unknown }>(`${path}/fork`, {
+					// SLICE LIMIT: only the bound root session, full-history fork.
+					if (nativeSessionId && nativeSessionId !== native.id)
+						throw new Error("opencode_fork_child_source_unsupported");
+					const created = await request<{ id?: unknown; parentID?: unknown }>(`${nativePath}/fork`, {
 						...(body ?? {}),
 					});
 					if (typeof created?.id !== "string" || !/^ses_[A-Za-z0-9_-]+$/.test(created.id))
 						throw new Error("opencode_fork_invalid_result");
-					// Registration happens ONLY here: an authenticated native result,
-					// never a snapshot guess.
-					knownSessions.add(created.id);
+					// NOT addressable yet: registration is granted only after the
+					// server commits the managed binding (registerManagedChild).
 					return { id: created.id, parentID: typeof created.parentID === "string" ? created.parentID : null };
 				},
 				registerManagedChild(nativeSessionId: string) {

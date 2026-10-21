@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { realpath } from "node:fs/promises";
+import { readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { writePrivateFileSyncNoFollow } from "../../shared/private-file.js";
 import type { ControlAction, LaunchRequest } from "../../shared/types.js";
@@ -13,6 +14,14 @@ import {
 } from "./opencode-recovery.js";
 import { OpenCodeRuntimePool } from "./opencode-runtime.js";
 
+type ForkSnapshot = {
+	version: 1;
+	instanceId: string;
+	nativeSessionId: string;
+	messages: { nativeId: string; contentHash: string }[];
+	forkPointMessageId: string | null;
+};
+
 export function createManagedOpenCodeProvider(
 	config: SupervisorConfig,
 	home: string,
@@ -22,8 +31,12 @@ export function createManagedOpenCodeProvider(
 		/** Authenticated server channel for the fork RESULT (never a bare id). */
 		reportForkResult?: (
 			actionId: string,
-			body: { claimToken: string; childNativeSessionId: string },
-		) => Promise<void>;
+			body: {
+				claimToken: string;
+				childNativeSessionId: string;
+				parentSnapshot: ForkSnapshot;
+			},
+		) => Promise<unknown>;
 	},
 ) {
 	const pool = new OpenCodeRuntimePool({
@@ -341,17 +354,57 @@ export function createManagedOpenCodeProvider(
 				// Fork ONLY from the bound session in this slice; the child is
 				// registered from the authenticated native result, and the SERVER
 				// finalizes the transaction. The supervisor never mints ids.
+				// PRECONDITIONS FIRST: no native fork when the result channel is
+				// missing or the source is outside this slice.
 				const claimToken = metadata.claimToken;
 				if (typeof claimToken !== "string" || !claimToken)
 					throw new Error("opencode_fork_missing_claim");
 				if (targetNative && targetNative !== runtime.nativeSessionId)
 					throw new Error("opencode_fork_child_source_unsupported");
-				const created = await runtime.forkSession(undefined, {});
 				if (!deps.reportForkResult) throw new Error("opencode_fork_report_unavailable");
+				// A previous attempt that already forked natively must ONLY report
+				// again (durable pending record in the instance directory).
+				const pendingPath = join(runtime.directory, `pending-fork-${action.id}.json`);
+				let pending: { claimToken: string; childNativeSessionId: string } | null = null;
+				try {
+					pending = JSON.parse(await readFile(pendingPath, "utf8"));
+				} catch {
+					pending = null;
+				}
+				if (!pending) {
+					// Controlled window: capture the parent snapshot BEFORE forking.
+					const parentSnapshot = await runtime.captureForkSnapshot(
+						typeof metadata.forkPointMessageId === "string" ? metadata.forkPointMessageId : null,
+					);
+					const created = await runtime.forkSession(undefined, {});
+					pending = { claimToken, childNativeSessionId: created.id };
+					await writeFile(pendingPath, JSON.stringify({ ...pending, parentSnapshot }), {
+						mode: 0o600,
+					});
+					const result = await deps.reportForkResult(action.id, {
+						claimToken: pending.claimToken,
+						childNativeSessionId: pending.childNativeSessionId,
+						parentSnapshot,
+					});
+					void result;
+					// ONLY after the server confirms the managed binding may the
+					// runtime address the child for user control.
+					runtime.registerManagedChild(pending.childNativeSessionId);
+					await unlink(pendingPath).catch(() => {});
+					runtime.touch();
+					return;
+				}
+				// Pending record exists: re-report exactly, never fork twice.
+				const record = JSON.parse(await readFile(pendingPath, "utf8")) as {
+					parentSnapshot: ForkSnapshot;
+				};
 				await deps.reportForkResult(action.id, {
-					claimToken,
-					childNativeSessionId: created.id,
+					claimToken: pending.claimToken,
+					childNativeSessionId: pending.childNativeSessionId,
+					parentSnapshot: record.parentSnapshot,
 				});
+				runtime.registerManagedChild(pending.childNativeSessionId);
+				await unlink(pendingPath).catch(() => {});
 				runtime.touch();
 				return;
 			}

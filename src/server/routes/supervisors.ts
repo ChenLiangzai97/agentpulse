@@ -561,15 +561,19 @@ supervisorsAgentRouter.post(
 	async (c) => {
 		const supervisorId = c.req.param("id") ?? "";
 		const actionId = c.req.param("actionId") ?? "";
-		const body = await c.req.json<{ claimToken?: string; childNativeSessionId?: string }>();
+		const body = await c.req.json<{
+			claimToken?: string;
+			childNativeSessionId?: string;
+			parentSnapshot?: unknown;
+		}>();
 		if (!body.claimToken || !body.childNativeSessionId)
 			return c.json({ error: "fork_result_incomplete" }, 400);
 		const action = await getControlAction(actionId);
 		if (!action) return c.json({ error: "control_action_not_found" }, 404);
-		const metadata = (action.metadata ?? {}) as Record<string, unknown>;
-		const snapshot = metadata.parentSnapshot;
-		// The parent snapshot is PINNED when the fork was accepted; a report
-		// without it has no authorization evidence to verify.
+		// The supervisor captured this snapshot in the CONTROLLED WINDOW before
+		// the native fork; finalize verifies it against the binding. The action
+		// metadata mirror is deliberately NOT accepted as evidence.
+		const snapshot = (body as { parentSnapshot?: unknown }).parentSnapshot;
 		if (!snapshot || typeof snapshot !== "object")
 			return c.json({ error: "fork_snapshot_missing" }, 409);
 		try {

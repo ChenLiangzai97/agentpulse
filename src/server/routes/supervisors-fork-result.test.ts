@@ -67,3 +67,48 @@ describe("POST /supervisors/:id/control-actions/:actionId/fork-result", () => {
 		expect(await res.json()).toEqual({ error: "fork_snapshot_missing" });
 	});
 });
+
+test("the pinned snapshot cannot come from the action metadata mirror", async () => {
+	const actionId = crypto.randomUUID();
+	await getDb()
+		.insert(controlActions)
+		.values({
+			id: actionId,
+			sessionId: null,
+			actionType: "opencode_fork",
+			status: "running",
+			metadata: { claimToken: "t", parentSnapshot: { version: 1 } },
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		});
+	const res = await post(actionId, { claimToken: "t", childNativeSessionId: "ses_x" });
+	expect(res.status).toBe(409);
+});
+
+test("a non-fork action cannot be finalized as a fork", async () => {
+	const actionId = crypto.randomUUID();
+	await getDb()
+		.insert(controlActions)
+		.values({
+			id: actionId,
+			sessionId: null,
+			actionType: "stop",
+			status: "running",
+			metadata: { claimToken: "t" },
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		});
+	const res = await post(actionId, {
+		claimToken: "t",
+		childNativeSessionId: "ses_x",
+		parentSnapshot: {
+			version: 1,
+			instanceId: "i",
+			nativeSessionId: "ses_y",
+			messages: [],
+			forkPointMessageId: null,
+		},
+	});
+	expect(res.status).toBe(403);
+	expect(await res.json()).toEqual({ error: "provider_binding_invalid" });
+});
