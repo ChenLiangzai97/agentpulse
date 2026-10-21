@@ -9,6 +9,7 @@ import {
 	events,
 	controlActions,
 	managedSessions,
+	opencodeForks,
 	providerInstances,
 	providerInteractions,
 	sessionControlBindings,
@@ -115,15 +116,43 @@ export async function acceptOpenCodeSnapshot(
 	},
 ) {
 	const instance = await ownedOpenCodeInstance(supervisorId, instanceId, rawInput.generation, true);
-	const [binding] = await getDb()
+	// A3 snapshot routing (fork design §A3): the snapshot's nativeSessionId
+	// decides WHICH session this snapshot belongs to — the launching session's
+	// own binding, or a fork child's binding ON THE SAME INSTANCE registered
+	// in the trusted 0015 ledger. A native session with NO matching binding is
+	// rejected (never silently attached, never auto-created as external).
+	const instanceBindings = await getDb()
 		.select()
 		.from(sessionControlBindings)
-		.where(eq(sessionControlBindings.sessionId, instance.sessionId));
+		.where(eq(sessionControlBindings.instanceId, instanceId));
+	const instanceSessionId = instance.sessionId;
+	const binding: (typeof instanceBindings)[number] | undefined =
+		instanceBindings.find(
+			(b) =>
+				b.origin === "agentpulse_launch" &&
+				b.generation === rawInput.generation &&
+				b.nativeSessionId === rawInput.nativeSessionId &&
+				b.sessionId === instanceSessionId,
+		) ??
+		(await (async () => {
+			// child candidates: same instance, same generation, matching native id,
+			// and a TRUSTED fork-ledger row for that child session
+			const child = instanceBindings.find(
+				(b) =>
+					b.origin === "agentpulse_launch" &&
+					b.generation === rawInput.generation &&
+					b.nativeSessionId === rawInput.nativeSessionId &&
+					b.sessionId !== instanceSessionId,
+			);
+			if (!child) return undefined;
+			const ledger = await getDb()
+				.select({ child: opencodeForks.childSessionId })
+				.from(opencodeForks)
+				.where(eq(opencodeForks.childSessionId, child.sessionId));
+			return ledger.length > 0 ? child : undefined;
+		})());
 	if (
-		binding?.origin !== "agentpulse_launch" ||
-		binding.instanceId !== instanceId ||
-		binding.generation !== rawInput.generation ||
-		binding.nativeSessionId !== rawInput.nativeSessionId ||
+		!binding ||
 		!Array.isArray(rawInput.messages) ||
 		!Array.isArray(rawInput.permissions) ||
 		!Array.isArray(rawInput.questions)
@@ -183,7 +212,7 @@ export async function acceptOpenCodeSnapshot(
 		await getDb()
 			.update(sessions)
 			.set({ metadata: metadataSetSql({ opencodeCatalog: catalog }) })
-			.where(eq(sessions.sessionId, instance.sessionId));
+			.where(eq(sessions.sessionId, binding.sessionId));
 	}
 	const historical = instance.generation !== rawInput.generation;
 	const interruptedReplay = historical || object(rawInput.status).type === "interrupted";
@@ -274,7 +303,7 @@ export async function acceptOpenCodeSnapshot(
 				const [before] = await tx
 					.select()
 					.from(events)
-					.where(and(eq(events.sessionId, instance.sessionId), eq(events.dedupKey, dedupKey)));
+					.where(and(eq(events.sessionId, binding.sessionId), eq(events.dedupKey, dedupKey)));
 				if (before?.rawPayload?.observer_fingerprint === normalized.rawPayload.observer_fingerprint)
 					continue;
 				const row = {
@@ -285,7 +314,7 @@ export async function acceptOpenCodeSnapshot(
 				};
 				const rows = await tx
 					.insert(events)
-					.values({ ...row, sessionId: instance.sessionId })
+					.values({ ...row, sessionId: binding.sessionId })
 					.onConflictDoUpdate({ target: [events.sessionId, events.dedupKey], set: row })
 					.returning();
 				changedRows.push(...rows);
@@ -306,7 +335,7 @@ export async function acceptOpenCodeSnapshot(
 				await tx
 					.insert(providerInteractions)
 					.values({
-						sessionId: instance.sessionId,
+						sessionId: binding.sessionId,
 						instanceId,
 						generation: input.generation,
 						nativeRequestId: payload.id,
@@ -376,11 +405,11 @@ export async function acceptOpenCodeSnapshot(
 		const tools = await tx
 			.select({ count: sql<number>`count(*)` })
 			.from(events)
-			.where(and(eq(events.sessionId, instance.sessionId), eq(events.category, "tool_event")));
+			.where(and(eq(events.sessionId, binding.sessionId), eq(events.category, "tool_event")));
 		const [session] = await tx
 			.select()
 			.from(sessions)
-			.where(eq(sessions.sessionId, instance.sessionId));
+			.where(eq(sessions.sessionId, binding.sessionId));
 		await tx
 			.update(sessions)
 			.set({
@@ -403,16 +432,16 @@ export async function acceptOpenCodeSnapshot(
 					opencodeManaged: { status: input.status, pending: pendingKeys.size },
 				}),
 			})
-			.where(eq(sessions.sessionId, instance.sessionId));
+			.where(eq(sessions.sessionId, binding.sessionId));
 		return changedRows;
 	});
 	const [updated] = await getDb()
 		.select()
 		.from(sessions)
-		.where(eq(sessions.sessionId, instance.sessionId));
+		.where(eq(sessions.sessionId, binding.sessionId));
 	await persistManagedChildren(instance, children, interruptedReplay);
 	notifySessionUpdated(updated);
-	notifySessionEvents(instance.sessionId, toSessionEventDtos(changed));
+	notifySessionEvents(binding.sessionId, toSessionEventDtos(changed));
 	return { changed: changed.length };
 }
 export async function listOpenCodeInteractions(sessionId: string) {

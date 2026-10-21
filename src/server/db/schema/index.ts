@@ -125,4 +125,9 @@ export const providerInstances = active.providerInstances as typeof sqliteSchema
 export const sessionControlBindings =
 	active.sessionControlBindings as typeof sqliteSchema.sessionControlBindings;
 
-export const providerInteractions = active.providerInteractions as typeof sqliteSchema.providerInteractions;
+export const providerInteractions =
+	active.providerInteractions as typeof sqliteSchema.providerInteractions;
+
+export const opencodeForks = active.opencodeForks as typeof sqliteSchema.opencodeForks;
+export const opencodeForkRequests =
+	active.opencodeForkRequests as typeof sqliteSchema.opencodeForkRequests;

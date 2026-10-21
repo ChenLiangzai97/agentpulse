@@ -5,6 +5,7 @@ import { getDb } from "../db/client.js";
 import {
 	launchRequests,
 	managedSessions,
+	opencodeForks,
 	providerInstances,
 	sessionControlBindings,
 	sessions,
@@ -227,7 +228,34 @@ export async function inspectOpenCodeProvenance(sessionId: string) {
 	//    origin (parent-scoped launch checks), supervisor and generation.
 	const isInstanceLaunchingSession =
 		instance?.agentType === "opencode" && instance.sessionId === sessionId;
-	const childPathValid = false; // CLOSED until the 0015 fork ledger lands
+	// Child path: a fork child on the SAME instance, with a TRUSTED ledger row
+	// naming THIS session as the child. Verified below (async) — the parent-
+	// scoped launch checks still apply to the INSTANCE (managed_opencode etc.),
+	// and the child's own managed row must agree on supervisor + native id.
+	let childLedgerRow: { childSessionId: string } | undefined;
+	if (!isInstanceLaunchingSession && binding.instanceId) {
+		const ledgerRows = await getDb()
+			.select({ childSessionId: opencodeForks.childSessionId })
+			.from(opencodeForks)
+			.where(eq(opencodeForks.childSessionId, sessionId))
+			.limit(1);
+		childLedgerRow = ledgerRows[0];
+	}
+	const childPathValid = Boolean(
+		childLedgerRow &&
+			session?.agentType === "opencode" &&
+			instance?.agentType === "opencode" &&
+			instance.sessionId !== sessionId &&
+			instance.generation === binding.generation &&
+			(instance.state === "running" || instance.state === "reserved") &&
+			session.cwd === instance.cwd &&
+			managed?.supervisorId === instance.supervisorId &&
+			managed?.providerSessionId === binding.nativeSessionId &&
+			launch?.agentType === "opencode" &&
+			launch.requestedLaunchMode === "managed_opencode" &&
+			launch.claimedBySupervisorId === instance.supervisorId &&
+			!launch.metadata?.boundExistingSession,
+	);
 	const parentPathValid = Boolean(
 		isInstanceLaunchingSession &&
 			session?.agentType === "opencode" &&

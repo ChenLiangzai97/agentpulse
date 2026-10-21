@@ -65,3 +65,7 @@ export {
 } from "./core/provider-control.js";
 
 export { providerInteractionsPg as providerInteractions } from "./core/provider-interactions.js";
+export {
+	opencodeForksPg as opencodeForks,
+	opencodeForkRequestsPg as opencodeForkRequests,
+} from "./core/opencode-forks.js";
