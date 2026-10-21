@@ -804,7 +804,19 @@ export class OpenCodeRuntimePool {
 					// Remove the durable records FIRST; any failure keeps the target
 					// blocked and observable instead of reporting success.
 					const remaining: string[] = [];
-					for (const name of await readdir(claimsDirectory).catch(() => [] as string[])) {
+					let claimFiles: string[];
+					try {
+						claimFiles = await readdir(claimsDirectory);
+					} catch (error) {
+						// Cannot enumerate the durable records: NOT a clean state.
+						cleanupIssues.push({
+							claimId: target,
+							path: claimsDirectory,
+							error: error instanceof Error ? error.message : "reconcile_readdir_failed",
+						});
+						return false;
+					}
+					for (const name of claimFiles) {
 						if (!name.endsWith(".json")) continue;
 						const path = join(claimsDirectory, name);
 						try {

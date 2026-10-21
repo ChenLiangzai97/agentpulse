@@ -1332,3 +1332,87 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 	},
 	120000,
 );
+
+
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: reconcile FAILS when the durable claim directory cannot be read",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-reconcile-io-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": { name: "Fixture", tool_call: true, limit: { context: 32768, output: 2048 } },
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const cwd = join(root, "project");
+		await mkdir(cwd);
+		const stateDirectory = join(root, "state");
+		const instanceId = "reconcile-io-instance";
+		const claimsDir = join(stateDirectory, "claims", instanceId);
+		await mkdir(claimsDir, { recursive: true });
+		// A persisted unsettled claim for a target that does NOT exist natively.
+		const { chmod } = await import("node:fs/promises");
+		await writeFile(
+			join(claimsDir, "ghost.json"),
+			JSON.stringify({
+				version: 1,
+				instanceId,
+				generation: 1,
+				nativeSessionId: "ses_ghost_target",
+				messageID: "msg_ghost",
+				kind: "prompt",
+				createdAt: new Date().toISOString(),
+			}),
+		);
+		const pool = new OpenCodeRuntimePool({
+			executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+			profilePath,
+			stateDirectory,
+			maxInstances: 1,
+			idleTimeoutMs: 60000,
+			stopGraceMs: 1000,
+		});
+		try {
+			const runtime = await pool.start({
+				instanceId,
+				generation: 1,
+				sessionId: "reconcile-io-session",
+				cwd,
+				title: "reconcile io",
+			});
+			await chmod(claimsDir, 0o000);
+			expect(await runtime.reconcileUnsettled("ses_ghost_target")).toBe(false);
+			expect(runtime.cleanupIssues().some((issue) => issue.path === claimsDir)).toBe(true);
+			await chmod(claimsDir, 0o700);
+			await runtime.stop();
+		} finally {
+			await chmod(claimsDir, 0o700).catch(() => {});
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+	120000,
+);
