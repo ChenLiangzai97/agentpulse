@@ -20,13 +20,14 @@
 审批 UI 与常驻进程**不直接搬运**。任何“复制历史 prompt 冒充恢复”的做法禁止。
 
 
-## 1a. BotMux 日常能力盘点（证据：`botmux v3.34.0` CLI help，2026-10-21）
-> 证据口径：`botmux --help` / `botmux send --help` 的实际输出；未在 help 中声明的
-> 行为标“未知”，不以推测补全。
+## 1a. BotMux 日常能力盘点（`botmux v3.34.0`，2026-10-21）
+> 证据口径：`botmux --help` / `botmux send --help` 的**实际输出快照**见
+> `scripts/opencode-p0/botmux-help-snapshot.txt`；未在该快照中声明的行为标“未知”，
+> 不以推测补全。help 描述 **不等于运行实测**；运行行为需按验收用例实测。
 
 | 能力 | BotMux 实际行为（证据） | AgentPulse 覆盖 | 缺口 | 优先级 | 复用/重写 | 验收用例 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 身份/路由 | `actor current --json`：仅本 turn、脱离进程树拒绝、只给企业用户名（不暴露 open_id/邮箱）；`list`/`observe` 输出 session/worker JSON；`bots list` 给 open_id | sessions + bindings（instance/native/generation）、Actor | BotMux 的已验证 turn 身份未接入 AgentPulse Actor 链 | P1 | 复用 Actor 概念，建立“BotMux turn → Actor”受保护映射 | 伪造 turn/跨进程调用 actor 被拒；两主机同目录不误路由 |
+| 身份/路由 | `actor current --json`：仅本 turn、脱离进程树拒绝、只给企业**用户名**（不暴露 open_id/邮箱）；`list`/`observe` 输出 session/worker JSON；`bots list` 给 open_id | sessions + bindings（instance/native/generation）、Actor | 用户名可重名/可改名，**不能直接映射为授权 userId**；BotMux 的已验证 turn 身份未接入 AgentPulse Actor 链 | P1 | 复用 Actor 概念；授权主体只接受受信稳定标识（如 open_id/union_id 的服务端解析）或保持**未知**，显示名仅用于展示 | 伪造 turn/跨进程 actor 被拒；同名不同主体不共享授权 |
 | 会话桥接 | `list`、`observe`（失败保持 unknown，不回退缓存）、`delete`/`delete stopped`、`resume`、`suspend`（杀 CLI 保会话，下条消息冷启动）、`term-link` | 受管会话/停止代数/恢复（开放） | 冷启动续上下文与 AgentPulse 停止/恢复语义未对齐；suspend 属“停止运行实例” | P1 | 复用 resume 语义，映射 suspend/resume 到停止/恢复状态机 | 关闭浏览器/刷新/中央重启后同一 native 身份；suspend→消息→新进程且不重发 |
 | 附件与交付回执 | `send --images/--files/--videos/--video-covers/--card-file/--card-json`；`--response-kind progress|final|auxiliary`；`turn-send-ledger inspect|resolve --outcome delivered|not-delivered`；`history` 带 resources、`quoted` 下载附件 | events/attachments（web 侧）、无 IM 回执 | 无“发出去但回执未知”的本地账本；附件权限模型缺失 | P1 | 复用 BotMux 账本语义，落 AgentPulse 交付状态（unknown→人工 resolve） | 模拟响应丢失：状态保持 unknown，不重发；resolve 后仅补一次 |
 | 审批问答 | `ask buttons [--multi]`；`auth request`/`auth wait`（本轮发起人授权，5 分钟）；`--attention`（authz/decision/blocked） | provider_interactions（pending→resolved/expired） | 审批身份未与 turn Actor 绑定；按钮 key 与 AgentPulse 审批 id 未映射 | P1 | 重写审批 UI 适配层，审批结果写回 provider_interactions | 旧 Actor/过期审批/重复点击拒绝；审批人身份可验证 |
@@ -51,7 +52,8 @@ service 与 AgentPulse 运行服务的端口/资源冲突。
 - **附件权限**：附件读取按会话 owner + 显式 include 规则；BotMux 附件 key 与
   AgentPulse 附件记录建立受保护映射，不暴露本机路径或 token。
 - **交付未知**：发送结果三态（delivered/not-delivered/unknown），unknown 不自动
-  重发；由 `turn-send-ledger` 式人工 resolve 后仅补一次。
+  重发；`resolve=delivered` 后**不得补发**，只有确认 `not-delivered` 才允许受
+  幂等键约束的重试（`turn-send-ledger resolve --outcome ...` 的语义）。
 
 ## 1c. 灰度、兼容与回滚
 - **单测试会话灰度**：只对 `AGENTPULSE_P5_CANARY_SESSION` 指定的一个会话启用新
