@@ -72,6 +72,11 @@ export interface OpenCodeRuntime {
 	touch(): void;
 	/** Registers a child from an AUTHENTICATED fork result (never from snapshots). */
 	registerManagedChild(nativeSessionId: string): void;
+	/** Native fork from an addressable session; registers the child on success. */
+	forkSession(
+		nativeSessionId?: string,
+		body?: Record<string, unknown>,
+	): Promise<{ id: string; parentID: string | null }>;
 	subscribe(onEvent: () => void): () => void;
 }
 
@@ -281,12 +286,20 @@ export class OpenCodeRuntimePool {
 				/** Unique per attempt: an old callback may never free a new claim. */
 				id: string;
 				kind: "prompt" | "command";
+				/** Observation generation: only snapshots STARTED after this count. */
+				createdSeq: number;
+				abortSeq?: number;
+				seenBusy: boolean;
+				/** Consecutive post-claim snapshots reporting the target NOT busy. */
+				idleObservations: number;
 				/** Native user-message id sent with this request (correlation key). */
 				messageID: string;
 				abortRequested: boolean;
 			}
 			// native id -> in-flight claim bound to the REQUEST identity.
 			const executing = new Map<string, Claim>();
+			/** Incremented BEFORE the first await of each snapshot (observation gen). */
+			let snapshotSeq = 0;
 			// Targets must be in the TRUSTED addressable set (bound session or a
 			// child registered from an authenticated fork result).
 			// Correlation helpers over the native message list. The COMPLETION of
@@ -297,6 +310,43 @@ export class OpenCodeRuntimePool {
 					const info = (item as { info?: Record<string, unknown> })?.info;
 					return info?.role === "assistant" && info?.parentID === messageID;
 				}) as { info?: Record<string, unknown> } | undefined;
+			/** Every assistant step of ONE request (all share the user message id). */
+			const turnAssistants = (list: unknown[], messageID: string) =>
+				list.filter((item) => {
+					const info = (item as { info?: Record<string, unknown> })?.info;
+					return info?.role === "assistant" && info?.parentID === messageID;
+				}) as { info: Record<string, unknown> }[];
+			/**
+			 * A turn is terminal only when its LAST assistant step completed with
+			 * finish "stop" (a completed intermediate step with finish
+			 * "tool-calls" is not the end of the turn) and that step has no
+			 * running tool. Earlier steps' stale parts are irrelevant.
+			 */
+			/** Abort case: the last step is completed OR carries an error (cancelled). */
+			const abortTerminal = (list: unknown[], messageID: string) => {
+				const last = turnAssistants(list, messageID).at(-1);
+				if (!last) return false;
+				const time = last.info.time as { completed?: unknown } | undefined;
+				return Boolean(time?.completed) || Boolean(last.info.error);
+			};
+			const turnTerminal = (list: unknown[], messageID: string) => {
+				const steps = turnAssistants(list, messageID);
+				const last = steps.at(-1);
+				if (!last) return false;
+				const time = last.info.time as { completed?: unknown } | undefined;
+				if (!time?.completed || last.info.error) return false;
+				if (last.info.finish !== "stop") return false;
+				return !runningTools([last]);
+			};
+			const runningTools = (list: unknown[]) =>
+				list.some(
+					(value) =>
+						Array.isArray((value as { parts?: unknown[] }).parts) &&
+						(value as { parts: unknown[] }).parts.some((part) => {
+							const p = part as { type?: string; state?: { status?: string } };
+							return p.type === "tool" && ["running", "pending"].includes(p.state?.status ?? "");
+						}),
+				);
 			const hasUserMessage = (list: unknown[], messageID: string) =>
 				list.some((item) => {
 					const info = (item as { info?: Record<string, unknown> })?.info;
@@ -322,6 +372,9 @@ export class OpenCodeRuntimePool {
 				const claim: Claim = {
 					id: crypto.randomUUID(),
 					kind,
+					createdSeq: snapshotSeq + 1,
+					seenBusy: false,
+					idleObservations: 0,
 					messageID: `msg_ap_${crypto.randomUUID().replaceAll("-", "")}`,
 					abortRequested: false,
 				};
@@ -344,6 +397,18 @@ export class OpenCodeRuntimePool {
 			};
 			const subscriptions = new Set<() => void>();
 			const runtime: OpenCodeRuntime = {
+				async forkSession(nativeSessionId?: string, body?: Record<string, unknown>) {
+					const path = pathFor(nativeSessionId);
+					const created = await request<{ id?: unknown; parentID?: unknown }>(`${path}/fork`, {
+						...(body ?? {}),
+					});
+					if (typeof created?.id !== "string" || !/^ses_[A-Za-z0-9_-]+$/.test(created.id))
+						throw new Error("opencode_fork_invalid_result");
+					// Registration happens ONLY here: an authenticated native result,
+					// never a snapshot guess.
+					knownSessions.add(created.id);
+					return { id: created.id, parentID: typeof created.parentID === "string" ? created.parentID : null };
+				},
 				registerManagedChild(nativeSessionId: string) {
 					if (!/^ses_[A-Za-z0-9_-]+$/.test(nativeSessionId))
 						throw new Error("opencode_invalid_child_session");
@@ -464,7 +529,10 @@ export class OpenCodeRuntimePool {
 					// HTTP acceptance is NOT termination — the claim stays held until
 					// a snapshot proves the target idle with no in-flight reply.
 					const held = executing.get(id);
-					if (held) held.abortRequested = true;
+					if (held) {
+						held.abortRequested = true;
+						held.abortSeq = snapshotSeq + 1;
+					}
 					runtime.touch();
 				},
 				stop: async () => {
@@ -485,6 +553,11 @@ export class OpenCodeRuntimePool {
 					await rm(configPath, { force: true });
 				},
 				snapshot: async () => {
+					// Observation generation: a snapshot that began BEFORE a claim
+					// (or before an abort) can never settle it, even if it returns
+					// later with a stale idle status.
+					const seq = ++snapshotSeq;
+					
 					const [
 						messages,
 						permissions,
@@ -550,31 +623,55 @@ export class OpenCodeRuntimePool {
 					// addressable set (only an authenticated fork result does).
 					// A target is no longer executing once its native status is idle.
 					for (const [id, claim] of [...executing]) {
+						// Only an observation STARTED after the claim may speak about it.
+						if (seq < claim.createdSeq) continue;
 						const current =
 							id === native.id
 								? messages
 								: (children.find((child) => child.session.id === id)?.messages ?? []);
-						// THIS request's outcome: an assistant reply to OUR messageID
-						// that is completed or failed. A user message landing, an
-						// unfinished reply or any other new id proves nothing.
+						const raw = status[id]?.type;
+						if (raw === "busy" || raw === "retry") {
+							claim.seenBusy = true;
+							claim.idleObservations = 0;
+							continue;
+						}
+						// OpenCode reports only ACTIVE sessions: an absent entry is a
+						// non-busy observation, never by itself a termination proof.
+						claim.idleObservations += 1;
 						const reply = assistantFor(current, claim.messageID);
-						const info = reply?.info ?? null;
-						const finished = info ? Boolean(info.time && (info.time as { completed?: unknown }).completed) || Boolean(info.error) : false;
-						const idle = (status[id]?.type ?? "idle") !== "busy" && (status[id]?.type ?? "idle") !== "retry";
-						if (reply && finished) {
-							executing.delete(id);
+						const quiet =
+							!permissions.some((item) => (item as { sessionID?: string }).sessionID === id) &&
+							!questions.some((item) => (item as { sessionID?: string }).sessionID === id);
+						if (claim.kind === "command") {
+							// Commands have no request correlation: settle only when an
+							// observation STARTED AFTER the claim saw it busy and now
+							// idle with no running tools on the target's last step.
+							if (
+								claim.seenBusy &&
+								claim.idleObservations >= 2 &&
+								quiet &&
+								!runningTools(current)
+							)
+								executing.delete(id);
 							continue;
 						}
-						// Abort accepted: only a target that is now idle WITHOUT an
-						// unfinished reply to our request proves termination.
-						if (claim.abortRequested && idle) {
-							if (!reply || finished) executing.delete(id);
-							else if (!hasUserMessage(current, claim.messageID)) executing.delete(id);
+						if (claim.abortRequested && (claim.abortSeq ?? Number.POSITIVE_INFINITY) <= seq) {
+							// Abort accepted: termination needs an idle observation that
+							// began after the abort, with the turn's last step finished
+							// or the request never having produced a step.
+							if (
+								quiet &&
+								claim.idleObservations >= 2 &&
+								(abortTerminal(current, claim.messageID) ||
+									(!reply && hasUserMessage(current, claim.messageID)))
+							)
+								executing.delete(id);
 							continue;
 						}
-						// Command claims (no correlated prompt reply) settle when the
-						// target is idle and abort was not requested.
-						if (claim.kind === "command" && idle) executing.delete(id);
+						// A completed turn (last step finish "stop", no running tool)
+						// is positive evidence on its own; two idle observations are
+						// only required where no request correlation exists.
+						if (quiet && turnTerminal(current, claim.messageID)) executing.delete(id);
 					}
 					const boundBusy = status[native.id]?.type === "busy" || status[native.id]?.type === "retry";
 					const entry = this.instances.get(input.sessionId);

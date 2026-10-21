@@ -356,9 +356,11 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 			await expect(runtime.prompt("again", { nativeSessionId: child.id })).rejects.toThrow(
 				"opencode_session_busy",
 			);
-			for (let i = 0; i < 40; i++) {
+			// Two consecutive post-abort non-busy observations are required.
+			let quietSeen = 0;
+			for (let i = 0; i < 40 && quietSeen < 2; i++) {
 				const settled = await runtime.snapshot();
-				if (settled.sessions[child.id]?.type !== "busy") break;
+				quietSeen = settled.sessions[child.id]?.type === "busy" ? 0 : quietSeen + 1;
 				await Bun.sleep(250);
 			}
 			// USER MESSAGE ONLY IS NOT COMPLETION: the parent turn is left running
@@ -377,6 +379,32 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 			);
 			await runtime.abort();
 			await runtime.abort(child.id);
+			// Two post-abort observations are required before the claim settles.
+			for (let i = 0; i < 40; i++) {
+				await runtime.snapshot();
+				await Bun.sleep(250);
+				if (i >= 1) break;
+			}
+			// 5c) STALE SNAPSHOT: one STARTED before a claim must not settle it,
+			//     even though it returns after the claim with an idle status.
+			const stale = runtime.snapshot();
+			await runtime.prompt("P0_ABORT", { nativeSessionId: child.id });
+			await stale;
+			await expect(runtime.prompt("again", { nativeSessionId: child.id })).rejects.toThrow(
+				"opencode_session_busy",
+			);
+			await runtime.abort(child.id);
+			// 5d) STALE SNAPSHOT AROUND ABORT: a snapshot started before the abort
+			//     cannot prove termination.
+			const beforeAbort = runtime.snapshot();
+			await runtime.abort(child.id);
+			await beforeAbort;
+			await expect(runtime.prompt("again", { nativeSessionId: child.id })).rejects.toThrow(
+				"opencode_session_busy",
+			);
+			await runtime.snapshot();
+			await runtime.snapshot();
+			await runtime.prompt("P0_HELLO", { nativeSessionId: child.id });
 			await runtime.stop();
 			expect(pool.get("a6-parent")).toBeUndefined();
 		} finally {
