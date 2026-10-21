@@ -15,9 +15,11 @@ import { processStartTicks } from "../../src/supervisor/providers/opencode-recov
 const root = await mkdtemp(join(tmpdir(), "ap-p2-"));
 const stateDir = join(root, "agent");
 const evidence: Record<string, unknown> = {};
+let detachedPid: number | null = null;
 const check = (ok: boolean, label: string) => {
 	if (!ok) throw new Error(`assertion_failed:${label}`);
 };
+try {
 const launcher = Bun.spawn(
 	[
 		process.execPath,
@@ -50,6 +52,7 @@ for (let i = 0; i < 100 && !manifest; i++) {
 }
 check(Boolean(manifest), "manifest-written");
 const m = manifest as NonNullable<typeof manifest>;
+detachedPid = m.pid;
 evidence.serviceSurvivedLauncherExit = true;
 evidence.pid = m.pid;
 evidence.startTicksMatch = (await processStartTicks(m.pid)) === m.startTicks;
@@ -71,10 +74,16 @@ const wrong = await fetch(`${m.url}/identity`, { headers: auth("wrong") });
 check(wrong.status === 401, "wrong-token-refused");
 evidence.wrongTokenStatus = wrong.status;
 evidence.ok = true;
-try {
-	process.kill(m.pid, "SIGKILL");
-} catch {}
-await rm(root, { recursive: true, force: true });
+} finally {
+	// Cleanup ALWAYS: assertions or network failures still reclaim the detached
+	// service started by this probe.
+	if (detachedPid !== null) {
+		try {
+			process.kill(detachedPid, "SIGKILL");
+		} catch {}
+	}
+	await rm(root, { recursive: true, force: true });
+}
 await Bun.write(
 	join(import.meta.dir, "p2-detach-evidence.json"),
 	`${JSON.stringify(evidence, null, 1)}\n`,
