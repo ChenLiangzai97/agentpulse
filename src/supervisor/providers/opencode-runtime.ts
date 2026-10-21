@@ -421,8 +421,10 @@ export class OpenCodeRuntimePool {
 				try {
 					await unlink(path);
 				} catch (error) {
-					// Keep the record visible: the file still exists and WILL freeze the
-					// target again after a restart. Surface it for reconciliation.
+					// The tracker already settled this attempt, so the IN-MEMORY fence
+					// is released; the file remains as a PENDING-CLEANUP record and
+					// will freeze the target again after a restart. It is listed here
+					// as a cleanup problem — never described as a live fence.
 					cleanupIssues.push({
 						claimId: attemptId,
 						path,
