@@ -1,0 +1,146 @@
+/**
+ * Durable fork execution ledger (A6). A native fork is NOT idempotent, so a
+ * crash, a lost report or a re-claimed action must never cause a second fork.
+ *
+ * Lifecycle of `<instance>/fork-<actionId>.json`:
+ *   intent  -> written BEFORE the native call (no child id yet);
+ *              recovery of an intent means OUTCOME UNKNOWN: refuse, don't fork.
+ *   created -> atomic rewrite right after the native call returned a child;
+ *   done    -> written after the server confirmed the managed binding and kept
+ *              for the life of the instance: a later claim re-reports and
+ *              re-registers the SAME child instead of forking again.
+ *
+ * Error handling is deliberate: only a genuinely absent file allows a first
+ * execution. Corrupt or unreadable records fail closed.
+ */
+import { readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import type { ForkSnapshot } from "./fork-snapshot.js";
+
+export interface ForkRecord {
+	version: 1;
+	actionId: string;
+	instanceId: string;
+	generation: number;
+	/** The ORIGINAL claim token; re-reports keep it so finalize's CAS matches. */
+	claimToken: string;
+	phase: "intent" | "created" | "done";
+	childNativeSessionId?: string;
+	parentSnapshot?: ForkSnapshot;
+}
+
+export interface ForkIdentity {
+	actionId: string;
+	instanceId: string;
+	generation: number;
+}
+
+const pathFor = (directory: string, identity: ForkIdentity) =>
+	join(directory, `fork-${identity.actionId}.json`);
+
+const sameBinding = (record: ForkRecord, identity: ForkIdentity) =>
+	record.actionId === identity.actionId &&
+	record.instanceId === identity.instanceId &&
+	record.generation === identity.generation;
+
+/** Returns null only when the record is genuinely absent. */
+export async function readForkRecord(
+	directory: string,
+	identity: ForkIdentity,
+): Promise<ForkRecord | null> {
+	let text: string;
+	try {
+		text = await readFile(pathFor(directory, identity), "utf8");
+	} catch (error) {
+		if ((error as { code?: string }).code === "ENOENT") return null;
+		throw new Error("opencode_fork_ledger_unreadable", { cause: error });
+	}
+	let parsed: ForkRecord;
+	try {
+		parsed = JSON.parse(text) as ForkRecord;
+	} catch (error) {
+		throw new Error("opencode_fork_ledger_corrupt", { cause: error });
+	}
+	if (
+		parsed?.version !== 1 ||
+		typeof parsed.claimToken !== "string" ||
+		!["intent", "created", "done"].includes(String(parsed.phase)) ||
+		!sameBinding(parsed, identity)
+	)
+		throw new Error("opencode_fork_ledger_corrupt");
+	return parsed;
+}
+
+/** Atomic: a crash leaves either the old or the new full record, never a mix. */
+async function writeRecord(directory: string, identity: ForkIdentity, record: ForkRecord) {
+	const target = pathFor(directory, identity);
+	const temp = `${target}.tmp-${crypto.randomUUID()}`;
+	await writeFile(temp, JSON.stringify(record), { mode: 0o600 });
+	await rename(temp, target);
+}
+
+export interface ForkAttempt {
+	directory: string;
+	identity: ForkIdentity;
+	/** Claim token of THIS claim; a recorded child keeps its ORIGINAL token. */
+	claimToken: string;
+	/** A specific fork point is not supported at the native layer yet. */
+	forkPointMessageId: string | null;
+	capture: () => Promise<ForkSnapshot>;
+	fork: () => Promise<{ id: string }>;
+	report: (record: ForkRecord) => Promise<unknown>;
+	/** Called only after the report confirmed the managed binding. */
+	register: (childNativeSessionId: string) => void;
+}
+
+export async function executeOrReportFork(
+	attempt: ForkAttempt,
+): Promise<"forked" | "reported" | "replayed"> {
+	if (attempt.forkPointMessageId)
+		// Recording a fork point while performing a FULL fork would lie about
+		// what happened; refuse instead.
+		throw new Error("opencode_fork_point_unsupported");
+	const existing = await readForkRecord(attempt.directory, attempt.identity);
+	if (existing?.phase === "intent")
+		// The process died between the intent and the native result. The fork may
+		// or may not exist; forking again could duplicate it. Reconciliation.
+		throw new Error("opencode_fork_outcome_unknown");
+	if (existing?.phase === "created") {
+		// Native child exists but the binding was never confirmed: report only.
+		await attempt.report(existing);
+		if (!existing.childNativeSessionId) throw new Error("opencode_fork_ledger_corrupt");
+		attempt.register(existing.childNativeSessionId);
+		await writeRecord(attempt.directory, attempt.identity, { ...existing, phase: "done" });
+		return "reported";
+	}
+	if (existing?.phase === "done") {
+		// Already committed: re-report idempotently and re-register the SAME child.
+		await attempt.report(existing);
+		if (!existing.childNativeSessionId) throw new Error("opencode_fork_ledger_corrupt");
+		attempt.register(existing.childNativeSessionId);
+		return "replayed";
+	}
+
+	// No record: this is the only path that may execute a native fork.
+	const base: ForkRecord = {
+		version: 1,
+		...attempt.identity,
+		claimToken: attempt.claimToken,
+		phase: "intent",
+	};
+	await writeRecord(attempt.directory, attempt.identity, base);
+	const parentSnapshot = await attempt.capture();
+	const created = await attempt.fork();
+	const record: ForkRecord = {
+		...base,
+		phase: "created",
+		childNativeSessionId: created.id,
+		parentSnapshot,
+	};
+	await writeRecord(attempt.directory, attempt.identity, record);
+	await attempt.report(record);
+	if (!record.childNativeSessionId) throw new Error("opencode_fork_ledger_corrupt");
+	attempt.register(record.childNativeSessionId);
+	await writeRecord(attempt.directory, attempt.identity, { ...record, phase: "done" });
+	return "forked";
+}

@@ -1,3 +1,4 @@
+import type { ForkSnapshot } from "./fork-snapshot.js";
 import { markAbort, newClaimState, observeClaim } from "./session-claim.js";
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
@@ -74,13 +75,9 @@ export interface OpenCodeRuntime {
 	/** Registers a child from an AUTHENTICATED fork result (never from snapshots). */
 	registerManagedChild(nativeSessionId: string): void;
 	/** Evidence captured in the controlled window before executing a fork. */
-	captureForkSnapshot(forkPointMessageId?: string | null): Promise<{
-		version: 1;
-		instanceId: string;
-		nativeSessionId: string;
-		messages: { nativeId: string; contentHash: string }[];
-		forkPointMessageId: string | null;
-	}>;
+	captureForkSnapshot(forkPointMessageId?: string | null): Promise<ForkSnapshot>;
+	/** Holds the instance/source session for the whole capture+fork window. */
+	withExclusiveFork<T>(run: () => Promise<T>): Promise<T>;
 	/** Root-session full fork only; the child stays unaddressable until confirmed. */
 	forkSession(
 		nativeSessionId?: string,
@@ -302,6 +299,26 @@ export class OpenCodeRuntimePool {
 			const executing = new Map<string, Claim>();
 			/** Incremented BEFORE the first await of each snapshot (observation gen). */
 			let snapshotSeq = 0;
+			/**
+			 * One fork window at a time: no prompt/command may run between the
+			 * snapshot and the native fork, or the captured parent state would be
+			 * a lie.
+			 */
+			let forking = false;
+			const withExclusiveFork = async <T>(run: () => Promise<T>): Promise<T> => {
+				if (forking) throw new Error("opencode_fork_busy");
+				forking = true;
+				try {
+					const deadline = Date.now() + 30_000;
+					while (executing.size > 0) {
+						if (Date.now() > deadline) throw new Error("opencode_fork_wait_timeout");
+						await Bun.sleep(50);
+					}
+					return await run();
+				} finally {
+					forking = false;
+				}
+			};
 			// Targets must be in the TRUSTED addressable set (bound session or a
 			// child registered from an authenticated fork result).
 			// Correlation helpers over the native message list. The COMPLETION of
@@ -366,6 +383,7 @@ export class OpenCodeRuntimePool {
 				const id = target ?? native.id;
 				if (id !== native.id && !knownSessions.has(id))
 					throw new Error("opencode_unknown_native_session");
+				if (forking) throw new Error("opencode_session_busy");
 				if (executing.has(id)) throw new Error("opencode_session_busy");
 				if (id === native.id) {
 					const current = this.instances.get(input.sessionId);
@@ -418,6 +436,8 @@ export class OpenCodeRuntimePool {
 						forkPointMessageId: forkPointMessageId ?? null,
 					};
 				},
+				/** Runs capture+fork with the instance/source session exclusively held. */
+				withExclusiveFork,
 				async forkSession(nativeSessionId?: string, body?: Record<string, unknown>) {
 					// SLICE LIMIT: only the bound root session, full-history fork.
 					if (nativeSessionId && nativeSessionId !== native.id)
