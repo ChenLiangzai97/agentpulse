@@ -1416,3 +1416,74 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 	},
 	120000,
 );
+
+
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: resume lock refuses unknown targets and blocks deliveries/aborts",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-resume-lock-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": { name: "Fixture", tool_call: true, limit: { context: 32768, output: 2048 } },
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const cwd = join(root, "project");
+		await mkdir(cwd);
+		const pool = new OpenCodeRuntimePool({
+			executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+			profilePath,
+			stateDirectory: join(root, "state"),
+			maxInstances: 1,
+			idleTimeoutMs: 60000,
+			stopGraceMs: 1000,
+		});
+		try {
+			const runtime = await pool.start({
+				instanceId: "resume-lock-instance",
+				generation: 1,
+				sessionId: "resume-lock-session",
+				cwd,
+				title: "resume lock",
+			});
+			await expect(
+				runtime.withResumeLock("ses_not_a_target", async () => "x"),
+			).rejects.toThrow("opencode_unknown_native_session");
+			await runtime.withResumeLock(runtime.nativeSessionId, async () => {
+				await expect(runtime.prompt("blocked")).rejects.toThrow("opencode_resume_pending");
+				await expect(runtime.abort()).rejects.toThrow("opencode_resume_pending");
+			});
+			// The lock is released after the check.
+			await runtime.prompt("P0_HELLO");
+			await runtime.snapshot();
+			await runtime.stop();
+		} finally {
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+	120000,
+);

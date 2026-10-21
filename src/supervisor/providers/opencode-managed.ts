@@ -380,15 +380,18 @@ export function createManagedOpenCodeProvider(
 				return;
 			}
 			if (action.actionType === "opencode_resume") {
-				// SECOND PHASE: success is reported ONLY when no claim/abort attempt
-				// is unresolved for the target; the server then flips stopped->active.
+				// SECOND PHASE: the target must be the same addressable, LIVE native
+				// session; no claim/abort may be unresolved; deliveries/aborts are
+				// blocked for the check window.
 				const resumeTarget = targetNative ?? runtime.nativeSessionId;
-				if (
-					runtime.unsettledClaims().some((claim) => claim.nativeSessionId === resumeTarget) ||
-					runtime.abortPending(resumeTarget)
-				)
-					throw new Error("opencode_session_unsettled");
-				runtime.touch();
+				await runtime.withResumeLock(resumeTarget, async () => {
+					if (
+						runtime.unsettledClaims().some((claim) => claim.nativeSessionId === resumeTarget) ||
+						runtime.abortPending(resumeTarget)
+					)
+						throw new Error("opencode_session_unsettled");
+					runtime.touch();
+				});
 				return;
 			}
 			if (action.actionType === "opencode_fork") {

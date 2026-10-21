@@ -749,15 +749,20 @@ export async function updateControlAction(input: {
 				)
 				.returning({ sessionId: sessionControlBindings.sessionId });
 			if (flipped.length !== 1) {
-				await tx
+				// The flip did not apply: settle the action as failed and return the
+				// FAILED ROW so the outer code releases this action's lease (a
+				// permanent UNKNOWN lease would be worse than the failed resume).
+				const [failed] = await tx
 					.update(controlActions)
 					.set({
 						status: "failed",
 						error: "opencode_session_stopped",
+						finishedAt: nowIso(),
 						updatedAt: nowIso(),
 					})
-					.where(eq(controlActions.id, input.actionId));
-				return { current, updated: undefined, status: "failed" };
+					.where(eq(controlActions.id, input.actionId))
+					.returning();
+				return { current, updated: failed, status: "failed" };
 			}
 		}
 		return { current, updated, status };

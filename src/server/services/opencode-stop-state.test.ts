@@ -463,3 +463,44 @@ test("token enforcement: stale/missing token heartbeats are refused and cannot r
 	expect(meta.controlEpoch).toBe(0);
 	expect(meta.progress).toBe("ok");
 });
+
+test("a failed resume flip settles its own lease (no permanent UNKNOWN block)", async () => {
+	const { parentId } = await seed();
+	const original = config.opencodeResumeEntry;
+	try {
+		(config as Record<string, unknown>).opencodeResumeEntry = true;
+		await queueOpenCodeAction(parentId, "stop", {}, actor);
+		const stop = await claimNextControlAction("stop-host");
+		await updateControlAction({
+			actionId: stop?.id ?? "",
+			supervisorId: "stop-host",
+			status: "succeeded",
+			claimToken: String((stop?.metadata as Record<string, unknown>)?.claimToken ?? ""),
+		});
+		expect((await bindingOf(parentId))?.stopState).toBe("stopped");
+		await queueOpenCodeAction(parentId, "opencode_resume", {}, actor);
+		const resume = await claimNextControlAction("stop-host");
+		const token = String((resume?.metadata as Record<string, unknown>)?.claimToken ?? "");
+		// Someone else moves the binding before the report: the conditional flip
+		// cannot match.
+		await getDb()
+			.update(sessionControlBindings)
+			.set({ stopState: "stopped", stopEpoch: 99 })
+			.where(eq(sessionControlBindings.sessionId, parentId));
+		const rejected = await updateControlAction({
+			actionId: resume?.id ?? "",
+			supervisorId: "stop-host",
+			status: "succeeded",
+			claimToken: token,
+		});
+		expect(rejected?.status).toBe("failed");
+		// Back to active: a new STOP must NOT be deferred by a leftover lease.
+		await getDb()
+			.update(sessionControlBindings)
+			.set({ stopState: "active", stopEpoch: 99 })
+			.where(eq(sessionControlBindings.sessionId, parentId));
+		await expect(queueOpenCodeAction(parentId, "stop", {}, actor)).resolves.toBeTruthy();
+	} finally {
+		(config as Record<string, unknown>).opencodeResumeEntry = original;
+	}
+});
