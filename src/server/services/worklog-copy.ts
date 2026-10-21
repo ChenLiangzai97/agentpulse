@@ -32,10 +32,37 @@ interface ChildMapPair {
 }
 
 export interface EventCopy {
-	/** "sessionId:eventId" of the ORIGINAL event (dedupe anchor). */
-	copyOf: string;
-	/** The original occurrence time (a copied event keeps it). */
+	/** Dedupe anchor "sessionId:eventId" — null when the original is GONE. */
+	copyOf: string | null;
+	/** The ORIGINAL occurrence time: kept even when the anchor is lost. */
 	occurredAt: string;
+}
+
+/**
+ * Anchors are "sessionId:eventId" and session ids MAY contain colons, so the
+ * event id is always taken from the LAST separator.
+ */
+export const copyAnchor = (sessionId: string, eventId: number) => `${sessionId}:${eventId}`;
+
+export function parseCopyAnchor(anchor: string): { sessionId: string; eventId: number } | null {
+	const split = anchor.lastIndexOf(":");
+	if (split <= 0) return null;
+	const eventId = Number(anchor.slice(split + 1));
+	const sessionId = anchor.slice(0, split);
+	if (!sessionId || !Number.isInteger(eventId)) return null;
+	return { sessionId, eventId };
+}
+
+/** Canonical DB timestamp: copied times may arrive as ISO; store one format. */
+export function canonicalDbTime(value: string): string {
+	const text = value.includes("T") ? value : value.replace(" ", "T");
+	const date = new Date(text.endsWith("Z") || /[+-]\d\d:?\d\d$/.test(text) ? text : `${text}Z`);
+	if (Number.isNaN(date.getTime())) return value;
+	return date.toISOString().replace("T", " ").replace("Z", "").slice(0, 19);
+}
+
+export function timeMs(value: string): number {
+	return new Date(value.includes("T") ? value : `${value.replace(" ", "T")}Z`).getTime();
 }
 
 const messageIdOf = (raw: unknown): string | null => {
@@ -70,7 +97,6 @@ async function eventsForSession(sessionId: string): Promise<EventRow[]> {
 async function directLinks(sessionId: string): Promise<{
 	links: Map<number, EventCopy>;
 	parentSessionId: string | null;
-	eventIds: Set<number>;
 }> {
 	const links = new Map<number, EventCopy>();
 	const [fork] = await getDb()
@@ -81,8 +107,10 @@ async function directLinks(sessionId: string): Promise<{
 		.from(opencodeForks)
 		.where(eq(opencodeForks.childSessionId, sessionId))
 		.limit(1);
-	if (!fork || !fork.requestActionId || !fork.parentSessionId)
-		return { links, parentSessionId: null, eventIds: new Set() };
+	if (!fork || !fork.requestActionId) return { links, parentSessionId: null };
+	// The ledger is keyed by ACTION, so it survives the parent row's deletion
+	// (SET NULL): time ownership must still resolve then; only the anchor needs
+	// the parent session.
 	const parentSessionId = fork.parentSessionId;
 	const [ledger] = await getDb()
 		.select({ childMap: opencodeForkRequests.childMap })
@@ -90,119 +118,110 @@ async function directLinks(sessionId: string): Promise<{
 		.where(eq(opencodeForkRequests.actionId, fork.requestActionId))
 		.limit(1);
 	const pairs = (ledger?.childMap as { pairs?: ChildMapPair[] } | null)?.pairs;
-	if (!Array.isArray(pairs) || pairs.length === 0)
-		return { links, parentSessionId, eventIds: new Set() };
+	if (!Array.isArray(pairs) || pairs.length === 0) return { links, parentSessionId };
 
 	const [childRows, parentRows] = await Promise.all([
 		eventsForSession(sessionId),
-		eventsForSession(parentSessionId),
+		parentSessionId ? eventsForSession(parentSessionId) : Promise.resolve([]),
 	]);
-	const index = (rows: EventRow[]) => {
-		// message -> fingerprint -> events (duplicates are AMBIGUOUS, never paired)
-		const byMessage = new Map<string, Map<string, EventRow[]>>();
-		for (const row of rows) {
-			const messageId = messageIdOf(row.rawPayload);
-			if (!messageId) continue;
-			const fingerprint = partFingerprint(partOf(row.rawPayload));
-			const perMessage = byMessage.get(messageId) ?? new Map<string, EventRow[]>();
-			const list = perMessage.get(fingerprint) ?? [];
-			list.push(row);
-			perMessage.set(fingerprint, list);
-			byMessage.set(messageId, perMessage);
-		}
-		return byMessage;
-	};
-	const childIndex = index(childRows);
-	const parentIndex = index(parentRows);
-	const parentEventIds = new Set(parentRows.map((row) => row.id));
+	const childByMessage = new Map<string, EventRow[]>();
+	for (const row of childRows) {
+		const messageId = messageIdOf(row.rawPayload);
+		if (!messageId) continue;
+		const list = childByMessage.get(messageId) ?? [];
+		list.push(row);
+		childByMessage.set(messageId, list);
+	}
+	// parent: message -> fingerprint -> rows (duplicates are ambiguous)
+	const parentIndex = new Map<string, Map<string, EventRow[]>>();
+	for (const row of parentRows) {
+		const messageId = messageIdOf(row.rawPayload);
+		if (!messageId) continue;
+		const perMessage = parentIndex.get(messageId) ?? new Map<string, EventRow[]>();
+		const fingerprint = partFingerprint(partOf(row.rawPayload));
+		const list = perMessage.get(fingerprint) ?? [];
+		list.push(row);
+		perMessage.set(fingerprint, list);
+		parentIndex.set(messageId, perMessage);
+	}
 
 	for (const pair of pairs) {
-		const childParts = childIndex.get(pair.childNativeId);
-		const parentPartsIndex = parentIndex.get(pair.parentNativeId);
-		if (!childParts || !parentPartsIndex || !Array.isArray(pair.parts)) continue;
+		if (!Array.isArray(pair.parts)) continue;
+		const childRowsForMessage = childByMessage.get(pair.childNativeId) ?? [];
 		for (const part of pair.parts) {
-			const childCandidates = childParts.get(part.fingerprint) ?? [];
-			const parentCandidates = parentPartsIndex.get(part.fingerprint) ?? [];
-			// Exactly ONE of each, or stop: duplicates mean we cannot prove which
-			// event is the copy.
-			if (childCandidates.length !== 1 || parentCandidates.length !== 1) continue;
-			const childEvent = childCandidates[0];
-			const parentEvent = parentCandidates[0];
-			if (!childEvent || !parentEvent) continue;
+			// Exactly ONE child event for this part, or we cannot prove it.
+			const childMatches = childRowsForMessage.filter(
+				(row) => partFingerprint(partOf(row.rawPayload)) === part.fingerprint,
+			);
+			if (childMatches.length !== 1) continue;
+			const childEvent = childMatches[0];
+			if (!childEvent) continue;
+			const parentMatches = parentIndex.get(pair.parentNativeId)?.get(part.fingerprint) ?? [];
+			// TIME ownership comes from the persisted ledger and survives the
+			// parent's deletion; the DEDUPE anchor needs the original row.
 			links.set(childEvent.id, {
-				copyOf: `${parentSessionId}:${parentEvent.id}`,
-				occurredAt: part.parentOccurredAt || parentEvent.createdAt,
+				copyOf:
+					parentSessionId && parentMatches.length === 1 && parentMatches[0]
+						? copyAnchor(parentSessionId, parentMatches[0].id)
+						: null,
+				occurredAt: canonicalDbTime(part.parentOccurredAt || childEvent.createdAt),
 			});
 		}
 	}
-	return { links, parentSessionId, eventIds: parentEventIds };
+	return { links, parentSessionId };
 }
 
 /**
- * Resolves copy provenance for a session, composing multi-generation forks to
- * the top-most anchor that still exists. Bounded depth + cycle guard.
+ * Resolves copy provenance for a session: the ORIGINAL occurrence time always
+ * (when the ledger proves the part), the dedupe anchor only while the original
+ * event still exists. Multi-generation forks compose to the top-most anchor;
+ * a deleted ancestor costs the anchor, never the time.
  */
 export async function loadCopiedEvents(sessionId: string): Promise<Map<number, EventCopy>> {
-	const resolved = new Map<number, EventCopy>();
 	const start = await directLinks(sessionId);
-	if (start.links.size === 0) return resolved;
-	// Ancestor copy maps, keyed by session id (0 = the direct parent).
+	if (start.links.size === 0) return new Map();
+	// Ancestor maps for chain composition (0 = direct parent, 1 = grandparent...)
 	const ancestors = new Map<string, Map<number, EventCopy>>();
-	const ancestorEventIds = new Map<string, Set<number>>();
-	let currentSession = sessionId;
-	let currentLinks = start.links;
 	let parentSession = start.parentSessionId;
 	const visited = new Set<string>([sessionId]);
 	for (let depth = 0; depth < 16 && parentSession && !visited.has(parentSession); depth++) {
 		visited.add(parentSession);
 		const ancestor = await directLinks(parentSession);
 		ancestors.set(parentSession, ancestor.links);
-		ancestorEventIds.set(parentSession, ancestor.eventIds);
-		currentSession = parentSession;
-		currentLinks = ancestor.links;
 		parentSession = ancestor.parentSessionId;
 	}
-	void currentSession;
-	void currentLinks;
 
-	// Compose: child event -> parent event -> ... until an anchor not itself a copy.
+	const resolved = new Map<number, EventCopy>();
 	for (const [childEventId, link] of start.links) {
-		const [anchorSessionId, anchorIdText] = link.copyOf.split(":");
-		const anchorId = Number(anchorIdText);
-		if (!anchorSessionId || !Number.isInteger(anchorId)) continue;
-		// A deleted parent cascades its events away: a dangling anchor is NOT a
-		// proven copy. Keep the fact without copyOf instead of guessing.
-		if (!start.eventIds.has(anchorId)) continue;
-		let sessionIdAt = anchorSessionId;
-		let eventIdAt = anchorId;
-		let occurredAt = link.occurredAt;
-		const chain = new Set<string>([`${sessionIdAt}:${eventIdAt}`]);
-		let composed = true;
-		for (let depth = 0; depth < 16; depth++) {
-			const upstream = ancestors.get(sessionIdAt);
-			const step = upstream?.get(eventIdAt);
-			if (!step) break; // parent event is an original (or gone): stop here
-			const [nextSessionId, nextIdText] = step.copyOf.split(":");
-			const nextId = Number(nextIdText);
-			if (!nextSessionId || !Number.isInteger(nextId)) {
-				composed = false;
-				break;
-			}
-			const key = `${nextSessionId}:${nextId}`;
-			if (chain.has(key)) {
-				composed = false;
-				break;
-			}
-			chain.add(key);
-			sessionIdAt = nextSessionId;
-			eventIdAt = nextId;
-			occurredAt = step.occurredAt;
+		if (!link.copyOf) {
+			// Parent rows are gone: keep the inherited TIME, no dedupe anchor.
+			resolved.set(childEventId, { copyOf: null, occurredAt: link.occurredAt });
+			continue;
 		}
-		if (!composed) continue; // ambiguous chain: keep the fact, no copyOf
-		resolved.set(childEventId, {
-			copyOf: `${sessionIdAt}:${eventIdAt}`,
-			occurredAt,
-		});
+		const anchor = parseCopyAnchor(link.copyOf);
+		if (!anchor) {
+			resolved.set(childEventId, { copyOf: null, occurredAt: link.occurredAt });
+			continue;
+		}
+		let sessionIdAt = anchor.sessionId;
+		let eventIdAt = anchor.eventId;
+		let occurredAt = link.occurredAt;
+		let copyOfAt: string | null = link.copyOf;
+		const chain = new Set<string>([`${sessionIdAt}:${eventIdAt}`]);
+		for (let depth = 0; depth < 16; depth++) {
+			const step = ancestors.get(sessionIdAt)?.get(eventIdAt);
+			if (!step?.copyOf) break; // original, or its parent is gone
+			const next = parseCopyAnchor(step.copyOf);
+			if (!next) break;
+			const key = `${next.sessionId}:${next.eventId}`;
+			if (chain.has(key)) break; // cycle: the direct anchor is still real
+			chain.add(key);
+			sessionIdAt = next.sessionId;
+			eventIdAt = next.eventId;
+			occurredAt = step.occurredAt;
+			copyOfAt = step.copyOf;
+		}
+		resolved.set(childEventId, { copyOf: copyOfAt, occurredAt });
 	}
 	return resolved;
 }

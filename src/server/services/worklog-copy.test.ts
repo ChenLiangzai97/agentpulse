@@ -262,13 +262,50 @@ test("a re-forked child composes to the top-most anchor", async () => {
 	void midEvent;
 });
 
-test("a deleted parent leaves the copy UNRESOLVED (fact kept, no dangling anchor)", async () => {
+test("colon-bearing session ids resolve via the LAST separator", async () => {
+	const root = "team:opencode:root";
+	const child = "team:opencode:child";
+	await getDb().insert(sessions).values([
+		{ sessionId: root, agentType: "opencode", cwd: "/tmp" },
+		{ sessionId: child, agentType: "opencode", cwd: "/tmp" },
+	]);
+	const parentEvent = await seedEvent(root, "AssistantMessage", "assistant_message", "colon", "msg_r", "2026-01-01 10:00:00");
+	const childEvent = await seedEvent(child, "AssistantMessage", "assistant_message", "colon", "msg_c", "2026-01-02 10:00:00");
+	await seedFork({
+		child,
+		parent: root,
+		actionId: "a-colon",
+		parentMessage: "msg_r",
+		childMessage: "msg_c",
+		occurredAt: "2026-01-01T10:00:00.000Z",
+		parts: [
+			{
+				fingerprint: partFingerprint(part("colon", "assistant")),
+				parentOccurredAt: "2026-01-01 10:00:00",
+			},
+		],
+	});
+	const copies = await loadCopiedEvents(child);
+	expect(copies.get(childEvent)?.copyOf).toBe(`${root}:${parentEvent}`);
+	// The anchored session id survives the round-trip.
+	const { parseCopyAnchor } = await import("./worklog-copy.js");
+	expect(parseCopyAnchor(copies.get(childEvent)?.copyOf ?? "")?.sessionId).toBe(root);
+});
+
+test("a deleted parent KEEPS the inherited time but drops the dedupe anchor", async () => {
 	await getDb().insert(sessions).values([
 		{ sessionId: "parent-1", agentType: "opencode", cwd: "/tmp" },
 		{ sessionId: "child-1", agentType: "opencode", cwd: "/tmp" },
 	]);
 	await seedEvent("parent-1", "AssistantMessage", "assistant_message", "gone soon", "msg_p1", "2026-01-01 10:00:00");
-	await seedEvent("child-1", "AssistantMessage", "assistant_message", "gone soon", "msg_c1", "2026-01-02 10:00:00");
+	const childEventId = await seedEvent(
+		"child-1",
+		"AssistantMessage",
+		"assistant_message",
+		"gone soon",
+		"msg_c1",
+		"2026-01-02 10:00:00",
+	);
 	await seedFork({
 		child: "child-1",
 		parent: "parent-1",
@@ -287,7 +324,11 @@ test("a deleted parent leaves the copy UNRESOLVED (fact kept, no dangling anchor
 	await getDb().delete(events).where(eq(events.sessionId, "parent-1"));
 	await getDb().update(opencodeForks).set({ parentSessionId: null }).where(eq(opencodeForks.childSessionId, "child-1"));
 	const copies = await loadCopiedEvents("child-1");
-	expect(copies.size).toBe(0);
+	// Time ownership is independent of the anchor: the copy still belongs to
+	// the parent's day, it just cannot be deduped against a vanished event.
+	expect(copies.size).toBe(1);
+	expect(copies.get(childEventId)?.copyOf).toBeNull();
+	expect(copies.get(childEventId)?.occurredAt).toBe("2026-01-01 10:00:00");
 });
 
 test("duplicate fingerprints are ambiguous: no copy is claimed", async () => {
@@ -312,5 +353,9 @@ test("duplicate fingerprints are ambiguous: no copy is claimed", async () => {
 			},
 		],
 	});
-	expect((await loadCopiedEvents("child-1")).size).toBe(0);
+	const ambiguous = await loadCopiedEvents("child-1");
+	// The part's TIME is proven by the ledger even when two parent rows share
+	// the fingerprint; the dedupe anchor is withheld (we cannot pick one).
+	expect(ambiguous.size).toBe(1);
+	expect([...ambiguous.values()][0]?.copyOf).toBeNull();
 });

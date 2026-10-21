@@ -211,7 +211,7 @@ export interface ExtractionSessionContext {
 	 * copyOf provenance for events COPIED by a fork: child event id -> the
 	 * parent event it duplicates and that parent event's original time.
 	 */
-	copies?: Map<number, { copyOf: string; occurredAt: string }>;
+	copies?: Map<number, { copyOf: string | null; occurredAt: string }>;
 }
 
 export interface ParsedFacts {

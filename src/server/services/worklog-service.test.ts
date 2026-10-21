@@ -582,3 +582,85 @@ describe("fork copyOf and the daily window", () => {
 		expect(modelText).toContain(newContent);
 	});
 });
+
+describe("fork copyOf time ownership after the parent is deleted", () => {
+	test("time stays with the original day even when the ancestor rows are gone", async () => {
+		const parentContent = "deleted parent history";
+		const newContent = "today after parent deletion";
+		const sourceData = { type: "text", text: parentContent, time: { start: 1, end: 2 } };
+		await getDb().insert(sessions).values([
+			{ sessionId: "gone-parent", agentType: "opencode", displayName: "gone-parent" },
+			{ sessionId: "kept-child", agentType: "opencode", displayName: "kept-child" },
+		]);
+		await getDb().insert(events).values([
+			{
+				sessionId: "gone-parent",
+				eventType: "UserPromptSubmit",
+				category: "prompt",
+				content: parentContent,
+				createdAt: "2025-12-31 09:00:00",
+				rawPayload: { message_id: "msg_p", source_data: sourceData },
+			},
+			{
+				sessionId: "kept-child",
+				eventType: "UserPromptSubmit",
+				category: "prompt",
+				content: parentContent,
+				createdAt: "2026-01-01 08:00:00",
+				rawPayload: { message_id: "msg_c", source_data: sourceData },
+			},
+			{
+				sessionId: "kept-child",
+				eventType: "AssistantMessage",
+				category: "assistant_message",
+				content: newContent,
+				createdAt: "2026-01-01 13:00:00",
+				rawPayload: {
+					message_id: "msg_c2",
+					source_data: { type: "text", text: newContent, time: { start: 3, end: 4 } },
+				},
+			},
+		]);
+		await getDb().insert(opencodeForks).values({
+			childSessionId: "kept-child",
+			parentSessionId: "gone-parent",
+			requestActionId: "gone-action",
+		});
+		await getDb().insert(opencodeForkRequests).values({
+			actionId: "gone-action",
+			requestHash: "h",
+			identity: null,
+			childMap: {
+				version: 1,
+				forkPointMessageId: null,
+				pairs: [
+					{
+						parentNativeId: "msg_p",
+						childNativeId: "msg_c",
+						parentOccurredAt: "2025-12-31T09:00:00.000Z",
+						parts: [
+							{
+								fingerprint: partFingerprint(sourceData),
+								parentOccurredAt: "2025-12-31 09:00:00",
+							},
+						],
+					},
+				],
+			},
+		});
+		// Simulate the delete: parent events cascade away, lineage SET NULL.
+		await getDb().delete(events).where(eq(events.sessionId, "gone-parent"));
+		await getDb().delete(sessions).where(eq(sessions.sessionId, "gone-parent"));
+		await getDb()
+			.update(opencodeForks)
+			.set({ parentSessionId: null })
+			.where(eq(opencodeForks.childSessionId, "kept-child"));
+		const copies = await loadCopiedEvents("kept-child");
+		expect(copies.size).toBe(1);
+		expect([...copies.values()][0]?.copyOf).toBeNull();
+		await runWorklog("2026-01-01", true);
+		const modelText = modelInputs.join("\n");
+		expect(modelText).not.toContain(parentContent);
+		expect(modelText).toContain(newContent);
+	});
+});

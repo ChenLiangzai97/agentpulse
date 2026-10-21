@@ -29,7 +29,7 @@ import {
 	renderPersonalReview,
 	renderTeamDraftInput,
 } from "./worklog-facts.js";
-import { loadCopiedEvents } from "./worklog-copy.js";
+import { loadCopiedEvents, timeMs } from "./worklog-copy.js";
 
 const CONFIG = "worklog.config";
 export const worklogConfigSchema = z.object({
@@ -354,7 +354,8 @@ export async function runWorklog(
 						const occurredAt = copy?.occurredAt ?? event.createdAt;
 						if (
 							forkChild &&
-							(occurredAt < toDbTimestamp(window.start) || occurredAt >= toDbTimestamp(window.end))
+							(timeMs(occurredAt) < timeMs(toDbTimestamp(window.start)) ||
+								timeMs(occurredAt) >= timeMs(toDbTimestamp(window.end)))
 						) {
 							after = event.id;
 							continue;
