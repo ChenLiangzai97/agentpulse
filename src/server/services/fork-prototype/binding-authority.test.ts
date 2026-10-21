@@ -225,11 +225,20 @@ describe("A1/A3 shared trusted-fork-child validation", () => {
 				actionId: action.id,
 				requestHash: "h",
 				identity: {
+					version: 1,
 					instanceOriginSessionId: "ba-parent",
 					directParentSessionId: "ba-parent",
-					nativeSessionId: "ses_p",
+					parentNativeSessionId: "ses_p",
 					providerInstanceId: instanceId,
 					generation: 1,
+					result: {
+						status: "succeeded",
+						childSessionId: "ba-child",
+						childNativeSessionId: "ses_c",
+						providerInstanceId: instanceId,
+						generation: 1,
+						confirmedAt: "2026-10-20T00:00:00.000Z",
+					},
 				},
 				parentSnapshot: { version: 1, instanceId, nativeSessionId: "ses_p", messages: [] },
 			});

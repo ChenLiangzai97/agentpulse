@@ -107,6 +107,9 @@ async function seedTrustedFork(
 		snapshotNative: string;
 		snapshotVersion: number;
 		withLabel: boolean;
+		resultStatus: "succeeded" | "queued" | "failed" | "unknown";
+		actionNativeContradiction: boolean;
+		dropResult: boolean;
 	}> = {},
 	parentNativeSessionId = "ses_parent",
 ) {
@@ -121,7 +124,9 @@ async function seedTrustedFork(
 			metadata: {
 				instanceOriginSessionId: overrides.instanceOrigin ?? "a3-parent",
 				directParentSessionId,
-				nativeSessionId: overrides.parentNative ?? parentNativeSessionId,
+				nativeSessionId: overrides.actionNativeContradiction
+					? "ses_CONTRADICTION"
+					: (overrides.parentNative ?? parentNativeSessionId),
 				providerInstanceId: overrides.providerInstanceId ?? instanceId,
 				generation: overrides.ledgerGeneration ?? generation,
 			},
@@ -134,11 +139,22 @@ async function seedTrustedFork(
 				actionId: action.id,
 				requestHash: "h-a3",
 				identity: {
+					version: 1,
 					instanceOriginSessionId: overrides.instanceOrigin ?? "a3-parent",
 					directParentSessionId,
-					nativeSessionId: overrides.parentNative ?? parentNativeSessionId,
+					parentNativeSessionId: overrides.parentNative ?? parentNativeSessionId,
 					providerInstanceId: overrides.providerInstanceId ?? instanceId,
 					generation: overrides.ledgerGeneration ?? generation,
+					result: overrides.dropResult
+						? undefined
+						: {
+								status: overrides.resultStatus ?? "succeeded",
+								childSessionId,
+								childNativeSessionId: overrides.ledgerNative ?? childNativeSessionId,
+								providerInstanceId: overrides.providerInstanceId ?? instanceId,
+								generation: overrides.ledgerGeneration ?? generation,
+								confirmedAt: "2026-10-20T00:00:00.000Z",
+							},
 				},
 				parentSnapshot: {
 					version: overrides.snapshotVersion ?? 1,
@@ -525,11 +541,45 @@ describe("A3 two-anchor contract regressions (review round 42)", () => {
 			generation: 1,
 		});
 	}
-	const rejected = async (instanceId: string, native: string) =>
-		acceptOpenCodeSnapshot("a3-host", instanceId, baseInput(native)).then(
+	const rejected = async (instanceId: string, native: string) => {
+		const out = await acceptOpenCodeSnapshot("a3-host", instanceId, baseInput(native)).then(
 			() => "NO_THROW",
 			(e: Error) => e.message,
 		);
+		if (out !== "NO_THROW" && process.env.AGENTPULSE_DEBUG_FORK) {
+			const [b] = await getDb()
+				.select()
+				.from(sessionControlBindings)
+				.where(eq(sessionControlBindings.nativeSessionId, native));
+			const [inst] = await getDb()
+				.select()
+				.from(providerInstances)
+				.where(eq(providerInstances.id, instanceId));
+			if (b && inst) {
+				const { trustedForkChildIssue } = await import("./opencode-control-provenance.js");
+				console.log(
+					"FORK-CHILD-ISSUE(",
+					native,
+					") =",
+					await trustedForkChildIssue({
+						childSessionId: b.sessionId,
+						bindingInstanceId: b.instanceId,
+						bindingNativeSessionId: b.nativeSessionId,
+						bindingGeneration: b.generation,
+						instance: {
+							id: inst.id,
+							generation: inst.generation,
+							supervisorId: inst.supervisorId,
+							launchRequestId: inst.launchRequestId,
+							sessionId: inst.sessionId,
+						},
+						snapshotNativeSessionId: native,
+					}),
+				);
+			}
+		}
+		return out;
+	};
 
 	test("forking FROM a child (child-of-child) is accepted: direct parent ≠ instance origin", async () => {
 		const instance = await seedInstance();
@@ -575,5 +625,73 @@ describe("A3 two-anchor contract regressions (review round 42)", () => {
 			snapshotInstance: "other-instance",
 		});
 		expect(await rejected(instance.id, "ses_snap2")).toBe("provider_binding_invalid");
+	});
+});
+
+describe("A3 finalized-success-result contract (review round 43)", () => {
+	async function seedChild(sessionId: string, instanceId: string, native: string) {
+		await getDb().insert(sessions).values({ sessionId, agentType: "opencode", cwd: "/tmp" });
+		await getDb()
+			.insert(managedSessions)
+			.values({
+				sessionId,
+				launchRequestId: (
+					await getDb()
+						.select()
+						.from(launchRequests)
+						.where(eq(launchRequests.launchCorrelationId, "a3-parent"))
+				)[0].id,
+				supervisorId: "a3-host",
+				providerSessionId: native,
+				managedState: "managed",
+			});
+		await getDb().insert(sessionControlBindings).values({
+			sessionId,
+			origin: "agentpulse_launch",
+			instanceId,
+			nativeSessionId: native,
+			generation: 1,
+		});
+	}
+	const rejected = async (instanceId: string, native: string) =>
+		acceptOpenCodeSnapshot("a3-host", instanceId, baseInput(native)).then(
+			() => "NO_THROW",
+			(e: Error) => e.message,
+		);
+
+	for (const status of ["queued", "failed", "unknown"] as const) {
+		test(`a ${status.toUpperCase()} fork result is refused (action deleted with the parent)`, async () => {
+			const instance = await seedInstance();
+			const child = `a3-${status}`;
+			await seedChild(child, instance.id, `ses_${status}`);
+			await getDb()
+				.insert(sessions)
+				.values({ sessionId: "a3-other-parent", agentType: "opencode", cwd: "/tmp" });
+			await seedTrustedFork(child, "a3-other-parent", instance.id, `ses_${status}`, 1, {
+				actionParent: "a3-other-parent",
+				instanceOrigin: "a3-parent",
+				resultStatus: status,
+			});
+			// the action claims succeeded, but the FINALIZED RESULT is not succeeded
+			expect(await rejected(instance.id, `ses_${status}`)).toBe("provider_binding_invalid");
+		});
+	}
+
+	test("identity that contradicts the surviving action metadata is refused", async () => {
+		const instance = await seedInstance();
+		await seedChild("a3-contra", instance.id, "ses_contra");
+		await seedTrustedFork("a3-contra", "a3-parent", instance.id, "ses_contra", 1, {
+			actionNativeContradiction: true,
+		});
+		expect(await rejected(instance.id, "ses_contra")).toBe("provider_binding_invalid");
+	});
+
+	test("identity missing the finalized result cannot be backfilled from action metadata", async () => {
+		const instance = await seedInstance();
+		await seedChild("a3-noresult", instance.id, "ses_noresult");
+		await seedTrustedFork("a3-noresult", "a3-parent", instance.id, "ses_noresult", 1, {
+			dropResult: true,
+		});
+		expect(await rejected(instance.id, "ses_noresult")).toBe("provider_binding_invalid");
 	});
 });

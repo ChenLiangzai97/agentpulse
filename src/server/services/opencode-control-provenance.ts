@@ -240,49 +240,80 @@ export async function trustedForkChildIssue(params: {
 		.limit(1);
 	if (!request) return "fork_request_missing";
 	const identity = (request.identity ?? null) as Record<string, unknown> | null;
+	// The creation identity must be COMPLETE and SELF-SUFFICIENT (review round
+	// 43): it is the single immutable evidence used before AND after the
+	// parent is deleted, and it must record the FINALIZED SUCCESS RESULT — a
+	// queued/failed/unknown fork whose action later disappears with the parent
+	// must still be refused. Action metadata is never used to fill gaps; if it
+	// contradicts the identity, the child is rejected.
+	if (!identity) return "fork_request_identity_missing";
 	const [action] = await getDb()
 		.select()
 		.from(controlActions)
 		.where(eq(controlActions.id, ledger.requestActionId))
 		.limit(1);
-	// The ACTION may be PRUNED when the direct parent session is deleted
-	// (control_actions.session_id CASCADE). The creation identity is therefore
-	// required in the execution ledger, and a surviving action is additionally
-	// verified (defense in depth).
-	if (!identity) return "fork_request_identity_missing";
-	const meta = (action?.metadata ?? {}) as Record<string, unknown>;
-	const field = (key: string) => (identity[key] ?? meta[key]) as string | number | undefined;
+	if (identity.version !== 1) return "fork_request_identity_schema";
+	// Two distinct anchors: instance ORIGIN vs DIRECT PARENT.
+	const instanceOriginSessionId = identity.instanceOriginSessionId;
+	const directParentSessionId = identity.directParentSessionId;
+	const parentNative = identity.parentNativeSessionId;
+	const identityInstanceId = identity.providerInstanceId;
+	const identityGeneration = identity.generation;
+	if (typeof instanceOriginSessionId !== "string" || !instanceOriginSessionId)
+		return "fork_request_identity_schema";
+	if (typeof directParentSessionId !== "string" || !directParentSessionId)
+		return "fork_request_identity_schema";
+	if (typeof parentNative !== "string" || !parentNative) return "fork_request_identity_schema";
+	if (typeof identityInstanceId !== "string" || !identityInstanceId)
+		return "fork_request_identity_schema";
+	if (typeof identityGeneration !== "number" || identityGeneration <= 0)
+		return "fork_request_identity_schema";
+	if (instanceOriginSessionId !== instance.sessionId) return "fork_action_instance_origin_mismatch";
+	if (identityInstanceId !== instance.id) return "fork_action_instance_mismatch";
+	if (identityGeneration !== ledger.generation) return "fork_action_generation_mismatch";
+	// DIRECT PARENT anchor must agree with the lineage (when the lineage still
+	// names it; NULL after parent deletion is expected).
+	if (ledger.parentSessionId !== null && ledger.parentSessionId !== directParentSessionId)
+		return "fork_ledger_parent_mismatch";
+	// FINALIZED SUCCESS RESULT: the ledger must carry the confirmed result, with
+	// the child identity/instance/generation it produced.
+	const result = (identity.result ?? null) as Record<string, unknown> | null;
+	if (!result) return "fork_result_missing";
+	if (result.status !== "succeeded") return "fork_result_not_succeeded";
+	if (result.childSessionId !== childSessionId) return "fork_result_child_mismatch";
+	if (result.childNativeSessionId !== ledger.nativeSessionId)
+		return "fork_result_child_native_mismatch";
+	if (result.providerInstanceId !== instance.id) return "fork_result_instance_mismatch";
+	if (result.generation !== ledger.generation) return "fork_result_generation_mismatch";
+	if (typeof result.confirmedAt !== "string" || !result.confirmedAt)
+		return "fork_result_unconfirmed";
+	// Defense in depth: a SURVIVING action must agree with the immutable
+	// identity; any contradiction rejects.
 	if (action) {
 		if (action.actionType !== "opencode_fork") return "fork_action_not_fork";
 		if (action.status !== "succeeded") return "fork_action_not_succeeded";
+		if (action.sessionId !== directParentSessionId) return "fork_action_request_target_mismatch";
+		const meta = (action.metadata ?? {}) as Record<string, unknown>;
+		if (
+			meta.instanceOriginSessionId !== undefined &&
+			meta.instanceOriginSessionId !== instanceOriginSessionId
+		)
+			return "fork_action_identity_contradiction";
+		if (
+			meta.directParentSessionId !== undefined &&
+			meta.directParentSessionId !== directParentSessionId
+		)
+			return "fork_action_identity_contradiction";
+		if (meta.nativeSessionId !== undefined && meta.nativeSessionId !== parentNative)
+			return "fork_action_identity_contradiction";
+		if (meta.providerInstanceId !== undefined && meta.providerInstanceId !== identityInstanceId)
+			return "fork_action_identity_contradiction";
+		if (meta.generation !== undefined && meta.generation !== identityGeneration)
+			return "fork_action_identity_contradiction";
 	}
-	// TWO DISTINCT ANCHORS (review round 42):
-	//  • instance ORIGIN anchor — instance.sessionId, the session that launched
-	//    the instance. It never changes and is NOT "the fork parent".
-	//  • DIRECT PARENT anchor — the session the /fork was issued on (may itself
-	//    be a fork child), fixed at request time and surviving parent deletion
-	//    through the immutable identity + label.
-	if (field("instanceOriginSessionId") !== instance.sessionId)
-		return "fork_action_instance_origin_mismatch";
-	const directParentSessionId =
-		typeof field("directParentSessionId") === "string"
-			? (field("directParentSessionId") as string)
-			: null;
-	if (!directParentSessionId) return "fork_action_direct_parent_missing";
-	// The REQUEST targets the parent; the ledger records the child as RESULT.
-	// A surviving action must still carry the parent as its target.
-	if (action && action.sessionId !== directParentSessionId)
-		return "fork_action_request_target_mismatch";
-	if (ledger.parentSessionId !== null && ledger.parentSessionId !== directParentSessionId)
-		return "fork_ledger_parent_mismatch";
-	if (field("providerInstanceId") !== instance.id) return "fork_action_instance_mismatch";
-	if (field("generation") !== ledger.generation) return "fork_action_generation_mismatch";
-	// Direct parent's NATIVE identity: verify against its binding while the
-	// parent row exists; after deletion rely on the immutable label + action
-	// metadata (which the trusted snapshot must agree with).
-	const parentNative =
-		typeof field("nativeSessionId") === "string" ? (field("nativeSessionId") as string) : null;
-	if (!parentNative) return "fork_action_parent_native_missing";
+	// Direct parent's NATIVE identity: while the parent exists its binding must
+	// agree; after deletion the immutable label must. The snapshot must agree
+	// with the same identity.
 	const [parentBinding] = await getDb()
 		.select()
 		.from(sessionControlBindings)
@@ -297,7 +328,6 @@ export async function trustedForkChildIssue(params: {
 		if (label.directParentSessionId !== directParentSessionId) return "fork_parent_label_missing";
 		if (label.parentNativeSessionId !== parentNative) return "fork_parent_label_native_mismatch";
 	}
-	// EXECUTION-TIME SNAPSHOT: schema + identity, not mere non-emptiness.
 	const snapshot = request.parentSnapshot as Record<string, unknown> | null;
 	if (!snapshot) return "fork_request_snapshot_missing";
 	if (snapshot.version !== 1) return "fork_request_snapshot_schema";
