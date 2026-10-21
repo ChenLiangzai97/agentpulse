@@ -30,10 +30,13 @@
 - `scripts/opencode-p0/p2-real-probe.ts`（opt-in；需要 opencode + mock）：
   1. 起 mock 模型、写 profile；launcher 退出。
   2. 等 manifest；`connectRunService(root, instanceId, expected)` → ok。
-  3. `POST /prompt {messageID:"msg_p2_turn", text:"P0_HELLO"}`；轮询 `/messages`
-     直到该 messageID 的助手步骤 completed 且 finish != tool-calls。
-  4. **再次** `connectRunService`（模拟新 supervisor）→ 同一 nativeSessionId；`/messages`
-     仍含该 turn 的完成结果。
+  3. `POST /prompt {messageID:"msg_p2_turn", text:"P0_ABORT"}`（长轮次）。在**该轮仍在
+     运行**时让 supervisor A 退出（A 只是发起方，不持有守护进程）。
+  4. 由一个**独立的 supervisor B 进程**（不是同一探针进程的再次调用）用
+     `connectRunService` 重连 → 同一 nativeSessionId；B 轮询 `/messages` 直到
+     `msg_p2_turn` 的**终态**出现（最后助手步骤 completed 且 finish 属于白名单
+     `stop`/空、无 running 工具；或取消标记）→ 取回**同一在飞轮次**的结果。
+     仅“轮次完成后再次 connect”只证明结果可重读，**不作为**本切片证据。
   5. 反例：错 token(401)、伪造 manifest.startTicks、错 generation、错 native、服务自报
      漂移、非回环 URL、重定向 → 解析器/适配器明确拒绝。
   6. finally：`/shutdown`（认证）失败则按 start ticks 核验后 SIGKILL；删除临时目录。
