@@ -1,5 +1,6 @@
 import { partFingerprint } from "../../shared/opencode-copy.js";
 import type { ForkChildMap, ForkSnapshot } from "./fork-snapshot.js";
+import { AbortAttempts } from "./abort-attempts.js";
 import { abortTerminal, runningTools, turnAssistants, turnTerminal } from "./claim-evidence.js";
 import { markAbort, newClaimState, observeClaim } from "./session-claim.js";
 import { randomBytes } from "node:crypto";
@@ -329,10 +330,10 @@ export class OpenCodeRuntimePool {
 			const unsettled = new Map<string, { messageID: string; kind: "prompt" | "command" }>();
 			let claimsQuarantined = false;
 			const cleanupIssues: { claimId: string; path: string; error: string }[] = [];
-			// Freeze a target from the START of an abort attempt (intent write)
-			// until the attempt settles or is quarantined: a replacement claim can
-			// never be killed by an abort aimed at the previous one.
-			const abortFence = new Set<string>();
+			// Freeze a target while ANY abort attempt is unresolved. An attempt is
+			// resolved only when BOTH the native request responded AND the claim it
+			// was aimed at ended — claim release alone must not lift the fence.
+			const abortAttempts = new AbortAttempts();
 			const claimsDirectory = join(
 				this.config.stateDirectory,
 				"claims",
@@ -427,7 +428,7 @@ export class OpenCodeRuntimePool {
 			const release = async (id: string, claim: Claim) => {
 				if (executing.get(id) !== claim) return;
 				executing.delete(id);
-				abortFence.delete(id);
+				abortAttempts.claimEnded(id, claim.id);
 				if (!claim.recordPath) return;
 				try {
 					await enqueueClaimFileOp(claim.id, async () => {
@@ -457,7 +458,7 @@ export class OpenCodeRuntimePool {
 				if (id !== native.id && !knownSessions.has(id))
 					throw new Error("opencode_unknown_native_session");
 				if (claimsQuarantined) throw new Error("opencode_claims_quarantine");
-				if (abortFence.has(id)) throw new Error("opencode_abort_pending");
+				if (abortAttempts.frozen(id)) throw new Error("opencode_abort_pending");
 				if (unsettled.has(id)) throw new Error("opencode_session_unsettled");
 				if (forking) throw new Error("opencode_session_busy");
 				if (executing.has(id)) throw new Error("opencode_session_busy");
@@ -730,8 +731,9 @@ export class OpenCodeRuntimePool {
 					// Capture the target claim BEFORE the request and persist the
 					// abort INTENT first: a slow response can never be applied to a
 					// replacement claim, and a failed write REFUSES the abort.
-					abortFence.add(id);
+					const attemptId = crypto.randomUUID();
 					const held = executing.get(id);
+					abortAttempts.begin(id, attemptId, held?.id ?? "");
 					if (held?.recordPath && held.attempt) {
 						const path = held.recordPath;
 						const attempt = held.attempt;
@@ -752,6 +754,7 @@ export class OpenCodeRuntimePool {
 						);
 					}
 					await request(`${pathFor(nativeSessionId)}/abort`, {});
+					abortAttempts.respond(id, attemptId);
 					// Apply the response ONLY to the same claim identity.
 					const current = executing.get(id);
 					if (held && current && current.id === held.id)

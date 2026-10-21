@@ -35,3 +35,10 @@ test("only the LAST step decides; an earlier completed step does not end the tur
 	expect(turnTerminal(list, "m")).toBe(false);
 	expect(abortTerminal(list, "m")).toBe(false);
 });
+
+test("a cancel marker with a still-running tool is NOT terminal (side effects unknown)", () => {
+	const list = [
+		step({ role: "assistant", parentID: "m", error: { name: "MessageAbortedError" } }, [tool("running")]),
+	];
+	expect(abortTerminal(list, "m")).toBe(false);
+});

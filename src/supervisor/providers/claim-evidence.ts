@@ -37,7 +37,9 @@ export const turnTerminal = (list: unknown[], messageID: string) => {
 export const abortTerminal = (list: unknown[], messageID: string) => {
 	const last = turnAssistants(list, messageID).at(-1);
 	if (!last) return false;
-	if (last.info.error) return true;
+	// An error/cancel marker proves the NATIVE turn is over; it says nothing about
+	// tool side effects, so a still-running tool still blocks the release.
+	if (last.info.error) return !runningTools([last]);
 	const time = last.info.time as { completed?: unknown } | undefined;
 	if (!time?.completed) return false;
 	if (last.info.finish === "tool-calls") return false;
