@@ -152,3 +152,25 @@ test("a requested fork point is refused rather than silently full-forking", asyn
 		await rm(directory, { recursive: true, force: true });
 	}
 });
+
+test("REAL process crash right after the native fork: recovery refuses, never forks twice", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "fork-ledger-"));
+	try {
+		const fixture = join(import.meta.dir, "__fixtures__", "fork-crash.ts");
+		const child = Bun.spawn(["bun", fixture, directory, "native-fork.marker"], {
+			stdout: "ignore",
+			stderr: "ignore",
+		});
+		const exitCode = await child.exited;
+		expect(exitCode).toBe(9); // died inside the fork callback
+		const { attempt, calls } = await harness(directory, {
+			identity: { actionId: "action-1", instanceId: "instance-1", generation: 1 },
+		});
+		await expect(executeOrReportFork(attempt)).rejects.toThrow("opencode_fork_outcome_unknown");
+		// No second native fork, and the crashed run's marker is still there.
+		expect(calls.forks).toBe(0);
+		expect(await readdir(directory)).toContain("native-fork.marker");
+	} finally {
+		await rm(directory, { recursive: true, force: true });
+	}
+});
