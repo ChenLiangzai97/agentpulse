@@ -47,6 +47,13 @@ export class AbortAttempts {
 		if (attempts && attempts.size === 0) this.byTarget.delete(target);
 	}
 
+	/** The native request was NEVER sent: drop the attempt, nothing to protect. */
+	abandon(target: string, attemptId: string): void {
+		const attempts = this.byTarget.get(target);
+		attempts?.delete(attemptId);
+		if (attempts && attempts.size === 0) this.byTarget.delete(target);
+	}
+
 	frozen(target: string): boolean {
 		return (this.byTarget.get(target)?.size ?? 0) > 0;
 	}

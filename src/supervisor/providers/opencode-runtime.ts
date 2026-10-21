@@ -21,6 +21,8 @@ export interface OpenCodeRuntimeConfig {
 	maxInstances: number;
 	idleTimeoutMs: number;
 	stopGraceMs: number;
+	/** Deterministic test/diagnostics knob: wait before sending a native abort. */
+	abortRequestDelayMs?: number;
 }
 export type OpenCodeHealth =
 	| "ready"
@@ -733,7 +735,10 @@ export class OpenCodeRuntimePool {
 					// replacement claim, and a failed write REFUSES the abort.
 					const attemptId = crypto.randomUUID();
 					const held = executing.get(id);
-					abortAttempts.begin(id, attemptId, held?.id ?? "");
+					// No active claim = no turn to protect: send the native abort without
+					// registering a fenceless attempt (which could never resolve).
+					if (held) abortAttempts.begin(id, attemptId, held.id);
+					try {
 					if (held?.recordPath && held.attempt) {
 						const path = held.recordPath;
 						const attempt = held.attempt;
@@ -753,6 +758,8 @@ export class OpenCodeRuntimePool {
 							),
 						);
 					}
+					const delay = this.config.abortRequestDelayMs ?? 0;
+					if (delay > 0) await Bun.sleep(delay);
 					await request(`${pathFor(nativeSessionId)}/abort`, {});
 					abortAttempts.respond(id, attemptId);
 					// Apply the response ONLY to the same claim identity.
@@ -760,6 +767,13 @@ export class OpenCodeRuntimePool {
 					if (held && current && current.id === held.id)
 						current.state = markAbort(current.state, snapshotSeq + 1);
 					runtime.touch();
+					} catch (error) {
+						// The request was NOT (confirmed) sent: drop the attempt so the
+						// target is not frozen without a recovery path. The durable
+						// abortRequested marker (if written) stays for reconciliation.
+						abortAttempts.abandon(id, attemptId);
+						throw error;
+					}
 				},
 				stop: async () => {
 					for (const cancel of subscriptions) cancel();

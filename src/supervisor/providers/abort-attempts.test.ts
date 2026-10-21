@@ -38,3 +38,10 @@ test("attempts are per target", () => {
 	attempts.begin("ses-a", "a1", "c1");
 	expect(attempts.frozen("ses-b")).toBe(false);
 });
+
+test("an abandoned attempt (request never sent) never freezes the target", () => {
+	const attempts = new AbortAttempts();
+	attempts.begin("ses", "a1", "c1");
+	attempts.abandon("ses", "a1");
+	expect(attempts.frozen("ses")).toBe(false);
+});

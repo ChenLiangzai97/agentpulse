@@ -944,3 +944,95 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 	},
 	120000,
 );
+
+
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: a DELAYED abort request keeps the fence after the old turn ends",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-abort-delay-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": { name: "Fixture", tool_call: true, limit: { context: 32768, output: 2048 } },
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const cwd = join(root, "project");
+		await mkdir(cwd);
+		const stateDirectory = join(root, "state");
+		const instanceId = "abort-delay-instance";
+		const claimsDir = join(stateDirectory, "claims", instanceId);
+		const pool = new OpenCodeRuntimePool({
+			executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+			profilePath,
+			stateDirectory,
+			maxInstances: 1,
+			idleTimeoutMs: 60000,
+			stopGraceMs: 1000,
+			// CONTROLLED DELAY: the native abort request arrives well after the
+			// old turn has naturally completed.
+			abortRequestDelayMs: 4000,
+		});
+		const { readdir } = await import("node:fs/promises");
+		try {
+			const runtime = await pool.start({
+				instanceId,
+				generation: 1,
+				sessionId: "abort-delay-session",
+				cwd,
+				title: "abort delay",
+			});
+			await runtime.prompt("P0_HELLO");
+			const aborting = runtime.abort();
+			// Fence is set BEFORE the first await: no new delivery can start while
+			// the intent is written or the request is delayed.
+			await expect(runtime.prompt("too early")).rejects.toThrow("opencode_abort_pending");
+			// The OLD turn ends naturally DURING the delay; the claim file goes
+			// away but the fence must stay because the request has not responded.
+			let settledDuringDelay = false;
+			for (let i = 0; i < 70; i++) {
+				if ((await readdir(claimsDir)).length === 0) {
+					settledDuringDelay = true;
+					break;
+				}
+				await runtime.snapshot();
+				await Bun.sleep(50);
+			}
+			// The old turn MUST have ended while the request was still delayed —
+			// otherwise this test proves nothing about the interleaving.
+			expect(settledDuringDelay).toBe(true);
+			await expect(runtime.prompt("still frozen")).rejects.toThrow("opencode_abort_pending");
+			await aborting;
+			// BOTH conditions met now: the target accepts work again.
+			await runtime.prompt("P0_HELLO");
+			await runtime.snapshot();
+			await runtime.stop();
+		} finally {
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+	120000,
+);
