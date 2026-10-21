@@ -618,3 +618,97 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 	},
 	120000,
 );
+
+
+// Explicit opt-in: durable unsettled claims survive a runtime restart.
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: an in-flight claim survives a restart as an unsettled record",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-unsettled-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": { name: "Fixture", tool_call: true, limit: { context: 32768, output: 2048 } },
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const cwd = join(root, "project");
+		await mkdir(cwd);
+		const stateDirectory = join(root, "state");
+		const instanceId = "unsettled-instance";
+		const makePool = () =>
+			new OpenCodeRuntimePool({
+				executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+				profilePath,
+				stateDirectory,
+				maxInstances: 1,
+				idleTimeoutMs: 60000,
+				stopGraceMs: 1000,
+			});
+		try {
+			const first = await makePool().start({
+				instanceId,
+				generation: 1,
+				sessionId: "unsettled-session",
+				cwd,
+				title: "unsettled",
+			});
+			// A COMPLETED claim leaves no durable record.
+			await first.prompt("P0_HELLO");
+			const { readdir } = await import("node:fs/promises");
+			for (let i = 0; i < 120; i++) {
+				await first.snapshot();
+				const records = await readdir(join(stateDirectory, "claims", instanceId));
+				if (records.length === 0) break;
+				await Bun.sleep(100);
+			}
+			expect(await readdir(join(stateDirectory, "claims", instanceId))).toEqual([]);
+			// An IN-FLIGHT claim is persisted and survives the stop.
+			await first.prompt("P0_ABORT");
+			const oldNative = first.nativeSessionId;
+			await first.stop();
+			const second = await makePool().start({
+				instanceId,
+				generation: 1,
+				sessionId: "unsettled-session-2",
+				cwd,
+				title: "unsettled restarted",
+			});
+			const claims = second.unsettledClaims();
+			expect(claims.map((claim) => claim.nativeSessionId)).toContain(oldNative);
+			// The stale native id is NOT addressable from the new runtime, and the
+			// record stays visible for reconciliation (never silently dropped).
+			await expect(second.prompt("x", { nativeSessionId: oldNative })).rejects.toThrow(
+				"opencode_unknown_native_session",
+			);
+			expect(second.unsettledClaims().length).toBe(1);
+			await second.stop();
+		} finally {
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+	120000,
+);

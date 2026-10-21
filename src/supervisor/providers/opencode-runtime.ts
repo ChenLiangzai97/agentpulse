@@ -4,7 +4,7 @@ import { markAbort, newClaimState, observeClaim } from "./session-claim.js";
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 /** Isolated OpenCode 1.18.35 runtime. Never adopts a process or accepts a caller URL. */
-import { mkdir, mkdtemp, open, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, readdir, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { join } from "node:path";
@@ -77,6 +77,8 @@ export interface OpenCodeRuntime {
 	touch(): void;
 	/** Registers a child from an AUTHENTICATED fork result (never from snapshots). */
 	registerManagedChild(nativeSessionId: string): void;
+	/** Durable claims whose outcome is still unknown (reconciliation surface). */
+	unsettledClaims(): { nativeSessionId: string; messageID: string; kind: "prompt" | "command" }[];
 	/** Evidence captured in the controlled window before executing a fork. */
 	captureForkSnapshot(forkPointMessageId?: string | null): Promise<ForkSnapshot>;
 	/** Holds the instance/source session for the whole capture+fork window. */
@@ -305,6 +307,8 @@ export class OpenCodeRuntimePool {
 			interface Claim {
 				/** Unique per attempt: an old callback may never free a new claim. */
 				id: string;
+				/** Durable record path (unsettled across a supervisor crash). */
+				recordPath?: string;
 				/** Native user-message id sent with this request (correlation key). */
 				messageID: string;
 				state: ReturnType<typeof newClaimState>;
@@ -313,6 +317,38 @@ export class OpenCodeRuntimePool {
 			const executing = new Map<string, Claim>();
 			/** Incremented BEFORE the first await of each snapshot (observation gen). */
 			let snapshotSeq = 0;
+			// Claims whose outcome was never established survive a crash/restart as
+			// durable records. They BLOCK execution for their target until a later
+			// observation proves the turn ended (reconciliation).
+			const unsettled = new Map<string, { messageID: string; kind: "prompt" | "command" }>();
+			const claimsDirectory = join(
+				input.instanceId ? join(this.config.stateDirectory, "claims") : this.config.stateDirectory,
+				input.instanceId.replace(/[^A-Za-z0-9_-]/g, "_"),
+			);
+			if (ledgerDirectory) {
+				await mkdir(claimsDirectory, { recursive: true, mode: 0o700 });
+				for (const name of await readdir(claimsDirectory)) {
+					if (!name.endsWith(".json")) continue;
+					try {
+						const record = JSON.parse(await readFile(join(claimsDirectory, name), "utf8")) as {
+							nativeSessionId?: unknown;
+							messageID?: unknown;
+							kind?: unknown;
+						};
+						if (
+							typeof record.nativeSessionId === "string" &&
+							typeof record.messageID === "string" &&
+							(record.kind === "prompt" || record.kind === "command")
+						)
+							unsettled.set(record.nativeSessionId, {
+								messageID: record.messageID,
+								kind: record.kind,
+							});
+					} catch {
+						// Unreadable records stay on disk for reconciliation/audit.
+					}
+				}
+			}
 			/**
 			 * One fork window at a time: no prompt/command may run between the
 			 * snapshot and the native fork, or the captured parent state would be
@@ -392,6 +428,11 @@ export class OpenCodeRuntimePool {
 			 * never interleave two same-target attempts. A baseline failure frees
 			 * only THIS claim id.
 			 */
+			const release = (id: string, claim: Claim) => {
+				if (executing.get(id) !== claim) return;
+				executing.delete(id);
+				if (claim.recordPath) void unlink(claim.recordPath).catch(() => {});
+			};
 			const integrate = async (
 				kind: "prompt" | "command",
 				target?: string,
@@ -399,6 +440,7 @@ export class OpenCodeRuntimePool {
 				const id = target ?? native.id;
 				if (id !== native.id && !knownSessions.has(id))
 					throw new Error("opencode_unknown_native_session");
+				if (unsettled.has(id)) throw new Error("opencode_session_unsettled");
 				if (forking) throw new Error("opencode_session_busy");
 				if (executing.has(id)) throw new Error("opencode_session_busy");
 				if (id === native.id) {
@@ -412,15 +454,25 @@ export class OpenCodeRuntimePool {
 				};
 				executing.set(id, claim); // synchronous: no interleaving here
 				try {
+					claim.recordPath = join(claimsDirectory, `${claim.id}.json`);
+					await writeFile(
+						claim.recordPath,
+						JSON.stringify({
+							version: 1,
+							instanceId: input.instanceId,
+							nativeSessionId: id,
+							messageID: claim.messageID,
+							kind,
+							createdAt: new Date().toISOString(),
+						}),
+						{ mode: 0o600 },
+					);
 					await request<unknown[]>(`/session/${encodeURIComponent(id)}/message`);
 				} catch (error) {
-					if (executing.get(id) === claim) executing.delete(id);
+					release(id, claim);
 					throw error;
 				}
 				return { id, path: id === native.id ? nativePath : `/session/${encodeURIComponent(id)}`, claim };
-			};
-			const release = (id: string, claim: Claim) => {
-				if (executing.get(id) === claim) executing.delete(id);
 			};
 			const pathFor = (target?: string): string => {
 				if (!target || target === native.id) return nativePath;
@@ -526,6 +578,12 @@ export class OpenCodeRuntimePool {
 							};
 						}),
 					};
+				},
+				unsettledClaims() {
+					return [...unsettled.entries()].map(([nativeSessionId, record]) => ({
+						nativeSessionId,
+						...record,
+					}));
 				},
 				registerManagedChild(nativeSessionId: string) {
 					if (!/^ses_[A-Za-z0-9_-]+$/.test(nativeSessionId))
@@ -760,7 +818,7 @@ export class OpenCodeRuntimePool {
 						};
 						const outcome = observeClaim(claim.state, observation);
 						claim.state = outcome.state;
-						if (outcome.release) executing.delete(id);
+						if (outcome.release) release(id, claim);
 					}
 					const boundBusy = status[native.id]?.type === "busy" || status[native.id]?.type === "retry";
 					const entry = this.instances.get(input.sessionId);
