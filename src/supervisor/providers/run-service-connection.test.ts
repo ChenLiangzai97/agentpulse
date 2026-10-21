@@ -118,3 +118,55 @@ test("connectRunService end-to-end over the real store + adapter (and a wrong ti
 		server.stop(true);
 	}
 });
+
+test("a SLOW DRIP cannot extend the absolute deadline", async () => {
+	const server = Bun.serve({
+		port: 0,
+		async fetch() {
+			const stream = new ReadableStream({
+				async start(controller) {
+					for (let i = 0; i < 40; i++) {
+						controller.enqueue(new TextEncoder().encode(" "));
+						await Bun.sleep(50);
+					}
+					controller.close();
+				},
+			});
+			return new Response(stream, { headers: { "Content-Type": "application/json" } });
+		},
+	});
+	try {
+		const started = Date.now();
+		await expect(
+			fetchRunServiceIdentity(`http://127.0.0.1:${server.port}`, "tok", { timeoutMs: 400 }),
+		).rejects.toThrow("run_service_timeout");
+		expect(Date.now() - started).toBeLessThan(1200); // not 2s of dripping
+	} finally {
+		server.stop(true);
+	}
+});
+
+test("an oversized identity body is refused", async () => {
+	const server = Bun.serve({
+		port: 0,
+		fetch() {
+			return new Response("x".repeat(70 * 1024), { headers: { "Content-Type": "application/json" } });
+		},
+	});
+	try {
+		await expect(
+			fetchRunServiceIdentity(`http://127.0.0.1:${server.port}`, "tok", { timeoutMs: 2000 }),
+		).rejects.toThrow(/run_service_body_too_large|run_service_aborted|socket/);
+	} finally {
+		server.stop(true);
+	}
+});
+
+test("a symlinked token/manifest is refused", async () => {
+	const store = createRunServiceStore(root);
+	const directory = await store.ensure("link");
+	const real = join(directory, "real-token");
+	await Bun.write(real, "tok");
+	await (await import("node:fs/promises")).symlink(real, join(directory, "token"));
+	await expect(store.readToken("link")).rejects.toThrow("run_service_symlink_refused");
+});

@@ -7,7 +7,7 @@
  * - The adapter talks to loopback ONLY, never follows redirects (so credentials
  *   cannot be forwarded elsewhere) and always has a timeout.
  */
-import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, open, rename } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { processStartTicks } from "./opencode-recovery.js";
@@ -27,19 +27,48 @@ export const runServiceDirectory = (root: string, instanceId: string) => {
 	return directory;
 };
 
-const privateFile = async (path: string) => {
-	const info = await stat(path);
+const requirePrivate = (info: {
+	uid: number;
+	mode: number;
+	isSymbolicLink?: () => boolean;
+	isDirectory?: () => boolean;
+	isFile?: () => boolean;
+}, kind: "dir" | "file") => {
+	if (info.isSymbolicLink?.()) throw new Error("run_service_symlink_refused");
+	if (kind === "dir" && info.isDirectory && !info.isDirectory())
+		throw new Error("run_service_not_directory");
+	if (kind === "file" && info.isFile && !info.isFile()) throw new Error("run_service_not_file");
 	if (info.uid !== process.getuid?.()) throw new Error("run_service_not_owner");
 	if ((info.mode & 0o077) !== 0) throw new Error("run_service_not_private");
+};
+
+/** Read through a FILE HANDLE after lstat/fstat checks (no TOCTOU/на symlink). */
+const readPrivateFile = async (path: string): Promise<string> => {
+	const before = await lstat(path);
+	requirePrivate(before, "file");
+	const handle = await open(path, "r");
+	try {
+		const after = await handle.stat();
+		if (!after.isFile() || after.uid !== process.getuid?.() || (after.mode & 0o077) !== 0)
+			throw new Error("run_service_not_private");
+		return await handle.readFile({ encoding: "utf8" });
+	} finally {
+		await handle.close();
+	}
 };
 
 export function createRunServiceStore(root: string) {
 	const dir = (instanceId: string) => runServiceDirectory(root, instanceId);
 	return {
 		async ensure(instanceId: string) {
+			const base = resolve(root);
 			const directory = dir(instanceId);
-			await mkdir(directory, { recursive: true, mode: 0o700 });
-			await chmod(directory, 0o700);
+			// The whole state chain must be owned/private and free of symlinks.
+			for (const path of [base, join(base, "instances"), directory]) {
+				await mkdir(path, { recursive: true, mode: 0o700 });
+				requirePrivate(await lstat(path), "dir");
+				await chmod(path, 0o700);
+			}
 			return directory;
 		},
 		/** Written by the service itself (atomic, 0600). */
@@ -47,20 +76,28 @@ export function createRunServiceStore(root: string) {
 			const directory = await this.ensure(instanceId);
 			const tokenPath = join(directory, "token");
 			const manifestPath = join(directory, "manifest.json");
-			await writeFile(`${tokenPath}.tmp`, token, { mode: 0o600 });
-			await rename(`${tokenPath}.tmp`, tokenPath);
-			await writeFile(`${manifestPath}.tmp`, JSON.stringify(manifest), { mode: 0o600 });
-			await rename(`${manifestPath}.tmp`, manifestPath);
+			// Unique temp names with EXCLUSIVE create (never follow/clobber).
+			const writeExclusive = async (target: string, body: string) => {
+				const temp = `${target}.tmp-${crypto.randomUUID()}`;
+				const handle = await open(temp, "wx", 0o600);
+				try {
+					await handle.writeFile(body);
+					await handle.sync();
+				} finally {
+					await handle.close();
+				}
+				await rename(temp, target);
+			};
+			await writeExclusive(tokenPath, token);
+			await writeExclusive(manifestPath, JSON.stringify(manifest));
 		},
 		async readManifest(instanceId: string): Promise<RunServiceManifest> {
-			const path = join(dir(instanceId), "manifest.json");
-			await privateFile(path);
-			return JSON.parse(await readFile(path, "utf8")) as RunServiceManifest;
+			requirePrivate(await lstat(dir(instanceId)), "dir");
+			return JSON.parse(await readPrivateFile(join(dir(instanceId), "manifest.json"))) as RunServiceManifest;
 		},
 		async readToken(instanceId: string): Promise<string> {
-			const path = join(dir(instanceId), "token");
-			await privateFile(path);
-			return (await readFile(path, "utf8")).trim();
+			requirePrivate(await lstat(dir(instanceId)), "dir");
+			return (await readPrivateFile(join(dir(instanceId), "token"))).trim();
 		},
 	};
 }
@@ -76,7 +113,12 @@ export async function fetchRunServiceIdentity(
 		throw new Error("run_service_not_loopback");
 	if (target.username || target.password) throw new Error("run_service_url_credentials");
 	const timeoutMs = options.timeoutMs ?? 5000;
+	const MAX_BODY = 64 * 1024;
 	return new Promise((resolvePromise, reject) => {
+		// req.setTimeout is an IDLE timeout; the absolute deadline is what a slow
+		// drip cannot extend.
+		const deadline = setTimeout(() => reject(new Error("run_service_timeout")), timeoutMs);
+		deadline.unref?.();
 		const req = httpRequest(
 			{
 				host: target.hostname,
@@ -89,10 +131,25 @@ export async function fetchRunServiceIdentity(
 			},
 			(response) => {
 				let text = "";
-				response.on("data", (chunk) => {
+				let size = 0;
+				response.on("data", (chunk: Buffer) => {
+					size += chunk.length;
+					if (size > MAX_BODY) {
+						response.destroy(new Error("run_service_body_too_large"));
+						return;
+					}
 					text += chunk;
 				});
+				response.on("error", (error) => {
+					clearTimeout(deadline);
+					reject(error);
+				});
+				response.on("aborted", () => {
+					clearTimeout(deadline);
+					reject(new Error("run_service_aborted"));
+				});
 				response.on("end", () => {
+					clearTimeout(deadline);
 					// A redirect is REFUSED: credentials are never replayed elsewhere.
 					if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400) {
 						reject(new Error("run_service_redirect_refused"));
@@ -111,7 +168,10 @@ export async function fetchRunServiceIdentity(
 		req.setTimeout(timeoutMs, () => {
 			req.destroy(new Error("run_service_timeout"));
 		});
-		req.on("error", reject);
+		req.on("error", (error) => {
+			clearTimeout(deadline);
+			reject(error);
+		});
 		req.end();
 	});
 }
