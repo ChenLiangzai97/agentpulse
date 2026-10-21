@@ -9,7 +9,7 @@ const snapshot = {
 	version: 1 as const,
 	instanceId: "instance-1",
 	nativeSessionId: "ses_parent",
-	messages: [{ nativeId: "msg_1", contentHash: "h" }],
+	messages: [{ nativeId: "msg_1", contentHash: "h", occurredAt: "2026-01-01T00:00:00.000Z" }],
 	forkPointMessageId: null,
 };
 
@@ -22,7 +22,7 @@ async function harness(directory: string, over: Partial<Parameters<typeof execut
 		claimToken: "token-1",
 		forkPointMessageId: null as string | null,
 		capture: async () => snapshot,
-		fork: async (_forkPointMessageId: string | null) => {
+		fork: async (_forkPointMessageId: string | null, _parentSnapshot: unknown) => {
 			calls.forks += 1;
 			return { id: "ses_child" };
 		},
@@ -163,7 +163,7 @@ test("a known fork point is passed to the native fork and recorded", async () =>
 		const seen = { point: null as string | null };
 		const { attempt } = await harness(directory, {
 			forkPointMessageId: "msg_1",
-			fork: async (forkPointMessageId) => {
+			fork: async (forkPointMessageId: string | null) => {
 				seen.point = forkPointMessageId;
 				return { id: "ses_child" };
 			},

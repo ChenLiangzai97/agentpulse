@@ -29,6 +29,7 @@ import {
 	renderPersonalReview,
 	renderTeamDraftInput,
 } from "./worklog-facts.js";
+import { loadCopiedEvents } from "./worklog-copy.js";
 
 const CONFIG = "worklog.config";
 export const worklogConfigSchema = z.object({
@@ -252,6 +253,9 @@ export async function runWorklog(
 			run.sessionIds = [];
 			for (const session of active) {
 				if (excluded.has(session.sessionId)) continue;
+				// Provenance of events COPIED by a fork: dedupe anchor + original
+				// occurrence time. Empty for ordinary sessions.
+				const copies = await loadCopiedEvents(session.sessionId);
 				let after = 0;
 				let chunk = "";
 				// The chunk's real events by id — the only admissible evidence
@@ -300,6 +304,7 @@ export async function runWorklog(
 						host: session.host,
 						sessionName: session.name || session.sessionId,
 						events: chunkEvents,
+						...(copies.size > 0 ? { copies } : {}),
 					});
 					// A broken extraction protocol must fail loudly — an empty
 					// "successful" log would silently hide the failure.

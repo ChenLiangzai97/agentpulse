@@ -15,7 +15,7 @@
  */
 import { open, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { ForkSnapshot } from "./fork-snapshot.js";
+import type { ForkChildMap, ForkSnapshot } from "./fork-snapshot.js";
 
 export interface ForkRecord {
 	version: 1;
@@ -29,6 +29,8 @@ export interface ForkRecord {
 	phase: "intent" | "created" | "done";
 	childNativeSessionId?: string;
 	parentSnapshot?: ForkSnapshot;
+	/** Execution-time parent->child mapping (copyOf provenance). */
+	childMap?: ForkChildMap;
 }
 
 export interface ForkIdentity {
@@ -139,7 +141,10 @@ export interface ForkAttempt {
 	/** Optional copyOf point; must exist in the captured parent snapshot. */
 	forkPointMessageId: string | null;
 	capture: () => Promise<ForkSnapshot>;
-	fork: (forkPointMessageId: string | null) => Promise<{ id: string }>;
+	fork: (
+		forkPointMessageId: string | null,
+		parentSnapshot: ForkSnapshot,
+	) => Promise<{ id: string; childMap?: ForkChildMap }>;
 	/** Reports the record; resolves with the token the server ACCEPTED. */
 	report: (record: ForkRecord) => Promise<{ token: string }>;
 	/** Called only after the report confirmed the managed binding. */
@@ -190,12 +195,13 @@ export async function executeOrReportFork(
 		!parentSnapshot.messages.some((message) => message.nativeId === attempt.forkPointMessageId)
 	)
 		throw new Error("opencode_fork_point_unknown");
-	const created = await attempt.fork(attempt.forkPointMessageId);
+	const created = await attempt.fork(attempt.forkPointMessageId, parentSnapshot);
 	const record: ForkRecord = {
 		...base,
 		phase: "created",
 		childNativeSessionId: created.id,
 		parentSnapshot,
+		...(created.childMap ? { childMap: created.childMap } : {}),
 	};
 	await writeRecord(attempt.directory, attempt.identity, record);
 	const { token } = await attempt.report(record);

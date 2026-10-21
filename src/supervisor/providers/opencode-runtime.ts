@@ -1,4 +1,4 @@
-import type { ForkSnapshot } from "./fork-snapshot.js";
+import type { ForkChildMap, ForkSnapshot } from "./fork-snapshot.js";
 import { markAbort, newClaimState, observeClaim } from "./session-claim.js";
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
@@ -80,6 +80,8 @@ export interface OpenCodeRuntime {
 	captureForkSnapshot(forkPointMessageId?: string | null): Promise<ForkSnapshot>;
 	/** Holds the instance/source session for the whole capture+fork window. */
 	withExclusiveFork<T>(run: () => Promise<T>): Promise<T>;
+	/** Parent->child message map for the execution-time copyOf window. */
+	captureChildMap(childNativeSessionId: string, parentSnapshot: ForkSnapshot): Promise<ForkChildMap>;
 	/** Root-session full fork only; the child stays unaddressable until confirmed. */
 	forkSession(
 		nativeSessionId?: string,
@@ -436,10 +438,13 @@ export class OpenCodeRuntimePool {
 					const list = await request<unknown[]>(`${nativePath}/message`);
 					const { createHash } = await import("node:crypto");
 					const messages = list.map((item) => {
-						const info = (item as { info?: { id?: unknown; role?: unknown } })?.info;
+						const info = (item as { info?: { id?: unknown; time?: { created?: unknown } } })
+							?.info;
+						const created = Number(info?.time?.created ?? 0);
 						return {
 							nativeId: String(info?.id ?? ""),
 							contentHash: createHash("sha256").update(JSON.stringify(item)).digest("hex"),
+							occurredAt: created > 0 ? new Date(created).toISOString() : new Date(0).toISOString(),
 						};
 					});
 					return {
@@ -464,6 +469,34 @@ export class OpenCodeRuntimePool {
 					// NOT addressable yet: registration is granted only after the
 					// server commits the managed binding (registerManagedChild).
 					return { id: created.id, parentID: typeof created.parentID === "string" ? created.parentID : null };
+				},
+				/**
+				 * Execution-time copy map. Native fork REMAPS ids and is
+				 * exclusive at the fork point, so the child history is the parent
+				 * prefix: child[i] <-> parent[i], never by id lookup.
+				 */
+				async captureChildMap(
+					childNativeSessionId: string,
+					parentSnapshot: ForkSnapshot,
+				): Promise<ForkChildMap> {
+					const childMessages = await request<unknown[]>(
+						`/session/${encodeURIComponent(childNativeSessionId)}/message`,
+					);
+					if (childMessages.length > parentSnapshot.messages.length)
+						throw new Error("opencode_fork_child_prefix_invalid");
+					return {
+						version: 1,
+						forkPointMessageId: parentSnapshot.forkPointMessageId,
+						pairs: childMessages.map((item, index) => {
+							const parentMessage = parentSnapshot.messages[index];
+							if (!parentMessage) throw new Error("opencode_fork_child_prefix_invalid");
+							return {
+								parentNativeId: parentMessage.nativeId,
+								childNativeId: String((item as { info?: { id?: unknown } })?.info?.id ?? ""),
+								parentOccurredAt: parentMessage.occurredAt,
+							};
+						}),
+					};
 				},
 				registerManagedChild(nativeSessionId: string) {
 					if (!/^ses_[A-Za-z0-9_-]+$/.test(nativeSessionId))

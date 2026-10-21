@@ -12,7 +12,7 @@ import {
 	recoverOpenCodeHistory,
 } from "./opencode-recovery.js";
 import { executeOrReportFork, reportForkWithTokenFallback } from "./fork-pending.js";
-import type { ForkSnapshot } from "./fork-snapshot.js";
+import type { ForkChildMap, ForkSnapshot } from "./fork-snapshot.js";
 import { OpenCodeRuntimePool } from "./opencode-runtime.js";
 
 export function createManagedOpenCodeProvider(
@@ -28,6 +28,7 @@ export function createManagedOpenCodeProvider(
 				claimToken: string;
 				childNativeSessionId: string;
 				parentSnapshot: ForkSnapshot;
+				childMap?: ForkChildMap;
 			},
 		) => Promise<unknown>;
 	},
@@ -374,11 +375,14 @@ export function createManagedOpenCodeProvider(
 							),
 						// copyOf: the native fork accepts the message id; the child
 						// history is truncated there (verified by the runtime test).
-						fork: (forkPointMessageId) =>
-							runtime.forkSession(
+						fork: async (forkPointMessageId, parentSnapshot) => {
+							const created = await runtime.forkSession(
 								undefined,
 								forkPointMessageId ? { messageID: forkPointMessageId } : {},
-							),
+							);
+							const childMap = await runtime.captureChildMap(created.id, parentSnapshot);
+							return { id: created.id, childMap };
+						},
 						report: (record) =>
 							reportForkWithTokenFallback({
 								record,
@@ -388,6 +392,7 @@ export function createManagedOpenCodeProvider(
 										claimToken: token,
 										childNativeSessionId: String(record.childNativeSessionId ?? ""),
 										parentSnapshot: record.parentSnapshot as ForkSnapshot,
+										...(record.childMap ? { childMap: record.childMap as ForkChildMap } : {}),
 									}),
 							}),
 						// The child becomes addressable ONLY after the server confirmed

@@ -565,6 +565,7 @@ supervisorsAgentRouter.post(
 			claimToken?: string;
 			childNativeSessionId?: string;
 			parentSnapshot?: unknown;
+			childMap?: unknown;
 		}>();
 		if (!body.claimToken || !body.childNativeSessionId)
 			return c.json({ error: "fork_result_incomplete" }, 400);
@@ -583,6 +584,7 @@ supervisorsAgentRouter.post(
 				claimToken: body.claimToken,
 				childNativeSessionId: body.childNativeSessionId,
 				parentSnapshot: snapshot as FinalizeForkInput["parentSnapshot"],
+				childMap: (body.childMap ?? null) as Record<string, unknown> | null,
 			});
 			return c.json(result);
 		} catch (error) {

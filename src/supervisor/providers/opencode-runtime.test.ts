@@ -583,7 +583,24 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 			const snapshot = await runtime.captureForkSnapshot(forkPoint ?? null);
 			expect(snapshot.messages.some((message) => message.nativeId === forkPoint)).toBe(true);
 			const child = await runtime.forkSession(undefined, { messageID: forkPoint });
+			const childMap = await runtime.captureChildMap(child.id, snapshot);
 			const childMessages = await messageList(child.id);
+			// EXECUTION-TIME copy map: child[i] <-> parent prefix[i], with the
+			// parent's ORIGINAL occurrence time carried over (no id lookup).
+			expect(childMap.pairs.length).toBe(childMessages.length);
+			expect(childMap.pairs.map((pair) => pair.childNativeId)).toEqual(
+				childMessages.map((message) => message.info.id),
+			);
+			expect(childMap.pairs.map((pair) => pair.parentNativeId)).toEqual(
+				parentMessages.slice(0, childMessages.length).map((message) => message.info.id),
+			);
+			expect(childMap.pairs[0]?.parentOccurredAt).toBe(
+				new Date(
+					Number(
+						(parentMessages[0]?.info as { time?: { created?: number } }).time?.created ?? 0,
+					),
+				).toISOString(),
+			);
 			// copyOf EVIDENCE: the native fork point is EXCLUSIVE and ids are
 			// REMAPPED — the child keeps only the history BEFORE the named
 			// message (so a 3-turn parent forked at user #2 keeps 1 user turn),

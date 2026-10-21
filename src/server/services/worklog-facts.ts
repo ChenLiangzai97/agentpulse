@@ -207,6 +207,11 @@ export interface ExtractionSessionContext {
 	sessionName: string;
 	/** The chunk's real events by id — the only admissible evidence. */
 	events: Map<number, ChunkEvent>;
+	/**
+	 * copyOf provenance for events COPIED by a fork: child event id -> the
+	 * parent event it duplicates and that parent event's original time.
+	 */
+	copies?: Map<number, { copyOf: string; occurredAt: string }>;
 }
 
 export interface ParsedFacts {
@@ -258,11 +263,13 @@ export function parseFacts(raw: unknown, ctx: ExtractionSessionContext): ParsedF
 		const category = downgrade(candidate.category, event);
 		if (category !== candidate.category) downgradedCount += 1;
 		const contentKey = hashContent(`${category}:${text}`);
+		const copy = ctx.copies?.get(event.id);
 		facts.push({
 			id: `f_${createHash("sha256").update(`${ctx.sessionId}:${event.id}:${contentKey}`).digest("hex").slice(0, 24)}`,
 			sessionId: ctx.sessionId,
 			host: ctx.host,
-			occurredAt: event.createdAt,
+			// A copied event keeps the ORIGINAL occurrence time.
+			occurredAt: copy?.occurredAt ?? event.createdAt,
 			category,
 			text,
 			evidenceEventId: event.id,
@@ -272,8 +279,7 @@ export function parseFacts(raw: unknown, ctx: ExtractionSessionContext): ParsedF
 			confidence: category === "verified_result" ? "verified" : "stated",
 			contentKey,
 			lineageRoot,
-			// No ingestion path records a proven copy mapping yet: always keep.
-			copyOf: null,
+			copyOf: copy?.copyOf ?? null,
 		});
 	}
 	return { facts, rejected, downgraded: downgradedCount, parseFailed: false };
