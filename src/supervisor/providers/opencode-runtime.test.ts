@@ -350,11 +350,11 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 				"opencode_session_busy",
 			);
 			await runtime.abort(child.id);
-			// 5b) ABORT IS ONLY ACCEPTANCE: right after the accepted abort the
-			//     claim is still held; only a later idle snapshot with no
-			//     unfinished reply to our message releases it.
+			// 5b) ABORT IS ONLY ACCEPTANCE and the target is FROZEN for the whole
+			//     attempt: no replacement delivery can slip in while the abort
+			//     intent is being persisted or the native call is in flight.
 			await expect(runtime.prompt("again", { nativeSessionId: child.id })).rejects.toThrow(
-				"opencode_session_busy",
+				"opencode_abort_pending",
 			);
 			// Two consecutive post-abort non-busy observations are required.
 			let quietSeen = 0;

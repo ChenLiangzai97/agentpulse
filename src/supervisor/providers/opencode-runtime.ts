@@ -1,5 +1,6 @@
 import { partFingerprint } from "../../shared/opencode-copy.js";
 import type { ForkChildMap, ForkSnapshot } from "./fork-snapshot.js";
+import { abortTerminal, runningTools, turnAssistants, turnTerminal } from "./claim-evidence.js";
 import { markAbort, newClaimState, observeClaim } from "./session-claim.js";
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
@@ -328,6 +329,10 @@ export class OpenCodeRuntimePool {
 			const unsettled = new Map<string, { messageID: string; kind: "prompt" | "command" }>();
 			let claimsQuarantined = false;
 			const cleanupIssues: { claimId: string; path: string; error: string }[] = [];
+			// Freeze a target from the START of an abort attempt (intent write)
+			// until the attempt settles or is quarantined: a replacement claim can
+			// never be killed by an abort aimed at the previous one.
+			const abortFence = new Set<string>();
 			const claimsDirectory = join(
 				this.config.stateDirectory,
 				"claims",
@@ -396,45 +401,7 @@ export class OpenCodeRuntimePool {
 					const info = (item as { info?: Record<string, unknown> })?.info;
 					return info?.role === "assistant" && info?.parentID === messageID;
 				}) as { info?: Record<string, unknown> } | undefined;
-			/** Every assistant step of ONE request (all share the user message id). */
-			const turnAssistants = (list: unknown[], messageID: string) =>
-				list.filter((item) => {
-					const info = (item as { info?: Record<string, unknown> })?.info;
-					return info?.role === "assistant" && info?.parentID === messageID;
-				}) as { info: Record<string, unknown> }[];
-			/**
-			 * A turn is terminal only when its LAST assistant step completed with
-			 * finish "stop" (a completed intermediate step with finish
-			 * "tool-calls" is not the end of the turn) and that step has no
-			 * running tool. Earlier steps' stale parts are irrelevant.
-			 */
-			/** Abort case: the last step is completed OR carries an error (cancelled). */
-			const abortTerminal = (list: unknown[], messageID: string) => {
-				const last = turnAssistants(list, messageID).at(-1);
-				if (!last) return false;
-				const time = last.info.time as { completed?: unknown } | undefined;
-				return Boolean(time?.completed) || Boolean(last.info.error);
-			};
-			const turnTerminal = (list: unknown[], messageID: string) => {
-				const steps = turnAssistants(list, messageID);
-				const last = steps.at(-1);
-				if (!last) return false;
-				const time = last.info.time as { completed?: unknown } | undefined;
-				if (!time?.completed || last.info.error) return false;
-				// "tool-calls" means the turn CONTINUES with another step. A
-				// completed message with no finish marker is terminal.
-				if (last.info.finish === "tool-calls") return false;
-				return !runningTools([last]);
-			};
-			const runningTools = (list: unknown[]) =>
-				list.some(
-					(value) =>
-						Array.isArray((value as { parts?: unknown[] }).parts) &&
-						(value as { parts: unknown[] }).parts.some((part) => {
-							const p = part as { type?: string; state?: { status?: string } };
-							return p.type === "tool" && ["running", "pending"].includes(p.state?.status ?? "");
-						}),
-				);
+			// Evidence helpers live in claim-evidence.ts (unit-tested there).
 			const hasUserMessage = (list: unknown[], messageID: string) =>
 				list.some((item) => {
 					const info = (item as { info?: Record<string, unknown> })?.info;
@@ -460,6 +427,7 @@ export class OpenCodeRuntimePool {
 			const release = async (id: string, claim: Claim) => {
 				if (executing.get(id) !== claim) return;
 				executing.delete(id);
+				abortFence.delete(id);
 				if (!claim.recordPath) return;
 				try {
 					await enqueueClaimFileOp(claim.id, async () => {
@@ -489,6 +457,7 @@ export class OpenCodeRuntimePool {
 				if (id !== native.id && !knownSessions.has(id))
 					throw new Error("opencode_unknown_native_session");
 				if (claimsQuarantined) throw new Error("opencode_claims_quarantine");
+				if (abortFence.has(id)) throw new Error("opencode_abort_pending");
 				if (unsettled.has(id)) throw new Error("opencode_session_unsettled");
 				if (forking) throw new Error("opencode_session_busy");
 				if (executing.has(id)) throw new Error("opencode_session_busy");
@@ -761,6 +730,7 @@ export class OpenCodeRuntimePool {
 					// Capture the target claim BEFORE the request and persist the
 					// abort INTENT first: a slow response can never be applied to a
 					// replacement claim, and a failed write REFUSES the abort.
+					abortFence.add(id);
 					const held = executing.get(id);
 					if (held?.recordPath && held.attempt) {
 						const path = held.recordPath;
