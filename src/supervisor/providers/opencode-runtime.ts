@@ -23,6 +23,8 @@ export interface OpenCodeRuntimeConfig {
 	stopGraceMs: number;
 	/** Deterministic test/diagnostics knob: wait before sending a native abort. */
 	abortRequestDelayMs?: number;
+	/** Test/diagnostics knob: deliver the native abort but lose its response once. */
+	abortResponseLossOnce?: boolean;
 }
 export type OpenCodeHealth =
 	| "ready"
@@ -730,50 +732,62 @@ export class OpenCodeRuntimePool {
 				},
 				abort: async (nativeSessionId?: string) => {
 					const id = nativeSessionId ?? native.id;
-					// Capture the target claim BEFORE the request and persist the
-					// abort INTENT first: a slow response can never be applied to a
-					// replacement claim, and a failed write REFUSES the abort.
 					const attemptId = crypto.randomUUID();
 					const held = executing.get(id);
-					// No active claim = no turn to protect: send the native abort without
-					// registering a fenceless attempt (which could never resolve).
-					if (held) abortAttempts.begin(id, attemptId, held.id);
-					try {
+					// A target with NO claim is still frozen while the request is in
+					// flight (a prompt may start during the delay and be killed by this
+					// very abort): claimEnded starts true, the response releases it.
+					abortAttempts.begin(id, attemptId, held?.id ?? "", !held);
 					if (held?.recordPath && held.attempt) {
 						const path = held.recordPath;
 						const attempt = held.attempt;
 						const messageID = held.messageID;
 						const kind = held.state.kind;
-						await enqueueClaimFileOp(held.id, () =>
-							writePrivateFileAtomic(
-								path,
-								JSON.stringify({
-									version: 1,
-									...attempt,
-									messageID,
-									kind,
-									abortRequested: true,
-									createdAt: new Date().toISOString(),
-								}),
-							),
-						);
+						try {
+							// PRE-NETWORK failure only: the request was never sent, so the
+							// attempt is abandoned (nothing can be killed later).
+							await enqueueClaimFileOp(held.id, () =>
+								writePrivateFileAtomic(
+									path,
+									JSON.stringify({
+										version: 1,
+										...attempt,
+										messageID,
+										kind,
+										abortRequested: true,
+										createdAt: new Date().toISOString(),
+									}),
+								),
+							);
+						} catch (error) {
+							abortAttempts.abandon(id, attemptId);
+							throw error;
+						}
 					}
-					const delay = this.config.abortRequestDelayMs ?? 0;
-					if (delay > 0) await Bun.sleep(delay);
-					await request(`${pathFor(nativeSessionId)}/abort`, {});
+					try {
+						const delay = this.config.abortRequestDelayMs ?? 0;
+						if (delay > 0) await Bun.sleep(delay);
+						await request(`${pathFor(nativeSessionId)}/abort`, {});
+						if (this.config.abortResponseLossOnce) {
+							// The native side accepted it; only the RESPONSE is lost.
+							this.config.abortResponseLossOnce = false;
+							throw new Error("opencode_abort_response_lost");
+						}
+					} catch (error) {
+						// NETWORK STARTED: outcome UNKNOWN (maybe executed, maybe late).
+						// Keep the attempt/fence and surface it for reconciliation.
+						cleanupIssues.push({
+							claimId: held?.id ?? attemptId,
+							path: held?.recordPath ?? "",
+							error: "abort_transport_unknown",
+						});
+						throw error;
+					}
 					abortAttempts.respond(id, attemptId);
-					// Apply the response ONLY to the same claim identity.
 					const current = executing.get(id);
 					if (held && current && current.id === held.id)
 						current.state = markAbort(current.state, snapshotSeq + 1);
 					runtime.touch();
-					} catch (error) {
-						// The request was NOT (confirmed) sent: drop the attempt so the
-						// target is not frozen without a recovery path. The durable
-						// abortRequested marker (if written) stays for reconciliation.
-						abortAttempts.abandon(id, attemptId);
-						throw error;
-					}
 				},
 				stop: async () => {
 					for (const cancel of subscriptions) cancel();

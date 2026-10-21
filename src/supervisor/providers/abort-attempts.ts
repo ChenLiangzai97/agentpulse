@@ -16,9 +16,9 @@ export interface AbortAttempt {
 export class AbortAttempts {
 	private readonly byTarget = new Map<string, Map<string, AbortAttempt>>();
 
-	begin(target: string, attemptId: string, claimId: string): void {
+	begin(target: string, attemptId: string, claimId: string, claimEnded = false): void {
 		const attempts = this.byTarget.get(target) ?? new Map<string, AbortAttempt>();
-		attempts.set(attemptId, { attemptId, claimId, responded: false, claimEnded: false });
+		attempts.set(attemptId, { attemptId, claimId, responded: false, claimEnded });
 		this.byTarget.set(target, attempts);
 	}
 

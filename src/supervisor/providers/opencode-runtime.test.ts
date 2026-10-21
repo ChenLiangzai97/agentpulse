@@ -1036,3 +1036,74 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 	},
 	120000,
 );
+
+
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: a LOST abort response keeps the target frozen for reconciliation",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-abort-loss-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": { name: "Fixture", tool_call: true, limit: { context: 32768, output: 2048 } },
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const cwd = join(root, "project");
+		await mkdir(cwd);
+		const pool = new OpenCodeRuntimePool({
+			executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+			profilePath,
+			stateDirectory: join(root, "state"),
+			maxInstances: 1,
+			idleTimeoutMs: 60000,
+			stopGraceMs: 1000,
+			abortResponseLossOnce: true,
+		});
+		try {
+			const runtime = await pool.start({
+				instanceId: "abort-loss-instance",
+				generation: 1,
+				sessionId: "abort-loss-session",
+				cwd,
+				title: "abort loss",
+			});
+			await runtime.prompt("P0_HELLO");
+			// The native abort IS delivered, but the caller sees a timeout.
+			await expect(runtime.abort()).rejects.toThrow("opencode_abort_response_lost");
+			// Outcome unknown: the target stays FROZEN (no silent reopen window).
+			await expect(runtime.prompt("after loss")).rejects.toThrow("opencode_abort_pending");
+			// Observable for reconciliation.
+			expect(runtime.cleanupIssues().some((issue) => issue.error === "abort_transport_unknown")).toBe(
+				true,
+			);
+			await runtime.stop();
+		} finally {
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+	120000,
+);

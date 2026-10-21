@@ -45,3 +45,11 @@ test("an abandoned attempt (request never sent) never freezes the target", () =>
 	attempts.abandon("ses", "a1");
 	expect(attempts.frozen("ses")).toBe(false);
 });
+
+test("a standalone attempt (no claim) freezes until the request responds", () => {
+	const attempts = new AbortAttempts();
+	attempts.begin("ses", "a1", "", true); // nothing to end later
+	expect(attempts.frozen("ses")).toBe(true);
+	attempts.respond("ses", "a1");
+	expect(attempts.frozen("ses")).toBe(false);
+});
