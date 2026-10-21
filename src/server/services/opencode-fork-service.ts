@@ -20,6 +20,7 @@ import {
 	sessionControlBindings,
 	sessions,
 } from "../db/schema/index.js";
+import { jsonExtractText } from "../db/sql-helpers.js";
 import { withTransaction } from "../db/with-transaction.js";
 import { SessionControlOriginError } from "./opencode-control-provenance.js";
 
@@ -74,6 +75,8 @@ const FINALIZABLE_STATES = ["running", "claimed"] as const;
 
 export async function finalizeOpenCodeFork(
 	input: FinalizeForkInput,
+	/** Test-only interleave hook: runs after validation, before the final CAS. */
+	testHooks: { beforeFinalCas?: () => Promise<void> } = {},
 ): Promise<{ actionId: string; childSessionId: string; replayed: boolean }> {
 	const childSessionId = crypto.randomUUID(); // minted HERE, never caller-provided
 	return withTransaction(async (tx) => {
@@ -85,27 +88,69 @@ export async function finalizeOpenCodeFork(
 		if (!action || action.actionType !== "opencode_fork")
 			throw new SessionControlOriginError("provider_binding_invalid");
 		const meta = (action.metadata ?? {}) as Record<string, unknown>;
-		// IDEMPOTENT replay: only when the SAME execution token already
-		// finalized this action, and the recorded result is intact.
+		// IDEMPOTENT replay: verify the AUTHENTICATED report ownership and the
+		// immutable recorded result BEFORE returning anything.
 		if (action.status === "succeeded") {
 			if (
-				meta.finalizedByClaimToken === input.claimToken &&
-				typeof meta.resultChildSessionId === "string"
-			) {
-				const [existing] = await tx
-					.select()
-					.from(sessions)
-					.where(eq(sessions.sessionId, meta.resultChildSessionId))
-					.limit(1);
-				const [existingBinding] = await tx
-					.select()
-					.from(sessionControlBindings)
-					.where(eq(sessionControlBindings.sessionId, meta.resultChildSessionId))
-					.limit(1);
-				if (existing && existingBinding)
-					return { actionId: action.id, childSessionId: meta.resultChildSessionId, replayed: true };
-			}
-			throw new SessionControlOriginError("provider_binding_invalid");
+				meta.finalizedByClaimToken !== input.claimToken ||
+				typeof meta.resultChildSessionId !== "string"
+			)
+				throw new SessionControlOriginError("provider_binding_invalid");
+			const [ledger] = await tx
+				.select()
+				.from(opencodeForkRequests)
+				.where(eq(opencodeForkRequests.actionId, action.id))
+				.limit(1);
+			const identity = (ledger?.identity ?? null) as Record<string, unknown> | null;
+			const result = (identity?.result ?? null) as Record<string, unknown> | null;
+			if (
+				!identity ||
+				!result ||
+				result.status !== "succeeded" ||
+				result.childSessionId !== meta.resultChildSessionId ||
+				result.childNativeSessionId !== input.childNativeSessionId ||
+				result.providerInstanceId !== identity.providerInstanceId ||
+				result.generation !== identity.generation
+			)
+				throw new SessionControlOriginError("provider_binding_invalid");
+			const [instance] = await tx
+				.select()
+				.from(providerInstances)
+				.where(eq(providerInstances.id, String(identity.providerInstanceId ?? "")))
+				.limit(1);
+			if (
+				!instance ||
+				instance.supervisorId !== input.supervisorId ||
+				instance.generation !== Number(identity.generation)
+			)
+				throw new SessionControlOriginError("provider_binding_invalid");
+			const [existing] = await tx
+				.select()
+				.from(sessions)
+				.where(eq(sessions.sessionId, meta.resultChildSessionId))
+				.limit(1);
+			const [existingBinding] = await tx
+				.select()
+				.from(sessionControlBindings)
+				.where(eq(sessionControlBindings.sessionId, meta.resultChildSessionId))
+				.limit(1);
+			const [existingLineage] = await tx
+				.select()
+				.from(opencodeForks)
+				.where(eq(opencodeForks.childSessionId, meta.resultChildSessionId))
+				.limit(1);
+			if (
+				!existing ||
+				!existingBinding ||
+				!existingLineage ||
+				existingBinding.instanceId !== instance.id ||
+				existingBinding.nativeSessionId !== input.childNativeSessionId ||
+				existingBinding.generation !== instance.generation ||
+				existingLineage.requestActionId !== action.id ||
+				existingLineage.nativeSessionId !== input.childNativeSessionId
+			)
+				throw new SessionControlOriginError("provider_binding_invalid");
+			return { actionId: action.id, childSessionId: meta.resultChildSessionId, replayed: true };
 		}
 		if (!FINALIZABLE_STATES.includes(action.status as (typeof FINALIZABLE_STATES)[number]))
 			throw new SessionControlOriginError("provider_binding_invalid");
@@ -250,8 +295,10 @@ export async function finalizeOpenCodeFork(
 			.where(eq(opencodeForkRequests.actionId, action.id))
 			.returning({ actionId: opencodeForkRequests.actionId });
 		if (ledgerRows.length !== 1) throw new SessionControlOriginError("provider_binding_invalid");
-		// State-machine CAS: finalize ONLY from the state we validated, on the
-		// same claim token. A cancel/timeout race loses here → rollback.
+		await testHooks.beforeFinalCas?.();
+		// State-machine CAS: finalize ONLY from the state we validated AND the
+		// SAME claim token — a same-status re-claim with a NEW token between our
+		// read and this write must lose (read-then-check is not enough).
 		const actionRows = await tx
 			.update(controlActions)
 			.set({
@@ -264,7 +311,13 @@ export async function finalizeOpenCodeFork(
 					finalizedByClaimToken: input.claimToken,
 				},
 			})
-			.where(and(eq(controlActions.id, action.id), eq(controlActions.status, action.status)))
+			.where(
+				and(
+					eq(controlActions.id, action.id),
+					eq(controlActions.status, action.status),
+					eq(jsonExtractText(controlActions.metadata, "$.claimToken"), input.claimToken),
+				),
+			)
 			.returning({ id: controlActions.id });
 		if (actionRows.length !== 1) throw new SessionControlOriginError("provider_binding_invalid");
 		return { actionId: action.id, childSessionId, replayed: false };

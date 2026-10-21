@@ -285,3 +285,46 @@ describe("fork finalization state machine and trust boundaries (review round 44)
 		await expect(finalizeOpenCodeFork(input)).rejects.toThrow();
 	});
 });
+
+describe("finalization CAS token and replay ownership (review round 45)", () => {
+	test("a claim-token change AFTER validation (status still running) makes the CAS lose and rolls back", async () => {
+		const { action, input } = await seedRunningForkRequest();
+		await expect(
+			finalizeOpenCodeFork(input, {
+				beforeFinalCas: async () => {
+					// simulate a concurrent RE-CLAIM: same status, NEW token
+					const [row] = await getDb()
+						.select()
+						.from(controlActions)
+						.where(eq(controlActions.id, action.id));
+					await getDb()
+						.update(controlActions)
+						.set({ metadata: { ...(row.metadata as object), claimToken: "reclaimed" } })
+						.where(eq(controlActions.id, action.id));
+				},
+			}),
+		).rejects.toThrow();
+		// whole transaction rolled back: no child artifacts
+		expect(await getDb().select().from(opencodeForks)).toHaveLength(0);
+		expect(await getDb().select().from(sessions)).toHaveLength(1); // parent only
+		const [row] = await getDb()
+			.select()
+			.from(controlActions)
+			.where(eq(controlActions.id, action.id));
+		expect(row.status).toBe("running");
+	});
+
+	test("replay from a DIFFERENT supervisor is refused", async () => {
+		const { input } = await seedRunningForkRequest();
+		await finalizeOpenCodeFork(input);
+		await expect(finalizeOpenCodeFork({ ...input, supervisorId: "other-host" })).rejects.toThrow();
+	});
+
+	test("replay with a DIFFERENT child native result is refused", async () => {
+		const { input } = await seedRunningForkRequest();
+		await finalizeOpenCodeFork(input);
+		await expect(
+			finalizeOpenCodeFork({ ...input, childNativeSessionId: "ses_other_child" }),
+		).rejects.toThrow();
+	});
+});
