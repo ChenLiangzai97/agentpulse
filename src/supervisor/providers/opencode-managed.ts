@@ -21,6 +21,11 @@ export function createManagedOpenCodeProvider(
 	deps: {
 		request: (path: string, options?: RequestInit) => Promise<unknown>;
 		verdict: (sessionId: string) => string;
+		/** Authenticated EXECUTION permit: re-checks the protected epoch/state. */
+		checkExecutionPermit?: (
+			actionId: string,
+			claimToken: string,
+		) => Promise<void>;
 		/** Authenticated server channel for the fork RESULT (never a bare id). */
 		reportForkResult?: (
 			actionId: string,
@@ -279,14 +284,28 @@ export function createManagedOpenCodeProvider(
 			// (opencode_unknown_native_session) — never a silent misroute.
 			const targetNative =
 				typeof metadata.nativeSessionId === "string" ? metadata.nativeSessionId : undefined;
-			// SESSION STOP IS NOT IMPLEMENTED. A child stop requires cancel-queued,
-			// approval invalidation, a stop epoch and refusal of new actions — an
-			// abort alone would be a half-truth, so it is REFUSED. Stopping the
-			// bound session kills the shared instance and therefore affects EVERY
-			// branch; that blast radius is the caller's explicit decision.
+			// EXECUTION FENCE: the CLAIM is not enough — a STOP can land between the
+			// claim and this point. The server re-checks the protected epoch/state
+			// immediately before any native work; a refusal aborts execution here.
+			if (deps.checkExecutionPermit) {
+				const claimToken = metadata.claimToken;
+				if (typeof claimToken !== "string" || !claimToken)
+					throw new Error("opencode_claim_token_missing");
+				await deps.checkExecutionPermit(action.id, claimToken);
+			}
+			// STOP (server epoch model): a child stop aborts only that native
+			// session; the bound-session stop stops the shared instance (explicit
+			// blast radius). The server only records "stopped" after this reports
+			// success, and it refuses to do so while attempts are unresolved.
 			if (action.actionType === "stop") {
+				const target = targetNative ?? runtime.nativeSessionId;
+				if (
+					runtime.unsettledClaims().some((claim) => claim.nativeSessionId === target) ||
+					runtime.abortPending(target)
+				)
+					throw new Error("opencode_session_unsettled");
 				if (targetNative && targetNative !== runtime.nativeSessionId)
-					throw new Error("opencode_child_stop_not_implemented");
+					return runtime.abort(targetNative);
 				return stop(runtime.sessionId);
 			}
 			// Epochs are per TARGET native session: interrupting a child must not

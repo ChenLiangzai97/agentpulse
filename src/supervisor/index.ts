@@ -188,6 +188,12 @@ async function main() {
 		{
 			request,
 			verdict: (id) => gate.verdict(id),
+			checkExecutionPermit: async (actionId, claimToken) => {
+				await request(
+					`/supervisors/${registration.supervisor.id}/control-actions/${actionId}/permit`,
+					{ method: "POST", body: JSON.stringify({ claimToken }) },
+				);
+			},
 			// Fork results go to the AUTHENTICATED endpoint; the server mints all
 			// ids and commits the single transaction. Entry points stay CLOSED.
 			reportForkResult: async (actionId, body) => {

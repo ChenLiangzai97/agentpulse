@@ -93,6 +93,7 @@ async function seedRunningForkRequest(opts: { status?: string } = {}) {
 			status: opts.status ?? "running",
 			metadata: {
 				claimToken: "claim-1",
+				controlEpoch: 0,
 				instanceOriginSessionId: "f-parent",
 				directParentSessionId: "f-parent",
 				nativeSessionId: "ses_p",
@@ -327,4 +328,20 @@ describe("finalization CAS token and replay ownership (review round 45)", () => 
 			finalizeOpenCodeFork({ ...input, childNativeSessionId: "ses_other_child" }),
 		).rejects.toThrow();
 	});
+});
+
+test("a fork prepared before a STOP cannot finalize after the epoch advances", async () => {
+	const { action, input } = await seedRunningForkRequest();
+	// STOP after acceptance: the protected epoch advances and the session stops.
+	const { sessionControlBindings } = await import("../db/schema/index.js");
+	await getDb()
+		.update(sessionControlBindings)
+		.set({ stopState: "stopping", stopEpoch: 1 })
+		.where(eq(sessionControlBindings.sessionId, "f-parent"));
+	await expect(finalizeOpenCodeFork(input)).rejects.toThrow("provider_binding_invalid");
+	const [row] = await getDb()
+		.select()
+		.from(controlActions)
+		.where(eq(controlActions.id, action.id));
+	expect(row?.status).toBe("running"); // rolled back: nothing committed
 });

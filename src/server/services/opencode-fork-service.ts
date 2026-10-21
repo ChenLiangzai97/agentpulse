@@ -210,6 +210,16 @@ export async function finalizeOpenCodeFork(
 				input.parentLabel.parentNativeSessionId !== derivedLabel.parentNativeSessionId)
 		)
 			throw new SessionControlOriginError("provider_binding_invalid");
+		// PROTECTED STOP FENCE inside the SAME transaction that commits the child
+		// artifacts and CASes the action: a fork prepared before a STOP must not
+		// land after it, and a managed action without an epoch is unprovable.
+		const forkEpoch = typeof meta.controlEpoch === "number" ? meta.controlEpoch : null;
+		if (
+			forkEpoch === null ||
+			parentBinding.stopEpoch !== forkEpoch ||
+			parentBinding.stopState !== "active"
+		)
+			throw new SessionControlOriginError("provider_binding_invalid");
 		// Snapshot identity must agree before it is persisted.
 		if (
 			input.parentSnapshot.version !== 1 ||

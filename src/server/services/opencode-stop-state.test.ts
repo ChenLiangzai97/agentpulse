@@ -21,7 +21,11 @@ import {
 	supervisors,
 } from "../db/schema/index.js";
 import { config } from "../config.js";
-import { claimNextControlAction, updateControlAction } from "./control-actions.js";
+import {
+	assertExecutionPermit,
+	claimNextControlAction,
+	updateControlAction,
+} from "./control-actions.js";
 import { reserveOpenCodeInstance } from "./opencode-control-provenance.js";
 import { queueOpenCodeAction } from "./opencode-managed.js";
 
@@ -234,4 +238,85 @@ test("resume: entry-gated, only from a trusted STOPPED state, bumps the epoch", 
 	} finally {
 		(config as Record<string, unknown>).opencodeResumeEntry = original;
 	}
+});
+
+test("EXECUTION permit: claim -> STOP -> permit is refused (deterministic interleaving)", async () => {
+	const { parentId } = await seed();
+	await queueOpenCodeAction(parentId, "prompt", { prompt: "claimed then stopped" }, actor);
+	const claimed = await claimNextControlAction("stop-host");
+	expect(claimed?.actionType).toBe("prompt");
+	const claimToken = String((claimed?.metadata as Record<string, unknown>).claimToken ?? "");
+	// Before the stop the supervisor may execute.
+	await expect(
+		assertExecutionPermit({ actionId: claimed?.id ?? "", supervisorId: "stop-host", claimToken }),
+	).resolves.toBeTruthy();
+	// STOP lands AFTER the claim but BEFORE native execution.
+	await queueOpenCodeAction(parentId, "stop", {}, actor);
+	await expect(
+		assertExecutionPermit({ actionId: claimed?.id ?? "", supervisorId: "stop-host", claimToken }),
+	).rejects.toThrow("opencode_session_stopped");
+});
+
+test("a managed action WITHOUT controlEpoch is isolated at claim time, never executed", async () => {
+	const { parentId, instance } = await seed();
+	const [legacy] = await getDb()
+		.insert(controlActions)
+		.values({
+			id: crypto.randomUUID(),
+			sessionId: parentId,
+			actionType: "prompt",
+			status: "queued",
+			metadata: {
+				agentType: "opencode",
+				instanceId: instance.id,
+				generation: 1,
+				nativeSessionId: "ses_parent",
+				prompt: "legacy",
+			},
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString(),
+		})
+		.returning();
+	expect(await claimNextControlAction("stop-host")).toBeNull();
+	const [after] = await getDb().select().from(controlActions).where(eq(controlActions.id, legacy.id));
+	expect(after?.status).toBe("failed");
+	expect(after?.error).toBe("opencode_session_stopped");
+});
+
+test("an EXPIRED interaction is never resurrected as pending by a later snapshot", async () => {
+	const { parentId, instance } = await seed();
+	const { acceptOpenCodeSnapshot } = await import("./opencode-managed.js");
+	const permission = { id: "per_1", sessionID: "ses_parent", type: "permission" };
+	await acceptOpenCodeSnapshot("stop-host", instance.id, {
+		generation: 1,
+		nativeSessionId: "ses_parent",
+		messages: [],
+		permissions: [permission],
+		questions: [],
+		status: { type: "busy" },
+	});
+	const [pending] = await getDb()
+		.select()
+		.from(providerInteractionsTable)
+		.where(eq(providerInteractionsTable.sessionId, parentId));
+	expect(pending?.status).toBe("pending");
+	await queueOpenCodeAction(parentId, "stop", {}, actor);
+	const [expired] = await getDb()
+		.select()
+		.from(providerInteractionsTable)
+		.where(eq(providerInteractionsTable.sessionId, parentId));
+	expect(expired?.status).toBe("expired");
+	await acceptOpenCodeSnapshot("stop-host", instance.id, {
+		generation: 1,
+		nativeSessionId: "ses_parent",
+		messages: [],
+		permissions: [permission],
+		questions: [],
+		status: { type: "busy" },
+	});
+	const [after] = await getDb()
+		.select()
+		.from(providerInteractionsTable)
+		.where(eq(providerInteractionsTable.sessionId, parentId));
+	expect(after?.status).toBe("expired");
 });

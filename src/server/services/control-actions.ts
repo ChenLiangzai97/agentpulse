@@ -518,37 +518,50 @@ export async function claimNextControlAction(supervisorId: string) {
 	}
 	if (!candidate) return null;
 
-	// EXECUTION FENCE: a queued action whose protected epoch is stale (stop
-	// happened after it was queued) or whose session is stopping/stopped must
-	// never be handed out. It is failed here, not silently executed.
-	const candidateMeta = (candidate.metadata ?? {}) as Record<string, unknown>;
-	if (candidate.sessionId && typeof candidateMeta.controlEpoch === "number") {
-		const [binding] = await getDb()
+	// EXECUTION/CLAIM FENCE in ONE transaction with the claim itself: the binding
+	// is re-read under the transaction, the action is conditionally claimed, and
+	// an ineligible action is failed instead of handed out. This is atomic with
+	// respect to STOP's state change (single SQLite/PG transaction).
+	const claimedRow = await withTransaction(async (tx) => {
+		const [fresh] = await tx
 			.select()
-			.from(sessionControlBindings)
-			.where(eq(sessionControlBindings.sessionId, candidate.sessionId))
+			.from(controlActions)
+			.where(and(eq(controlActions.id, candidate.id), eq(controlActions.status, "queued")))
 			.limit(1);
-		const staleEpoch = binding ? candidateMeta.controlEpoch !== binding.stopEpoch : true;
-		const blocked =
-			binding && binding.stopState !== "active" && candidate.actionType !== "stop";
-		if (staleEpoch || blocked) {
-			await getDb()
-				.update(controlActions)
-				.set({
-					status: "failed",
-					error: "opencode_session_stopped",
-					finishedAt: nowIso(),
-					updatedAt: nowIso(),
-				})
-				.where(eq(controlActions.id, candidate.id));
-			return null;
+		if (!fresh) return null;
+		const meta = (fresh.metadata ?? {}) as Record<string, unknown>;
+		const managed =
+			meta.agentType === "opencode" ||
+			typeof meta.controlEpoch === "number" ||
+			fresh.actionType.startsWith("opencode_");
+		if (fresh.sessionId && managed) {
+			const [binding] = await tx
+				.select()
+				.from(sessionControlBindings)
+				.where(eq(sessionControlBindings.sessionId, fresh.sessionId))
+				.limit(1);
+			// A managed action WITHOUT an epoch cannot be proven current: isolate it.
+			const missingEpoch = typeof meta.controlEpoch !== "number";
+			const staleEpoch = !binding || meta.controlEpoch !== binding.stopEpoch;
+			const blocked = binding && binding.stopState !== "active" && fresh.actionType !== "stop";
+			if (missingEpoch || staleEpoch || blocked) {
+				await tx
+					.update(controlActions)
+					.set({
+						status: "failed",
+						error: "opencode_session_stopped",
+						finishedAt: nowIso(),
+						updatedAt: nowIso(),
+					})
+					.where(eq(controlActions.id, fresh.id));
+				return null;
+			}
 		}
-	}
+		return fresh;
+	});
+	if (!claimedRow) return null;
 
 	const timestamp = nowIso();
-	// Claim/execution token: minted HERE, persisted with the claim, and echoed
-	// back in the result. Finalization CASes on it, so a re-claim (same status,
-	// new token) can never be completed by an older executor.
 	const claimToken = crypto.randomUUID();
 	const [updated] = await getDb()
 		.update(controlActions)
@@ -570,63 +583,77 @@ export async function updateControlAction(input: {
 	error?: string | null;
 	metadata?: Record<string, unknown> | null;
 }) {
-	const [current] = await getDb()
-		.select()
-		.from(controlActions)
-		.where(eq(controlActions.id, input.actionId))
-		.limit(1);
-	if (!current || current.claimedBySupervisorId !== input.supervisorId) return null;
-
-	// RESULT FENCE: a success for a stale protected epoch (or for any executable
-	// action while the session is stopping/stopped) is NOT accepted. STOP itself
-	// transitions stopping -> stopped only for the CURRENT epoch.
-	const currentMeta = (current.metadata ?? {}) as Record<string, unknown>;
-	const controlEpoch =
-		typeof currentMeta.controlEpoch === "number" ? currentMeta.controlEpoch : null;
-	let status = input.status;
-	let error = input.error ?? null;
-	let binding: typeof sessionControlBindings.$inferSelect | undefined;
-	if (current.sessionId && controlEpoch !== null) {
-		[binding] = await getDb()
+	// RESULT FENCE inside ONE transaction: the binding is read under the same
+	// transaction as the action write, and the stopping->stopped transition is a
+	// CONDITIONAL update matching (session, state='stopping', epoch).
+	const outcome = await withTransaction(async (tx) => {
+		const [current] = await tx
 			.select()
-			.from(sessionControlBindings)
-			.where(eq(sessionControlBindings.sessionId, current.sessionId))
+			.from(controlActions)
+			.where(eq(controlActions.id, input.actionId))
 			.limit(1);
-		if (binding && status === "succeeded") {
+		if (!current || current.claimedBySupervisorId !== input.supervisorId) return null;
+		const meta = (current.metadata ?? {}) as Record<string, unknown>;
+		const controlEpoch = typeof meta.controlEpoch === "number" ? meta.controlEpoch : null;
+		const managed =
+			meta.agentType === "opencode" ||
+			controlEpoch !== null ||
+			current.actionType.startsWith("opencode_");
+		let status = input.status;
+		let error = input.error ?? null;
+		const [binding] = current.sessionId
+			? await tx
+					.select()
+					.from(sessionControlBindings)
+					.where(eq(sessionControlBindings.sessionId, current.sessionId))
+					.limit(1)
+			: [];
+		if (binding && managed && status === "succeeded") {
 			const isStop = current.actionType === "stop";
+			// A managed action without an epoch is unprovable: refuse success.
+			const missingEpoch = controlEpoch === null;
 			const stale = controlEpoch !== binding.stopEpoch;
 			const stopped = !isStop && binding.stopState !== "active";
-			if (stale || stopped) {
+			if (missingEpoch || stale || stopped) {
 				status = "failed";
 				error = "opencode_session_stopped";
 			}
 		}
-	}
+		const timestamp = nowIso();
+		const [updated] = await tx
+			.update(controlActions)
+			.set({
+				status,
+				error,
+				metadata: input.metadata ?? current.metadata,
+				finishedAt: status === "running" ? null : timestamp,
+				updatedAt: timestamp,
+			})
+			.where(eq(controlActions.id, input.actionId))
+			.returning();
+		if (
+			binding &&
+			updated &&
+			status === "succeeded" &&
+			current.actionType === "stop" &&
+			controlEpoch !== null
+		) {
+			await tx
+				.update(sessionControlBindings)
+				.set({ stopState: "stopped" })
+				.where(
+					and(
+						eq(sessionControlBindings.sessionId, current.sessionId ?? ""),
+						eq(sessionControlBindings.stopState, "stopping"),
+						eq(sessionControlBindings.stopEpoch, controlEpoch),
+					),
+				);
+		}
+		return { current, updated, status };
+	});
+	if (!outcome) return null;
+	const { current, updated, status } = outcome;
 	const timestamp = nowIso();
-	const [updated] = await getDb()
-		.update(controlActions)
-		.set({
-			status,
-			error,
-			metadata: input.metadata ?? current.metadata,
-			finishedAt: status === "running" ? null : timestamp,
-			updatedAt: timestamp,
-		})
-		.where(eq(controlActions.id, input.actionId))
-		.returning();
-	if (
-		binding &&
-		status === "succeeded" &&
-		current.actionType === "stop" &&
-		binding.stopState === "stopping" &&
-		controlEpoch === binding.stopEpoch
-	) {
-		await getDb()
-			.update(sessionControlBindings)
-			.set({ stopState: "stopped" })
-			.where(eq(sessionControlBindings.sessionId, current.sessionId ?? ""));
-	}
-
 	if (
 		current.actionType === "opencode_health" &&
 		input.status === "succeeded" &&
@@ -696,4 +723,52 @@ export async function updateControlAction(input: {
 	}
 
 	return updated ? mapControlAction(updated) : null;
+}
+
+/**
+ * EXECUTION PERMIT: called by the supervisor immediately before it starts native
+ * work. The claim fence alone is racy against a STOP that lands after the claim
+ * but before execution — this re-checks the protected epoch/state atomically and
+ * returns 409 when execution must not start.
+ */
+export async function assertExecutionPermit(input: {
+	actionId: string;
+	supervisorId: string;
+	claimToken: string;
+}) {
+	const outcome = await withTransaction(async (tx) => {
+		const [action] = await tx
+			.select()
+			.from(controlActions)
+			.where(eq(controlActions.id, input.actionId))
+			.limit(1);
+		if (
+			!action ||
+			action.claimedBySupervisorId !== input.supervisorId ||
+			action.status !== "running"
+		)
+			return { ok: false as const, error: "provider_binding_invalid" };
+		const meta = (action.metadata ?? {}) as Record<string, unknown>;
+		if (meta.claimToken !== input.claimToken)
+			return { ok: false as const, error: "provider_binding_invalid" };
+		if (!action.sessionId) return { ok: true as const };
+		const [binding] = await tx
+			.select()
+			.from(sessionControlBindings)
+			.where(eq(sessionControlBindings.sessionId, action.sessionId))
+			.limit(1);
+		const managed =
+			meta.agentType === "opencode" ||
+			typeof meta.controlEpoch === "number" ||
+			action.actionType.startsWith("opencode_");
+		if (!binding || !managed) return { ok: true as const };
+		const epoch = typeof meta.controlEpoch === "number" ? meta.controlEpoch : null;
+		const isStop = action.actionType === "stop";
+		const stale = epoch === null || epoch !== binding.stopEpoch;
+		const blocked = !isStop && binding.stopState !== "active";
+		if (stale || blocked) return { ok: false as const, error: "opencode_session_stopped" };
+		return { ok: true as const };
+	});
+	if (!outcome.ok) throw new Error(outcome.error);
+	return outcome;
 }

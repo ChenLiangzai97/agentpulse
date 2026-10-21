@@ -93,6 +93,7 @@ async function seedForkChain(claimToken = "claim-1") {
 			status: "running",
 			metadata: {
 				claimToken,
+				controlEpoch: 0,
 				instanceOriginSessionId: parentId,
 				directParentSessionId: parentId,
 				nativeSessionId: "ses_p",

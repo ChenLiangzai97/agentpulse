@@ -31,6 +31,7 @@ import {
 	isHostTokenCreatorStillAllowed,
 } from "../services/authorization.js";
 import {
+	assertExecutionPermit,
 	claimNextControlAction,
 	getControlAction,
 	updateControlAction,
@@ -529,6 +530,28 @@ supervisorsAgentRouter.post(
 		const supervisorId = c.req.param("id") ?? "";
 		const action = await claimNextControlAction(supervisorId);
 		return c.json({ action });
+	},
+);
+
+supervisorsAgentRouter.post(
+	"/supervisors/:id/control-actions/:actionId/permit",
+	requireSupervisorAuth(),
+	async (c) => {
+		const supervisorId = c.req.param("id") ?? "";
+		const actionId = c.req.param("actionId") ?? "";
+		const body = await c.req.json<{ claimToken?: string }>();
+		if (!body.claimToken) return c.json({ error: "permit_incomplete" }, 400);
+		try {
+			await assertExecutionPermit({
+				actionId,
+				supervisorId,
+				claimToken: body.claimToken,
+			});
+			return c.json({ ok: true });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "permit_refused";
+			return c.json({ error: message }, message === "provider_binding_invalid" ? 403 : 409);
+		}
 	},
 );
 
