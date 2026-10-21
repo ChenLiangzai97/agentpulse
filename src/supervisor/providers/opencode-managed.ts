@@ -380,8 +380,14 @@ export function createManagedOpenCodeProvider(
 				return;
 			}
 			if (action.actionType === "opencode_resume") {
-				// The server has already transitioned stopped -> active (new epoch)
-				// at acceptance; no native work is required.
+				// SECOND PHASE: success is reported ONLY when no claim/abort attempt
+				// is unresolved for the target; the server then flips stopped->active.
+				const resumeTarget = targetNative ?? runtime.nativeSessionId;
+				if (
+					runtime.unsettledClaims().some((claim) => claim.nativeSessionId === resumeTarget) ||
+					runtime.abortPending(resumeTarget)
+				)
+					throw new Error("opencode_session_unsettled");
 				runtime.touch();
 				return;
 			}

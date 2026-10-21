@@ -570,12 +570,10 @@ export async function queueOpenCodeAction(
 				.where(eq(providerInstances.id, controlBinding.instanceId ?? ""));
 			if (!instance || instance.state !== "running")
 				throw new Error("opencode_resume_requires_relaunch");
-			// A NEW epoch invalidates every action queued while stopped.
+			// TWO-PHASE: the transition happens ONLY after the supervisor has
+			// verified there are no unresolved attempts and reports success. The
+			// queued resume carries the candidate epoch; the binding stays stopped.
 			controlEpoch = controlBinding.stopEpoch + 1;
-			await tx
-				.update(sessionControlBindings)
-				.set({ stopState: "active", stopEpoch: controlEpoch })
-				.where(eq(sessionControlBindings.sessionId, sessionId));
 		} else if (kind === "stop") {
 			if (!controlBinding) throw new SessionControlOriginError("provider_binding_invalid");
 			if (controlBinding.stopState !== "active") throw new Error("opencode_session_already_stopping");

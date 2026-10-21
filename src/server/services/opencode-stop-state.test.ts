@@ -218,7 +218,7 @@ test("the RESULT fence refuses stale successes and only a current STOP success m
 	expect((await bindingOf(parentId))?.stopState).toBe("stopped");
 });
 
-test("resume: entry-gated, only from a trusted STOPPED state, bumps the epoch", async () => {
+test("resume: entry-gated, two-phase (queued while stopped, active only after verified success)", async () => {
 	const { parentId, instance } = await seed();
 	const original = config.opencodeResumeEntry;
 	try {
@@ -232,16 +232,34 @@ test("resume: entry-gated, only from a trusted STOPPED state, bumps the epoch", 
 		await expect(queueOpenCodeAction(parentId, "opencode_resume", {}, actor)).rejects.toThrow(
 			"opencode_resume_not_stopped",
 		);
-		// A confirmed stop state allows resume: active + NEW epoch.
-		await getDb()
-			.update(sessionControlBindings)
-			.set({ stopState: "stopped", stopEpoch: 1 })
-			.where(eq(sessionControlBindings.sessionId, parentId));
+		// Complete the stop properly: stopped at epoch 1.
+		const claimedStop = await claimNextControlAction("stop-host");
+		expect(claimedStop?.actionType).toBe("stop");
+		await updateControlAction({
+			actionId: claimedStop?.id ?? "",
+			supervisorId: "stop-host",
+			status: "succeeded",
+			claimToken: String((claimedStop?.metadata as Record<string, unknown>)?.claimToken ?? ""),
+		});
+		expect((await bindingOf(parentId))?.stopState).toBe("stopped");
+		expect((await bindingOf(parentId))?.stopEpoch).toBe(1);
 		const resume = await queueOpenCodeAction(parentId, "opencode_resume", {}, actor);
 		expect((resume.metadata as Record<string, unknown>).controlEpoch).toBe(2);
-		const binding = await bindingOf(parentId);
-		expect(binding?.stopState).toBe("active");
-		expect(binding?.stopEpoch).toBe(2);
+		expect((await bindingOf(parentId))?.stopState).toBe("stopped");
+		expect((await bindingOf(parentId))?.stopEpoch).toBe(1);
+		// The supervisor reports success with the token -> second phase applies.
+		const claimedResume = await claimNextControlAction("stop-host");
+		expect(claimedResume?.actionType).toBe("opencode_resume");
+		const token = String((claimedResume?.metadata as Record<string, unknown>)?.claimToken ?? "");
+		const accepted = await updateControlAction({
+			actionId: claimedResume?.id ?? "",
+			supervisorId: "stop-host",
+			status: "succeeded",
+			claimToken: token,
+		});
+		expect(accepted?.status).toBe("succeeded");
+		expect((await bindingOf(parentId))?.stopState).toBe("active");
+		expect((await bindingOf(parentId))?.stopEpoch).toBe(2);
 		// A killed instance cannot be resumed without a relaunch.
 		await getDb()
 			.update(sessionControlBindings)

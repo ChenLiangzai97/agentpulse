@@ -559,9 +559,22 @@ export async function claimNextControlAction(supervisorId: string) {
 			const [binding] = await selectBindingForUpdate(tx, fresh.sessionId);
 			// A managed action WITHOUT an epoch cannot be proven current: isolate it.
 			const missingEpoch = typeof meta.controlEpoch !== "number";
-			const staleEpoch = !binding || meta.controlEpoch !== binding.stopEpoch;
-			const blocked = binding && binding.stopState !== "active" && fresh.actionType !== "stop";
-			if (missingEpoch || staleEpoch || blocked) {
+			const expectedEpoch =
+				fresh.actionType === "opencode_resume" && binding
+					? binding.stopEpoch + 1
+					: binding?.stopEpoch;
+			const staleEpoch = !binding || meta.controlEpoch !== expectedEpoch;
+			// STOP and RESUME are the control actions allowed while not active; a
+			// resume is only valid at its candidate epoch (epoch+1).
+			const controlAction =
+				fresh.actionType === "stop" || fresh.actionType === "opencode_resume";
+			const blocked = binding && binding.stopState !== "active" && !controlAction;
+			const resumeStale =
+				fresh.actionType === "opencode_resume" &&
+				binding &&
+				typeof meta.controlEpoch === "number" &&
+				meta.controlEpoch !== binding.stopEpoch + 1;
+			if (missingEpoch || staleEpoch || blocked || resumeStale) {
 				await tx
 					.update(controlActions)
 					.set({
@@ -640,11 +653,15 @@ export async function updateControlAction(input: {
 		const [binding] = current.sessionId ? await selectBindingForUpdate(tx, current.sessionId) : [];
 		if (managed && status === "succeeded") {
 			const isStop = current.actionType === "stop";
+			const isResume = current.actionType === "opencode_resume";
 			// A managed action without a binding or epoch is unprovable: refuse.
 			const missingEpoch = controlEpoch === null;
 			const missingBinding = !binding;
-			const stale = !binding || controlEpoch !== binding.stopEpoch;
-			const stopped = Boolean(binding) && !isStop && binding?.stopState !== "active";
+			const stale = isResume
+				? !binding || controlEpoch !== binding.stopEpoch + 1
+				: !binding || controlEpoch !== binding.stopEpoch;
+			const stopped =
+				Boolean(binding) && !isStop && !isResume && binding?.stopState !== "active";
 			if (missingEpoch || missingBinding || stale || stopped) {
 				status = "failed";
 				error = "opencode_session_stopped";
@@ -709,6 +726,39 @@ export async function updateControlAction(input: {
 						eq(sessionControlBindings.stopEpoch, controlEpoch),
 					),
 				);
+		}
+		// RESUME success is the SECOND phase: only a verified clear state moves
+		// stopped -> active at the candidate epoch. A stale/again-stopped binding
+		// makes the conditional update fail and the action is reported failed.
+		if (
+			binding &&
+			updated &&
+			status === "succeeded" &&
+			current.actionType === "opencode_resume" &&
+			controlEpoch !== null
+		) {
+			const flipped = await tx
+				.update(sessionControlBindings)
+				.set({ stopState: "active", stopEpoch: controlEpoch })
+				.where(
+					and(
+						eq(sessionControlBindings.sessionId, current.sessionId ?? ""),
+						eq(sessionControlBindings.stopState, "stopped"),
+						eq(sessionControlBindings.stopEpoch, controlEpoch - 1),
+					),
+				)
+				.returning({ sessionId: sessionControlBindings.sessionId });
+			if (flipped.length !== 1) {
+				await tx
+					.update(controlActions)
+					.set({
+						status: "failed",
+						error: "opencode_session_stopped",
+						updatedAt: nowIso(),
+					})
+					.where(eq(controlActions.id, input.actionId));
+				return { current, updated: undefined, status: "failed" };
+			}
 		}
 		return { current, updated, status };
 	});
@@ -830,8 +880,9 @@ export async function assertExecutionPermit(input: {
 			if (!binding || epoch === null)
 				return { ok: false as const, error: "opencode_session_stopped" };
 			const isStop = action.actionType === "stop";
-			const stale = epoch !== binding.stopEpoch;
-			const blocked = !isStop && binding.stopState !== "active";
+			const isResume = action.actionType === "opencode_resume";
+			const stale = isResume ? epoch !== binding.stopEpoch + 1 : epoch !== binding.stopEpoch;
+			const blocked = !isStop && !isResume && binding.stopState !== "active";
 			if (stale || blocked) return { ok: false as const, error: "opencode_session_stopped" };
 			return { ok: true as const, epoch, sessionId: action.sessionId };
 		});
