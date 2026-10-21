@@ -785,38 +785,49 @@ export class OpenCodeRuntimePool {
 					return abortAttempts.frozen(target);
 				},
 				/**
-				 * Explicit reconciliation of an UNKNOWN target. Isolation is PROVEN
-				 * only when the native session no longer exists (GET 404) and no abort
-				 * attempt is in flight; a quiet turn is not isolation. Clears that
-				 * target's durable claim/abort records.
+				 * INTERNAL reconciliation helper — NOT a recovery closure. A 404 only
+				 * proves "not found by THIS runtime under THIS directory"; it does not
+				 * prove the ORIGINAL process/storage domain is isolated. It therefore
+				 * refuses while any abort attempt is unresolved, and reports false if
+				 * any durable record could not be removed (nothing is deleted from the
+				 * in-memory set until every file is gone). A controlled operator entry
+				 * and the stopped→resume path remain OPEN.
 				 */
 				async reconcileUnsettled(target: string) {
+					if (abortAttempts.frozen(target)) return false;
 					try {
 						await request(`/session/${encodeURIComponent(target)}`);
-						// The target still exists (even if an abort is in flight): NOT
-						// isolated, keep blocking.
-						return false;
+						return false; // still exists: NOT isolated
 					} catch (error) {
 						if (!/opencode_http_404/.test(String((error as Error).message))) return false;
 					}
-					// Isolation proven: drop the target's abort attempts and claims.
+					// Remove the durable records FIRST; any failure keeps the target
+					// blocked and observable instead of reporting success.
+					const remaining: string[] = [];
+					for (const name of await readdir(claimsDirectory).catch(() => [] as string[])) {
+						if (!name.endsWith(".json")) continue;
+						const path = join(claimsDirectory, name);
+						try {
+							const record = JSON.parse(await readFile(path, "utf8")) as {
+								nativeSessionId?: unknown;
+							};
+							if (record.nativeSessionId !== target) continue;
+							await unlink(path);
+						} catch (error) {
+							remaining.push(path);
+							cleanupIssues.push({
+								claimId: target,
+								path,
+								error: error instanceof Error ? error.message : "reconcile_unlink_failed",
+							});
+						}
+					}
+					if (remaining.length > 0) return false;
 					for (const attempt of abortAttempts.pending(target)) {
 						abortAttempts.abandon(target, attempt.attemptId);
 						await removeAttemptFile(attempt.attemptId);
 					}
 					unsettled.delete(target);
-					for (const name of await readdir(claimsDirectory).catch(() => [] as string[])) {
-						if (!name.endsWith(".json")) continue;
-						try {
-							const record = JSON.parse(
-								await readFile(join(claimsDirectory, name), "utf8"),
-							) as { nativeSessionId?: unknown };
-							if (record.nativeSessionId === target)
-								await unlink(join(claimsDirectory, name)).catch(() => {});
-						} catch {
-							// leave for audit
-						}
-					}
 					return true;
 				},
 				unsettledAbortAttempts() {

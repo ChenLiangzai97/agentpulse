@@ -706,13 +706,13 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 				"opencode_unknown_native_session",
 			);
 			expect(second.unsettledClaims().length).toBe(1);
-			// The OLD target no longer exists in the restarted instance: isolation is
-			// PROVEN (GET 404) and reconciliation clears its records. The BOUND target
-			// still exists, so reconciliation must refuse it.
+			// Conservative helper: a 404 alone does not settle an UNRESOLVED abort
+			// attempt (the old request may still be in flight in the old domain), so
+			// reconciliation refuses — the records stay and the target stays blocked.
 			expect(await second.reconcileUnsettled(second.nativeSessionId)).toBe(false);
-			expect(await second.reconcileUnsettled(oldNative)).toBe(true);
-			expect(second.unsettledClaims()).toEqual([]);
-			expect(second.unsettledAbortAttempts()).toEqual([]);
+			expect(await second.reconcileUnsettled(oldNative)).toBe(false);
+			expect(second.unsettledClaims().length).toBe(1);
+			expect(second.unsettledAbortAttempts().length).toBe(1);
 			await second.stop();
 		} finally {
 			mock.kill();
