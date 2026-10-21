@@ -712,3 +712,150 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 	},
 	120000,
 );
+
+
+// Explicit opt-in: claim records fail CLOSED.
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: an unreadable claim record quarantines the instance",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-quarantine-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": { name: "Fixture", tool_call: true, limit: { context: 32768, output: 2048 } },
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const cwd = join(root, "project");
+		await mkdir(cwd);
+		const stateDirectory = join(root, "state");
+		const instanceId = "quarantine-instance";
+		const claimsDir = join(stateDirectory, "claims", instanceId);
+		await mkdir(claimsDir, { recursive: true });
+		await writeFile(join(claimsDir, "broken.json"), "{not json");
+		const pool = new OpenCodeRuntimePool({
+			executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+			profilePath,
+			stateDirectory,
+			maxInstances: 1,
+			idleTimeoutMs: 60000,
+			stopGraceMs: 1000,
+		});
+		try {
+			const runtime = await pool.start({
+				instanceId,
+				generation: 1,
+				sessionId: "quarantine-session",
+				cwd,
+				title: "quarantine",
+			});
+			// FAIL CLOSED: even the bound session cannot execute until the claim
+			// state is reconciled — no silent fail-open.
+			await expect(runtime.prompt("P0_HELLO")).rejects.toThrow("opencode_claims_quarantine");
+			// The unreadable record was kept for audit.
+			const { readdir } = await import("node:fs/promises");
+			expect(await readdir(claimsDir)).toContain("broken.json");
+			await runtime.stop();
+		} finally {
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+	120000,
+);
+
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: abort is mirrored into the durable claim record",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-abort-record-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": { name: "Fixture", tool_call: true, limit: { context: 32768, output: 2048 } },
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const cwd = join(root, "project");
+		await mkdir(cwd);
+		const stateDirectory = join(root, "state");
+		const instanceId = "abort-record-instance";
+		const claimsDir = join(stateDirectory, "claims", instanceId);
+		const pool = new OpenCodeRuntimePool({
+			executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+			profilePath,
+			stateDirectory,
+			maxInstances: 1,
+			idleTimeoutMs: 60000,
+			stopGraceMs: 1000,
+		});
+		try {
+			const runtime = await pool.start({
+				instanceId,
+				generation: 1,
+				sessionId: "abort-record-session",
+				cwd,
+				title: "abort record",
+			});
+			await runtime.prompt("P0_ABORT");
+			const { readdir } = await import("node:fs/promises");
+			const [recordName] = await readdir(claimsDir);
+			expect(recordName).toBeTruthy();
+			await runtime.abort();
+			await Bun.sleep(300);
+			const record = JSON.parse(await readFile(join(claimsDir, String(recordName)), "utf8"));
+			// The abort attempt is part of the durable evidence, not just a message id.
+			expect(record.abortRequested).toBe(true);
+			expect(record.kind).toBe("prompt");
+			expect(record.nativeSessionId).toBe(runtime.nativeSessionId);
+			await runtime.stop();
+		} finally {
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+	120000,
+);

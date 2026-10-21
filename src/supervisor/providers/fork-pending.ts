@@ -13,7 +13,8 @@
  * Error handling is deliberate: only a genuinely absent file allows a first
  * execution. Corrupt or unreadable records fail closed.
  */
-import { open, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { writePrivateFileAtomic } from "../../shared/atomic-file.js";
 import { join } from "node:path";
 import type { ForkChildMap, ForkSnapshot } from "./fork-snapshot.js";
 
@@ -108,26 +109,7 @@ export async function readForkRecord(
 
 /** Atomic: a crash leaves either the old or the new full record, never a mix. */
 async function writeRecord(directory: string, identity: ForkIdentity, record: ForkRecord) {
-	const target = pathFor(directory, identity);
-	const temp = `${target}.tmp-${crypto.randomUUID()}`;
-	const handle = await open(temp, "w", 0o600);
-	try {
-		await handle.writeFile(JSON.stringify(record));
-		// Atomic rename protects against torn files; fsync is ordered so the
-		// record is durable across a normal host crash path. (No power-loss
-		// experiment has been run — do not claim absolute crash safety.)
-		await handle.sync();
-	} finally {
-		await handle.close();
-	}
-	await rename(temp, target);
-	// Persist the directory entry too, or the rename itself can be lost.
-	const dir = await open(directory, "r");
-	try {
-		await dir.sync();
-	} finally {
-		await dir.close();
-	}
+	await writePrivateFileAtomic(pathFor(directory, identity), JSON.stringify(record));
 }
 
 export interface ForkAttempt {

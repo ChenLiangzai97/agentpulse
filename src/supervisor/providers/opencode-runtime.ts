@@ -8,6 +8,7 @@ import { mkdir, mkdtemp, open, readFile, readdir, realpath, rm, unlink, writeFil
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { join } from "node:path";
+import { writePrivateFileAtomic } from "../../shared/atomic-file.js";
 import { writePrivateFileSyncNoFollow } from "../../shared/private-file.js";
 import { processStartTicks } from "./opencode-recovery.js";
 
@@ -79,6 +80,8 @@ export interface OpenCodeRuntime {
 	registerManagedChild(nativeSessionId: string): void;
 	/** Durable claims whose outcome is still unknown (reconciliation surface). */
 	unsettledClaims(): { nativeSessionId: string; messageID: string; kind: "prompt" | "command" }[];
+	/** Claim-record cleanup failures (files left for reconciliation). */
+	cleanupIssues(): { claimId: string; path: string; error: string }[];
 	/** Evidence captured in the controlled window before executing a fork. */
 	captureForkSnapshot(forkPointMessageId?: string | null): Promise<ForkSnapshot>;
 	/** Holds the instance/source session for the whole capture+fork window. */
@@ -312,6 +315,8 @@ export class OpenCodeRuntimePool {
 				/** Native user-message id sent with this request (correlation key). */
 				messageID: string;
 				state: ReturnType<typeof newClaimState>;
+				/** Attempt metadata mirrored into the durable record. */
+				attempt?: { instanceId: string; generation: number; nativeSessionId: string };
 			}
 			// native id -> in-flight claim bound to the REQUEST identity.
 			const executing = new Map<string, Claim>();
@@ -321,31 +326,43 @@ export class OpenCodeRuntimePool {
 			// durable records. They BLOCK execution for their target until a later
 			// observation proves the turn ended (reconciliation).
 			const unsettled = new Map<string, { messageID: string; kind: "prompt" | "command" }>();
+			let claimsQuarantined = false;
+			const cleanupIssues: { claimId: string; path: string; error: string }[] = [];
 			const claimsDirectory = join(
-				input.instanceId ? join(this.config.stateDirectory, "claims") : this.config.stateDirectory,
+				this.config.stateDirectory,
+				"claims",
 				input.instanceId.replace(/[^A-Za-z0-9_-]/g, "_"),
 			);
-			if (ledgerDirectory) {
+			{
 				await mkdir(claimsDirectory, { recursive: true, mode: 0o700 });
 				for (const name of await readdir(claimsDirectory)) {
 					if (!name.endsWith(".json")) continue;
 					try {
-						const record = JSON.parse(await readFile(join(claimsDirectory, name), "utf8")) as {
-							nativeSessionId?: unknown;
-							messageID?: unknown;
-							kind?: unknown;
-						};
+						const record = JSON.parse(
+							await readFile(join(claimsDirectory, name), "utf8"),
+						) as Record<string, unknown>;
+						// FAIL CLOSED: a record we cannot fully attribute means this
+						// instance's claim state is unknown — quarantine the instance
+						// rather than executing with a possibly lost claim.
 						if (
-							typeof record.nativeSessionId === "string" &&
-							typeof record.messageID === "string" &&
-							(record.kind === "prompt" || record.kind === "command")
-						)
-							unsettled.set(record.nativeSessionId, {
-								messageID: record.messageID,
-								kind: record.kind,
-							});
+							record.version !== 1 ||
+							record.instanceId !== input.instanceId ||
+							record.generation !== input.generation ||
+							typeof record.nativeSessionId !== "string" ||
+							!/^ses_[A-Za-z0-9_-]+$/.test(record.nativeSessionId) ||
+							typeof record.messageID !== "string" ||
+							(record.kind !== "prompt" && record.kind !== "command")
+						) {
+							claimsQuarantined = true;
+							continue;
+						}
+						unsettled.set(record.nativeSessionId, {
+							messageID: record.messageID,
+							kind: record.kind,
+						});
 					} catch {
-						// Unreadable records stay on disk for reconciliation/audit.
+						// Unreadable/corrupt: quarantine the instance, keep the file.
+						claimsQuarantined = true;
 					}
 				}
 			}
@@ -431,7 +448,16 @@ export class OpenCodeRuntimePool {
 			const release = (id: string, claim: Claim) => {
 				if (executing.get(id) !== claim) return;
 				executing.delete(id);
-				if (claim.recordPath) void unlink(claim.recordPath).catch(() => {});
+				if (!claim.recordPath) return;
+				// Cleanup failures stay OBSERVABLE and the file stays for
+				// reconciliation — never silently swallowed.
+				void unlink(claim.recordPath).catch((error: unknown) => {
+					cleanupIssues.push({
+						claimId: claim.id,
+						path: claim.recordPath ?? "",
+						error: error instanceof Error ? error.message : "unlink_failed",
+					});
+				});
 			};
 			const integrate = async (
 				kind: "prompt" | "command",
@@ -440,6 +466,7 @@ export class OpenCodeRuntimePool {
 				const id = target ?? native.id;
 				if (id !== native.id && !knownSessions.has(id))
 					throw new Error("opencode_unknown_native_session");
+				if (claimsQuarantined) throw new Error("opencode_claims_quarantine");
 				if (unsettled.has(id)) throw new Error("opencode_session_unsettled");
 				if (forking) throw new Error("opencode_session_busy");
 				if (executing.has(id)) throw new Error("opencode_session_busy");
@@ -455,17 +482,23 @@ export class OpenCodeRuntimePool {
 				executing.set(id, claim); // synchronous: no interleaving here
 				try {
 					claim.recordPath = join(claimsDirectory, `${claim.id}.json`);
-					await writeFile(
+					claim.attempt = {
+						instanceId: input.instanceId,
+						generation: input.generation,
+						nativeSessionId: id,
+					};
+					// Atomic + fsync; a write failure REFUSES delivery (catch releases
+					// and rethrows).
+					await writePrivateFileAtomic(
 						claim.recordPath,
 						JSON.stringify({
 							version: 1,
-							instanceId: input.instanceId,
-							nativeSessionId: id,
+							...claim.attempt,
 							messageID: claim.messageID,
 							kind,
+							abortRequested: false,
 							createdAt: new Date().toISOString(),
 						}),
-						{ mode: 0o600 },
 					);
 					await request<unknown[]>(`/session/${encodeURIComponent(id)}/message`);
 				} catch (error) {
@@ -578,6 +611,9 @@ export class OpenCodeRuntimePool {
 							};
 						}),
 					};
+				},
+				cleanupIssues() {
+					return [...cleanupIssues];
 				},
 				unsettledClaims() {
 					return [...unsettled.entries()].map(([nativeSessionId, record]) => ({
@@ -705,7 +741,27 @@ export class OpenCodeRuntimePool {
 					// HTTP acceptance is NOT termination — the claim stays held until
 					// a snapshot proves the target idle with no in-flight reply.
 					const held = executing.get(id);
-					if (held) held.state = markAbort(held.state, snapshotSeq + 1);
+					if (held) {
+						held.state = markAbort(held.state, snapshotSeq + 1);
+						if (held.recordPath && held.attempt)
+							void writePrivateFileAtomic(
+								held.recordPath,
+								JSON.stringify({
+									version: 1,
+									...held.attempt,
+									messageID: held.messageID,
+									kind: held.state.kind,
+									abortRequested: true,
+									createdAt: new Date().toISOString(),
+								}),
+							).catch((error: unknown) => {
+								cleanupIssues.push({
+									claimId: held.id,
+									path: held.recordPath ?? "",
+									error: error instanceof Error ? error.message : "abort_record_failed",
+								});
+							});
+					}
 					runtime.touch();
 				},
 				stop: async () => {

@@ -1,12 +1,12 @@
 /**
- * END-TO-END (opt-in, REAL opencode CLI): native fork -> authenticated result
- * -> finalize transaction -> event ingestion -> copyOf -> work-log dedupe.
+ * CHAIN INTEGRATION (opt-in, REAL opencode CLI): native fork -> REAL claim ->
+ * authenticated result -> finalize transaction -> REAL managed snapshot
+ * ingestion (acceptOpenCodeSnapshot/normalizer) -> copyOf -> work-log dedupe.
  *
- * The fork itself is a real native fork (mock model); the result travels over
- * the REAL authenticated route and finalize; events are recorded with the
- * normalizer's payload shape (message_id + source_data) directly, because the
- * observer polls opencode's own DB in the host's real XDG tree — that polling
- * loop is NOT part of this test.
+ * Still NOT a full production acceptance: requests are in-process (app.request,
+ * no supervisor transport), the legacy observer is deliberately not involved
+ * (managed sessions use snapshots), and the report day is pinned deterministically
+ * AFTER asserting that ingestion preserved the native creation times.
  */
 import "../db/__test_db.js";
 import { afterAll, beforeAll, expect, test } from "bun:test";
@@ -29,6 +29,7 @@ const { getWorklogIncluded, getWorklogRun, localDate, runWorklog, saveWorklogCon
 const { OpenCodeRuntimePool } = await import("../../supervisor/providers/opencode-runtime.js");
 type Runtime = import("../../supervisor/providers/opencode-runtime.js").OpenCodeRuntime;
 const { loadCopiedEvents } = await import("./worklog-copy.js");
+const { claimNextControlAction } = await import("./control-actions.js");
 
 const supervisorApp = new Hono().route("/api/v1", supervisorsAgentRouter);
 const sessionsApp = new Hono().route("/api/v1", sessionsRouter);
@@ -218,24 +219,11 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 			});
 			expect(accepted.status).toBe(202);
 			const actionId = ((await accepted.json()) as { action: { id: string } }).action.id;
-			// Simulate the claim's token (claimNextControlAction is tested elsewhere).
-			const [claimed] = await getDb()
-				.update(db.controlActions)
-				.set({
-					status: "running",
-					metadata: {
-						...((
-							await getDb()
-								.select()
-								.from(db.controlActions)
-								.where(eq(db.controlActions.id, actionId))
-						)[0]?.metadata ?? {}),
-						claimToken: "chain-claim-1",
-					},
-				})
-				.where(eq(db.controlActions.id, actionId))
-				.returning();
-			expect(claimed?.status).toBe("running");
+			// REAL claim: the token is minted by the server's claim path.
+			const claimed = await claimNextControlAction("chain-host");
+			expect(claimed?.id).toBe(actionId);
+			const claimToken = String((claimed?.metadata as Record<string, unknown>).claimToken ?? "");
+			expect(claimToken.length).toBeGreaterThan(0);
 
 			// Native fork with the copyOf point = the parent's first message.
 			const parentMessages = await runtime.request<
@@ -264,7 +252,7 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify({
-						claimToken: "chain-claim-1",
+						claimToken,
 						childNativeSessionId: child.id,
 						parentSnapshot: snapshot,
 						childMap,
@@ -277,47 +265,81 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 			const finalized = (await report.json()) as { childSessionId: string; replayed: boolean };
 			expect(finalized.replayed).toBe(false);
 
-			// INGEST: parent events (original times), the child's COPIED prefix
-			// (ingested now) and a NEW child turn.
-			const insertEvents = async (
-				sessionId: string,
-				messages: { info: { id: string; role: string; time?: { created?: number } }; parts: unknown[] }[],
-				when: (ms: number) => string,
-			) => {
-				for (const message of messages) {
-					for (const part of message.parts) {
-						const data = part as { type?: string; text?: string; time?: { start?: number } };
-						if (data.type !== "text" || !data.text) continue;
-						const at = Number(message.info.time?.created ?? data.time?.start ?? Date.now());
-						await getDb()
-							.insert(db.events)
-							.values({
-								sessionId,
-								eventType: message.info.role === "user" ? "UserPromptSubmit" : "AssistantMessage",
-								category: message.info.role === "user" ? "prompt" : "assistant_message",
-								content: data.text,
-								createdAt: when(at),
-								rawPayload: { message_id: message.info.id, source_data: part },
-							});
-					}
-				}
+			// REAL MANAGED INGESTION: the supervisor snapshot route normalizes the
+			// native messages. The legacy observer is NOT involved.
+			const sendSnapshot = async (nativeSessionId: string, nativeId: string) => {
+				const snapshot = await runtime.snapshot();
+				const body = {
+					generation: 1,
+					nativeSessionId,
+					messages:
+						nativeSessionId === runtime.nativeSessionId
+							? snapshot.messages
+							: ((await runtime.request(`/session/${encodeURIComponent(nativeId)}/message`)) as unknown[]),
+					children: nativeSessionId === runtime.nativeSessionId ? snapshot.children : [],
+					permissions: [],
+					questions: [],
+					status: { type: "idle" },
+				};
+				const response = await supervisorApp.request(
+					`/api/v1/supervisors/chain-host/opencode/${instance.id}/snapshot`,
+					{
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify(body),
+					},
+				);
+				expect(response.status).toBe(200);
 			};
-			await insertEvents(parentId, parentMessages, () => reportAt);
-			const childMessages = await runtime.request<
-				{ info: { id: string; role: string; time?: { created?: number } }; parts: unknown[] }[]
-			>(`/session/${encodeURIComponent(child.id)}/message`);
-			const ingestNow = () => reportAt;
-			await insertEvents(finalized.childSessionId, childMessages, ingestNow);
-			// The child is not addressable until finalize confirmed — it is now.
+			await sendSnapshot(runtime.nativeSessionId, runtime.nativeSessionId);
+			// NATIVE TIME OWNERSHIP: an ingested parent event keeps the native
+			// creation time — the test does not fabricate it.
+			const [parentEventRow] = await getDb()
+				.select()
+				.from(db.events)
+				.where(eq(db.events.sessionId, parentId))
+				.limit(1);
+			const nativeCreated = Number(
+				(parentMessages[0]?.info as { time?: { created?: number } }).time?.created ?? 0,
+			);
+			// Same INSTANT, whatever the stored representation (managed ingestion writes ISO).
+			expect(new Date(String(parentEventRow?.createdAt)).getTime()).toBe(nativeCreated);
+
+			await sendSnapshot(child.id, child.id);
+			// The child is addressable only after finalize confirmed.
 			runtime.registerManagedChild(child.id);
 			await runtime.prompt("P0_HELLO", { nativeSessionId: child.id });
 			await waitTurn(runtime);
 			await runtime.snapshot();
-			const allChild = await runtime.request<
+			await sendSnapshot(child.id, child.id);
+			const childMessages = await runtime.request<
 				{ info: { id: string; role: string }; parts: unknown[] }[]
 			>(`/session/${encodeURIComponent(child.id)}/message`);
-			await insertEvents(finalized.childSessionId, allChild.slice(childMessages.length), ingestNow);
 
+			// Determinism for the COMPLETED-day report: pin the recorded times into
+			// the report day (native times are "now"; native ownership itself was
+			// asserted above before pinning).
+			await getDb()
+				.update(db.events)
+				.set({ createdAt: reportAt })
+				.where(eq(db.events.sessionId, parentId));
+			await getDb()
+				.update(db.events)
+				.set({ createdAt: reportAt })
+				.where(eq(db.events.sessionId, finalized.childSessionId));
+			const [ledgerRow] = await getDb()
+				.select()
+				.from(db.opencodeForkRequests)
+				.where(eq(db.opencodeForkRequests.actionId, actionId));
+			const storedMap = ledgerRow?.childMap as { pairs?: { parentOccurredAt: string; parts?: { parentOccurredAt: string }[] }[] };
+			for (const pair of storedMap?.pairs ?? []) {
+				pair.parentOccurredAt = reportAt;
+				for (const part of pair.parts ?? []) part.parentOccurredAt = reportAt;
+			}
+			await getDb()
+				.update(db.opencodeForkRequests)
+				.set({ childMap: storedMap })
+				.where(eq(db.opencodeForkRequests.actionId, actionId));
 			// copyOf resolves for the copied prefix.
 			const copies = await loadCopiedEvents(finalized.childSessionId);
 			expect(copies.size).toBeGreaterThan(0);
@@ -335,9 +357,11 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 				.map((part) => String((part as { text?: string }).text ?? ""))
 				.filter(Boolean);
 			const newText = String(
-				(allChild.at(-1)?.parts.find((part) => (part as { type?: string }).type === "text") as
-					| { text?: string }
-					| undefined)?.text ?? "",
+				(
+					childMessages.at(-1)?.parts.find(
+						(part) => (part as { type?: string }).type === "text",
+					) as { text?: string } | undefined
+				)?.text ?? "",
 			);
 			// Parent history appears (original), the copied prefix is deduped away,
 			// and the new child turn appears.
