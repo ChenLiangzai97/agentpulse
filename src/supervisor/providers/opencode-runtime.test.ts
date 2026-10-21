@@ -1191,3 +1191,126 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 	},
 	120000,
 );
+
+
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: abort attempts persist independently of claims and survive restarts",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-attempts-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": { name: "Fixture", tool_call: true, limit: { context: 32768, output: 2048 } },
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const cwd = join(root, "project");
+		await mkdir(cwd);
+		const stateDirectory = join(root, "state");
+		const instanceId = "attempts-instance";
+		const attemptsDir = join(stateDirectory, "abort-attempts", instanceId);
+		const { readdir } = await import("node:fs/promises");
+		const makePool = () =>
+			new OpenCodeRuntimePool({
+				executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+				profilePath,
+				stateDirectory,
+				maxInstances: 1,
+				idleTimeoutMs: 60000,
+				stopGraceMs: 1000,
+			});
+		try {
+			const first = await makePool().start({
+				instanceId,
+				generation: 1,
+				sessionId: "attempts-session",
+				cwd,
+				title: "attempts",
+			});
+			// (a) Claim ends BEFORE the delayed abort: the claim file disappears, the
+			//     attempt file must remain until the request resolves.
+			const delayedPool = new OpenCodeRuntimePool({
+				executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+				profilePath,
+				stateDirectory: join(root, "state-delayed"),
+				maxInstances: 1,
+				idleTimeoutMs: 60000,
+				stopGraceMs: 1000,
+				abortRequestDelayMs: 3000,
+			});
+			const delayed = await delayedPool.start({
+				instanceId: "attempts-delayed",
+				generation: 1,
+				sessionId: "attempts-delayed-session",
+				cwd,
+				title: "attempts delayed",
+			});
+			const delayedClaims = join(root, "state-delayed", "claims", "attempts-delayed");
+			const delayedAttempts = join(root, "state-delayed", "abort-attempts", "attempts-delayed");
+			await delayed.prompt("P0_HELLO");
+			const aborting = delayed.abort();
+			for (let i = 0; i < 40; i++) {
+				if ((await readdir(delayedClaims)).length === 0) break;
+				await delayed.snapshot();
+				await Bun.sleep(100);
+			}
+			expect(await readdir(delayedClaims)).toEqual([]);
+			expect((await readdir(delayedAttempts)).length).toBe(1);
+			await expect(delayed.prompt("frozen")).rejects.toThrow("opencode_abort_pending");
+			await aborting;
+			await Bun.sleep(200);
+			expect(await readdir(delayedAttempts)).toEqual([]);
+			await delayed.stop();
+
+			// (b) STANDALONE abort (no claim): persisted, survives stop/restart, and
+			//     blocks the same native id if it becomes addressable again.
+			// No local claim: the bound session is aborted standalone.
+			const standaloneTarget = first.nativeSessionId;
+			await first.abort();
+			const files = await readdir(attemptsDir);
+			expect(files.length).toBe(1);
+			await first.stop();
+			const second = await makePool().start({
+				instanceId,
+				generation: 1,
+				sessionId: "attempts-session-2",
+				cwd,
+				title: "attempts restarted",
+			});
+			expect(second.unsettledAbortAttempts().some((a) => a.nativeSessionId === standaloneTarget)).toBe(
+				true,
+			);
+			second.registerManagedChild(standaloneTarget);
+			await expect(second.prompt("x", { nativeSessionId: standaloneTarget })).rejects.toThrow(
+				"opencode_abort_pending",
+			);
+			await second.stop();
+		} finally {
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+	120000,
+);

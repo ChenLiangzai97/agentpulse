@@ -93,6 +93,12 @@ export interface OpenCodeRuntime {
 		abortRequested: boolean;
 	}[];
 	abortPending(target: string): boolean;
+	unsettledAbortAttempts(): {
+		attemptId: string;
+		nativeSessionId: string;
+		claimId: string;
+		createdAt: string;
+	}[];
 	/** Claim-record cleanup failures (files left for reconciliation). */
 	cleanupIssues(): { claimId: string; path: string; error: string }[];
 	/** Evidence captured in the controlled window before executing a fork. */
@@ -352,10 +358,72 @@ export class OpenCodeRuntimePool {
 			>();
 			let claimsQuarantined = false;
 			const cleanupIssues: { claimId: string; path: string; error: string }[] = [];
+			// Freeze a target while ANY abort attempt is unresolved (attemptId-based,
+			// so repeated aborts never share one boolean).
+			const abortAttempts = new AbortAttempts();
+			// INDEPENDENT durable abort attempts (survive restarts; multiple per
+			// target; a standalone abort has no claim record of its own).
+			const attemptsDirectory = join(
+				this.config.stateDirectory,
+				"abort-attempts",
+				input.instanceId.replace(/[^A-Za-z0-9_-]/g, "_"),
+			);
+			await mkdir(attemptsDirectory, { recursive: true, mode: 0o700 });
+			const attemptFiles = new Map<string, string>();
+			interface PersistedAttempt {
+				attemptId: string;
+				nativeSessionId: string;
+				claimId: string;
+				createdAt: string;
+			}
+			const persistedAttempts = new Map<string, PersistedAttempt>();
+			for (const name of await readdir(attemptsDirectory)) {
+				if (!name.endsWith(".json")) continue;
+				try {
+					const record = JSON.parse(
+						await readFile(join(attemptsDirectory, name), "utf8"),
+					) as Record<string, unknown>;
+					if (
+						record.version !== 1 ||
+						record.instanceId !== input.instanceId ||
+						record.generation !== input.generation ||
+						typeof record.nativeSessionId !== "string" ||
+						!/^ses_[A-Za-z0-9_-]+$/.test(record.nativeSessionId) ||
+						typeof record.attemptId !== "string" ||
+						typeof record.claimId !== "string" ||
+						typeof record.createdAt !== "string"
+					) {
+						claimsQuarantined = true;
+						continue;
+					}
+					// Recovered attempts are UNKNOWN: block the target if it ever
+					// becomes addressable again, never auto-resolve.
+					abortAttempts.begin(
+						record.nativeSessionId,
+						record.attemptId,
+						record.claimId,
+						true,
+					);
+					attemptFiles.set(record.attemptId, join(attemptsDirectory, name));
+					persistedAttempts.set(record.attemptId, {
+						attemptId: record.attemptId,
+						nativeSessionId: record.nativeSessionId,
+						claimId: record.claimId,
+						createdAt: record.createdAt,
+					});
+				} catch {
+					claimsQuarantined = true;
+				}
+			}
+			const removeAttemptFile = async (attemptId: string) => {
+				const path = attemptFiles.get(attemptId);
+				attemptFiles.delete(attemptId);
+				persistedAttempts.delete(attemptId);
+				if (path) await unlink(path).catch(() => {});
+			};
 			// Freeze a target while ANY abort attempt is unresolved. An attempt is
 			// resolved only when BOTH the native request responded AND the claim it
 			// was aimed at ended — claim release alone must not lift the fence.
-			const abortAttempts = new AbortAttempts();
 			const claimsDirectory = join(
 				this.config.stateDirectory,
 				"claims",
@@ -452,6 +520,10 @@ export class OpenCodeRuntimePool {
 				if (executing.get(id) !== claim) return;
 				executing.delete(id);
 				abortAttempts.claimEnded(id, claim.id);
+				for (const pendingAttempt of abortAttempts.pending(id)) {
+					// Resolved claim-bound attempts no longer block; drop their files.
+					if (!abortAttempts.frozen(id)) await removeAttemptFile(pendingAttempt.attemptId);
+				}
 				if (!claim.recordPath) return;
 				try {
 					await enqueueClaimFileOp(claim.id, async () => {
@@ -644,7 +716,15 @@ export class OpenCodeRuntimePool {
 						const ended = sameTurn && abortTerminal(list, turnMessageId);
 						if (!busy && ended) quiet += 1;
 						else quiet = 0;
-						if (quiet >= 2) return true;
+						if (quiet >= 2) {
+							// VERIFIED terminal evidence: the target is isolated/ended, so
+							// the outstanding abort attempts for it can be cleared.
+							for (const attempt of abortAttempts.pending(target)) {
+								abortAttempts.abandon(target, attempt.attemptId);
+								await removeAttemptFile(attempt.attemptId);
+							}
+							return true;
+						}
 						await Bun.sleep(200);
 					}
 					return false;
@@ -690,6 +770,9 @@ export class OpenCodeRuntimePool {
 				},
 				abortPending(target: string) {
 					return abortAttempts.frozen(target);
+				},
+				unsettledAbortAttempts() {
+					return [...persistedAttempts.values()];
 				},
 				unsettledClaims() {
 					return [...unsettled.entries()].map(([nativeSessionId, record]) => ({
@@ -818,6 +901,20 @@ export class OpenCodeRuntimePool {
 					// flight (a prompt may start during the delay and be killed by this
 					// very abort): claimEnded starts true, the response releases it.
 					abortAttempts.begin(id, attemptId, held?.id ?? "", !held);
+					const attemptPath = join(attemptsDirectory, `${attemptId}.json`);
+					attemptFiles.set(attemptId, attemptPath);
+					await writePrivateFileAtomic(
+						attemptPath,
+						JSON.stringify({
+							version: 1,
+							instanceId: input.instanceId,
+							generation: input.generation,
+							nativeSessionId: id,
+							attemptId,
+							claimId: held?.id ?? "",
+							createdAt: new Date().toISOString(),
+						}),
+					);
 					if (held?.recordPath && held.attempt) {
 						const path = held.recordPath;
 						const attempt = held.attempt;
@@ -864,6 +961,10 @@ export class OpenCodeRuntimePool {
 						throw error;
 					}
 					abortAttempts.respond(id, attemptId);
+					// A claim-bound attempt is resolved once BOTH the response and the
+					// claim end are known; a STANDALONE attempt stays persisted until a
+					// verified terminal observation (stop confirmation).
+					if (held && !abortAttempts.frozen(id)) await removeAttemptFile(attemptId);
 					const current = executing.get(id);
 					if (held && current && current.id === held.id)
 						current.state = markAbort(current.state, snapshotSeq + 1);
