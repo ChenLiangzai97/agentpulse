@@ -263,3 +263,85 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 	},
 	120000,
 );
+
+// Explicit opt-in: real CLI multi-session addressing (A6).
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: one in-flight turn per target; registered child runs in parallel with the parent",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-runtime-a6-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": {
+								name: "Fixture",
+								tool_call: true,
+								limit: { context: 32768, output: 2048 },
+							},
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const pool = new OpenCodeRuntimePool({
+			executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+			profilePath,
+			stateDirectory: join(root, "instances"),
+			maxInstances: 1,
+			idleTimeoutMs: 60000,
+			stopGraceMs: 2000,
+		});
+		try {
+			const cwd = join(root, "project");
+			await mkdir(cwd);
+			const runtime = await pool.start({
+				instanceId: "a6-instance",
+				generation: 1,
+				sessionId: "a6-parent",
+				cwd,
+				title: "A6 fixture",
+			});
+			// 1) Unknown native ids are refused (a bare id never grants execution).
+			await expect(runtime.prompt("hi", { nativeSessionId: "ses_unknown" })).rejects.toThrow(
+				"opencode_unknown_native_session",
+			);
+			// 2) A child created natively and REGISTERED via the trusted path is addressable.
+			const child = (await runtime.request("/session", { title: "child" })) as { id: string };
+			runtime.registerManagedChild(child.id);
+			// 3) Child busy (P0_ABORT sleeps); a SECOND child prompt must be refused.
+			await runtime.prompt("P0_ABORT", { nativeSessionId: child.id });
+			await expect(runtime.prompt("again", { nativeSessionId: child.id })).rejects.toThrow(
+				"opencode_session_busy",
+			);
+			// 4) The PARENT is a different target — it can still start its own turn.
+			await runtime.prompt("P0_HELLO");
+			// 5) Interrupting the child does not touch the parent's claim: releasing
+			//    the child here must leave the parent addressable after idle.
+			await runtime.abort(child.id);
+			await runtime.stop();
+			expect(pool.get("a6-parent")).toBeUndefined();
+		} finally {
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+);

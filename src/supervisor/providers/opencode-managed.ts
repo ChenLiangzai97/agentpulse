@@ -267,28 +267,33 @@ export function createManagedOpenCodeProvider(
 			// (opencode_unknown_native_session) — never a silent misroute.
 			const targetNative =
 				typeof metadata.nativeSessionId === "string" ? metadata.nativeSessionId : undefined;
-			// Stopping a CHILD aborts that native session only — the shared
-			// instance (and the parent) keep running. The instance stop is the
-			// separate, explicitly blast-radius operation for the bound session.
+			// SESSION STOP IS NOT IMPLEMENTED. A child stop requires cancel-queued,
+			// approval invalidation, a stop epoch and refusal of new actions — an
+			// abort alone would be a half-truth, so it is REFUSED. Stopping the
+			// bound session kills the shared instance and therefore affects EVERY
+			// branch; that blast radius is the caller's explicit decision.
 			if (action.actionType === "stop") {
 				if (targetNative && targetNative !== runtime.nativeSessionId)
-					return runtime.abort(targetNative);
+					throw new Error("opencode_child_stop_not_implemented");
 				return stop(runtime.sessionId);
 			}
+			// Epochs are per TARGET native session: interrupting a child must not
+			// cancel the parent's in-flight wait/retry.
+			const epochKey = targetNative ?? runtime.nativeSessionId;
 			if (action.actionType === "interrupt") {
-				interruptEpoch.set(runtime.sessionId, (interruptEpoch.get(runtime.sessionId) ?? 0) + 1);
+				interruptEpoch.set(epochKey, (interruptEpoch.get(epochKey) ?? 0) + 1);
 				return runtime.abort(targetNative);
 			}
 			if (action.actionType === "prompt") {
-				const epoch = interruptEpoch.get(runtime.sessionId) ?? 0;
-				const previous = promptQueues.get(runtime.sessionId) ?? Promise.resolve();
+				const epoch = interruptEpoch.get(epochKey) ?? 0;
+				const previous = promptQueues.get(epochKey) ?? Promise.resolve();
 				const next = previous
 					.catch(() => {})
 					.then(async () => {
 						const deadline = Date.now() + 15 * 60 * 1000;
 						while (true) {
 							if (!active.has(runtime.sessionId)) throw new Error("opencode_process_interrupted");
-							if (epoch !== (interruptEpoch.get(runtime.sessionId) ?? 0))
+							if (epoch !== (interruptEpoch.get(epochKey) ?? 0))
 								throw new Error("opencode_prompt_cancelled_before_delivery");
 							const status = await runtime.snapshot();
 							if (
@@ -318,26 +323,26 @@ export function createManagedOpenCodeProvider(
 						});
 						await Bun.sleep(500);
 					});
-				promptQueues.set(runtime.sessionId, next);
+				promptQueues.set(epochKey, next);
 				try {
 					await next;
 				} finally {
-					if (promptQueues.get(runtime.sessionId) === next) promptQueues.delete(runtime.sessionId);
+					if (promptQueues.get(epochKey) === next) promptQueues.delete(epochKey);
 				}
 				return;
 			}
 			if (action.actionType === "opencode_command") {
 				const command = String(metadata.command ?? "");
 				if (!/^[a-zA-Z0-9_-]+$/.test(command)) throw new Error("opencode_invalid_command");
-				const epoch = interruptEpoch.get(runtime.sessionId) ?? 0;
-				const previous = promptQueues.get(runtime.sessionId) ?? Promise.resolve();
+				const epoch = interruptEpoch.get(epochKey) ?? 0;
+				const previous = promptQueues.get(epochKey) ?? Promise.resolve();
 				const next = previous
 					.catch(() => {})
 					.then(async () => {
 						const deadline = Date.now() + 15 * 60 * 1000;
 						while (true) {
 							if (!active.has(runtime.sessionId)) throw new Error("opencode_process_interrupted");
-							if (epoch !== (interruptEpoch.get(runtime.sessionId) ?? 0))
+							if (epoch !== (interruptEpoch.get(epochKey) ?? 0))
 								throw new Error("opencode_prompt_cancelled_before_delivery");
 							const status = await runtime.snapshot();
 							if (
@@ -371,11 +376,11 @@ export function createManagedOpenCodeProvider(
 						);
 						await Bun.sleep(500);
 					});
-				promptQueues.set(runtime.sessionId, next);
+				promptQueues.set(epochKey, next);
 				try {
 					await next;
 				} finally {
-					if (promptQueues.get(runtime.sessionId) === next) promptQueues.delete(runtime.sessionId);
+					if (promptQueues.get(epochKey) === next) promptQueues.delete(epochKey);
 				}
 				return;
 			}
