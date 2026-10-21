@@ -327,8 +327,16 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 			// 2) A child created natively and REGISTERED via the trusted path is addressable.
 			const child = (await runtime.request("/session", { title: "child" })) as { id: string };
 			runtime.registerManagedChild(child.id);
-			// 3) Child busy (P0_ABORT sleeps); a SECOND child prompt must be refused.
-			await runtime.prompt("P0_ABORT", { nativeSessionId: child.id });
+			// 3) CONCURRENT same-target attempts: the synchronous pre-claim makes
+			//    exactly one win even though both read their baseline concurrently.
+			const raced = await Promise.allSettled([
+				runtime.prompt("P0_ABORT", { nativeSessionId: child.id }),
+				runtime.prompt("P0_ABORT", { nativeSessionId: child.id }),
+			]);
+			expect(raced.filter((entry) => entry.status === "fulfilled")).toHaveLength(1);
+			const rejected = raced.find((entry) => entry.status === "rejected") as PromiseRejectedResult;
+			expect(String(rejected.reason)).toContain("opencode_session_busy");
+			// A SECOND child prompt is still refused while that turn runs.
 			await expect(runtime.prompt("again", { nativeSessionId: child.id })).rejects.toThrow(
 				"opencode_session_busy",
 			);
@@ -342,26 +350,33 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 				"opencode_session_busy",
 			);
 			await runtime.abort(child.id);
-			// 6) PARENT-FIRST: parent busy, child still addressable immediately.
-			await runtime.prompt("P0_ABORT");
-			await runtime.prompt("P0_HELLO", { nativeSessionId: child.id });
-			await runtime.abort();
-			// The child turn completes; a snapshot settles its claim by evidence.
+			// 5b) ABORT IS ONLY ACCEPTANCE: right after the accepted abort the
+			//     claim is still held; only a later idle snapshot with no
+			//     unfinished reply to our message releases it.
+			await expect(runtime.prompt("again", { nativeSessionId: child.id })).rejects.toThrow(
+				"opencode_session_busy",
+			);
 			for (let i = 0; i < 40; i++) {
 				const settled = await runtime.snapshot();
 				if (settled.sessions[child.id]?.type !== "busy") break;
 				await Bun.sleep(250);
 			}
-			// 7) A delivery that never landed releases ONLY its target claim: the
-			//    request 404s, so the next attempt fails at transport again — not
-			//    at the busy gate (the claimed slot was freed by the failure).
+			// USER MESSAGE ONLY IS NOT COMPLETION: the parent turn is left running
+			// (no abort, no reply yet) — its claim must survive every snapshot.
+			// 6) PARENT-FIRST: parent busy, child still addressable immediately.
+			await runtime.prompt("P0_ABORT");
 			await runtime.prompt("P0_ABORT", { nativeSessionId: child.id });
+			for (let i = 0; i < 8; i++) {
+				await runtime.snapshot();
+				await Bun.sleep(250);
+			}
+			// 6b) A LOST/RESENT delivery outcome is unknown: the claim stays held
+			//     even though the turn's user message has landed.
 			await expect(runtime.prompt("again", { nativeSessionId: child.id })).rejects.toThrow(
 				"opencode_session_busy",
 			);
-			// A trusted abort ends the turn and frees the slot for the SAME target.
+			await runtime.abort();
 			await runtime.abort(child.id);
-			await runtime.prompt("P0_HELLO", { nativeSessionId: child.id });
 			await runtime.stop();
 			expect(pool.get("a6-parent")).toBeUndefined();
 		} finally {

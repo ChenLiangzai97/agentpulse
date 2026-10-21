@@ -278,23 +278,39 @@ export class OpenCodeRuntimePool {
 			// Check-and-set is atomic within this single-threaded runtime, so two
 			// immediate prompts can never both pass before a snapshot reports busy.
 			interface Claim {
-				baseline: Set<string>;
-				seenBusy: boolean;
+				/** Unique per attempt: an old callback may never free a new claim. */
+				id: string;
+				kind: "prompt" | "command";
+				/** Native user-message id sent with this request (correlation key). */
+				messageID: string;
+				abortRequested: boolean;
 			}
 			// native id -> in-flight claim bound to the REQUEST identity.
 			const executing = new Map<string, Claim>();
 			// Targets must be in the TRUSTED addressable set (bound session or a
 			// child registered from an authenticated fork result).
-			const messageIds = (list: unknown[]): Set<string> => {
-				const ids = new Set<string>();
-				for (const item of list) {
-					const id =
-						(item as { info?: { id?: unknown } })?.info?.id ?? (item as { id?: unknown })?.id;
-					if (typeof id === "string") ids.add(id);
-				}
-				return ids;
-			};
-			const integrate = async (target?: string): Promise<{ id: string; path: string }> => {
+			// Correlation helpers over the native message list. The COMPLETION of
+			// THIS request is proven only by an assistant message whose parentID is
+			// our messageID (and which is completed/failed), never by "some new id".
+			const assistantFor = (list: unknown[], messageID: string) =>
+				list.find((item) => {
+					const info = (item as { info?: Record<string, unknown> })?.info;
+					return info?.role === "assistant" && info?.parentID === messageID;
+				}) as { info?: Record<string, unknown> } | undefined;
+			const hasUserMessage = (list: unknown[], messageID: string) =>
+				list.some((item) => {
+					const info = (item as { info?: Record<string, unknown> })?.info;
+					return info?.id === messageID;
+				});
+			/**
+			 * Atomic pre-claim happens BEFORE any await; the baseline read can then
+			 * never interleave two same-target attempts. A baseline failure frees
+			 * only THIS claim id.
+			 */
+			const integrate = async (
+				kind: "prompt" | "command",
+				target?: string,
+			): Promise<{ id: string; path: string; claim: Claim }> => {
 				const id = target ?? native.id;
 				if (id !== native.id && !knownSessions.has(id))
 					throw new Error("opencode_unknown_native_session");
@@ -303,16 +319,24 @@ export class OpenCodeRuntimePool {
 					const current = this.instances.get(input.sessionId);
 					if (!current || current.pending) throw new Error("opencode_session_busy");
 				}
-				// Baseline is taken BEFORE delivery so completion is proven by a
-				// message id that did not exist at claim time (or a busy->idle
-				// transition). No timer ever frees a claim.
-				const baseline = messageIds(
-					await request<unknown[]>(`/session/${encodeURIComponent(id)}/message`),
-				);
-				executing.set(id, { baseline, seenBusy: false });
-				return { id, path: id === native.id ? nativePath : `/session/${encodeURIComponent(id)}` };
+				const claim: Claim = {
+					id: crypto.randomUUID(),
+					kind,
+					messageID: `msg_ap_${crypto.randomUUID().replaceAll("-", "")}`,
+					abortRequested: false,
+				};
+				executing.set(id, claim); // synchronous: no interleaving here
+				try {
+					await request<unknown[]>(`/session/${encodeURIComponent(id)}/message`);
+				} catch (error) {
+					if (executing.get(id) === claim) executing.delete(id);
+					throw error;
+				}
+				return { id, path: id === native.id ? nativePath : `/session/${encodeURIComponent(id)}`, claim };
 			};
-			const release = (id: string) => executing.delete(id);
+			const release = (id: string, claim: Claim) => {
+				if (executing.get(id) === claim) executing.delete(id);
+			};
 			const pathFor = (target?: string): string => {
 				if (!target || target === native.id) return nativePath;
 				if (!knownSessions.has(target)) throw new Error("opencode_unknown_native_session");
@@ -385,7 +409,7 @@ export class OpenCodeRuntimePool {
 					if (entry) entry.lastUsed = Date.now();
 				},
 				prompt: async (text, options) => {
-					const claim = await integrate(options?.nativeSessionId);
+					const claim = await integrate("prompt", options?.nativeSessionId);
 					const entry = this.instances.get(input.sessionId);
 					if (entry) entry.lastUsed = Date.now();
 					// No explicit model: inherit the session's current one (a previous
@@ -393,12 +417,16 @@ export class OpenCodeRuntimePool {
 					// Never retry an ambiguous transport failure: native messageID is not part-idempotent.
 					try {
 						await request(`${claim.path}/prompt_async`, {
+							messageID: claim.claim.messageID,
 							...(options?.model ? { model: options.model } : {}),
 							...(options?.agent ? { agent: options.agent } : {}),
 							parts: [{ type: "text", text }],
 						});
 					} catch (error) {
-						release(claim.id); // failure must free THIS target only
+						// DEFINITIVE rejection (4xx) never accepted the turn — free it.
+						// Transport loss/timeout/5xx is UNKNOWN: keep the claim held.
+						const status = Number(/opencode_http_(\d{3})/.exec(String((error as Error).message))?.[1]);
+						if (status >= 400 && status < 500) release(claim.id, claim.claim);
 						throw new Error("opencode_prompt_delivery_uncertain", { cause: error });
 					}
 				},
@@ -407,7 +435,7 @@ export class OpenCodeRuntimePool {
 					// template as a user message and runs it. TUI built-ins are NOT
 					// valid here (verified: 1.18.35 answers UnknownError).
 					if (!/^[a-zA-Z0-9_-]+$/.test(command)) throw new Error("opencode_invalid_command");
-					const claim = await integrate(options?.nativeSessionId);
+					const claim = await integrate("command", options?.nativeSessionId);
 					try {
 						await request(`${claim.path}/command`, {
 						command,
@@ -419,16 +447,24 @@ export class OpenCodeRuntimePool {
 							: {}),
 							...(options?.agent ? { agent: options.agent } : {}),
 						});
-					} finally {
-						release(claim.id);
+					} catch (error) {
+						const status = Number(
+							/opencode_http_(\d{3})/.exec(String((error as Error).message))?.[1],
+						);
+						// Only a definitive 4xx proves the command never ran.
+						if (status >= 400 && status < 500) release(claim.id, claim.claim);
+						throw error;
 					}
 					runtime.touch();
 				},
 				abort: async (nativeSessionId?: string) => {
+					const id = nativeSessionId ?? native.id;
 					// pathFor also enforces the trusted addressable set.
 					await request(`${pathFor(nativeSessionId)}/abort`, {});
-					// A successful abort is trusted evidence that the turn ended.
-					release(nativeSessionId ?? native.id);
+					// HTTP acceptance is NOT termination — the claim stays held until
+					// a snapshot proves the target idle with no in-flight reply.
+					const held = executing.get(id);
+					if (held) held.abortRequested = true;
 					runtime.touch();
 				},
 				stop: async () => {
@@ -514,23 +550,31 @@ export class OpenCodeRuntimePool {
 					// addressable set (only an authenticated fork result does).
 					// A target is no longer executing once its native status is idle.
 					for (const [id, claim] of [...executing]) {
-						const st = status[id]?.type;
-						if (st === "busy" || st === "retry") {
-							claim.seenBusy = true;
-							continue;
-						}
-						// Trusted completion evidence for THIS request only:
-						// (a) the target was observed busy after the claim and is now
-						// idle, or (b) a message id absent from the pre-delivery
-						// baseline now exists (a fast turn). A stale idle snapshot,
-						// a missing status or elapsed time proves nothing — the
-						// claim stays held for reconciliation.
 						const current =
 							id === native.id
 								? messages
 								: (children.find((child) => child.session.id === id)?.messages ?? []);
-						const completed = [...messageIds(current)].some((value) => !claim.baseline.has(value));
-						if (claim.seenBusy || completed) executing.delete(id);
+						// THIS request's outcome: an assistant reply to OUR messageID
+						// that is completed or failed. A user message landing, an
+						// unfinished reply or any other new id proves nothing.
+						const reply = assistantFor(current, claim.messageID);
+						const info = reply?.info ?? null;
+						const finished = info ? Boolean(info.time && (info.time as { completed?: unknown }).completed) || Boolean(info.error) : false;
+						const idle = (status[id]?.type ?? "idle") !== "busy" && (status[id]?.type ?? "idle") !== "retry";
+						if (reply && finished) {
+							executing.delete(id);
+							continue;
+						}
+						// Abort accepted: only a target that is now idle WITHOUT an
+						// unfinished reply to our request proves termination.
+						if (claim.abortRequested && idle) {
+							if (!reply || finished) executing.delete(id);
+							else if (!hasUserMessage(current, claim.messageID)) executing.delete(id);
+							continue;
+						}
+						// Command claims (no correlated prompt reply) settle when the
+						// target is idle and abort was not requested.
+						if (claim.kind === "command" && idle) executing.delete(id);
 					}
 					const boundBusy = status[native.id]?.type === "busy" || status[native.id]?.type === "retry";
 					const entry = this.instances.get(input.sessionId);
