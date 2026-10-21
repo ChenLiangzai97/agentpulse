@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, inArray, lte } from "drizzle-orm";
 import type { Context, Next } from "hono";
 import { Hono } from "hono";
+import { z } from "zod";
 import { bodyLimit } from "hono/body-limit";
 import { AGENT_TYPES } from "../../shared/constants.js";
 import {
@@ -128,6 +129,22 @@ function parseBoundedInt(
 	const value = Number(raw);
 	return value >= min && value <= max ? value : null;
 }
+
+const forkRequestSchema = z
+	.object({
+		forkPointMessageId: z
+			.string()
+			.regex(/^msg_[A-Za-z0-9_-]{1,180}$/, "invalid_fork_point")
+			.optional(),
+		childDisplayName: z.string().trim().min(1).max(120).optional(),
+		idempotencyKey: z
+			.string()
+			.min(8)
+			.max(128)
+			.regex(/^[A-Za-z0-9._:-]+$/, "invalid_idempotency_key")
+			.optional(),
+	})
+	.strict();
 
 const sessionsRouter = new Hono();
 sessionsRouter.use("*", requireAuth());
@@ -891,19 +908,20 @@ sessionsRouter.post("/sessions/:sessionId/fork", async (c: Context) => {
 	if (!config.opencodeForkEntry)
 		return c.json({ error: "opencode_fork_entry_closed" }, 403);
 	try {
-		const body = await c.req.json<{
-			forkPointMessageId?: string;
-			childDisplayName?: string;
-		}>();
+		// Validate the SCHEMA before any truthy-coercion: 0/false must be a 400,
+		// never a silently defaulted full fork.
+		const parsed = forkRequestSchema.safeParse(await c.req.json().catch(() => null));
+		if (!parsed.success)
+			return c.json({ error: "invalid_fork_request", issues: parsed.error.issues }, 400);
+		const body = parsed.data;
 		const authUser = c.get("authUser") as AuthUser | undefined;
 		const action = await queueOpenCodeAction(
 			c.req.param("sessionId"),
 			"opencode_fork",
 			{
-				...(body.forkPointMessageId
-					? { forkPointMessageId: body.forkPointMessageId }
-					: {}),
+				...(body.forkPointMessageId ? { forkPointMessageId: body.forkPointMessageId } : {}),
 				...(body.childDisplayName ? { childDisplayName: body.childDisplayName } : {}),
+				...(body.idempotencyKey ? { idempotencyKey: body.idempotencyKey } : {}),
 			},
 			actorFromAuthUser(authUser),
 		);
@@ -911,10 +929,11 @@ sessionsRouter.post("/sessions/:sessionId/fork", async (c: Context) => {
 	} catch (error) {
 		if (error instanceof SessionControlOriginError)
 			return c.json({ error: error.code }, error.status);
-		return c.json(
-			{ error: error instanceof Error ? error.message : "Unable to queue fork" },
-			400,
-		);
+		const message = error instanceof Error ? error.message : "Unable to queue fork";
+		if (message === "opencode_fork_idempotency_conflict")
+			return c.json({ error: message }, 409);
+		if (message === "opencode_fork_busy") return c.json({ error: message }, 409);
+		return c.json({ error: message }, 400);
 	}
 });
 

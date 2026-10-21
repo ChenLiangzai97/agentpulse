@@ -138,11 +138,101 @@ test("when opened: queues the fork action with identity metadata + ledger row", 
 	expect(ledger).toHaveLength(1);
 });
 
-test("a second request while one is queued returns the SAME action", async () => {
+test("a no-key second request while one is queued is refused as busy", async () => {
 	(config as Record<string, unknown>).opencodeForkEntry = true;
 	const { parentId } = await seedManagedSession();
-	const first = (await (await post(parentId, {})).json()) as { action: { id: string } };
-	const second = (await (await post(parentId, {})).json()) as { action: { id: string } };
-	expect(second.action.id).toBe(first.action.id);
+	expect((await post(parentId, {})).status).toBe(202);
+	const second = await post(parentId, {});
+	expect(second.status).toBe(409);
+	expect(await second.json()).toEqual({ error: "opencode_fork_busy" });
 	expect(await getDb().select().from(opencodeForkRequests)).toHaveLength(1);
+});
+
+test("same actor + key + body replays; different body under the same key is 409", async () => {
+	(config as Record<string, unknown>).opencodeForkEntry = true;
+	const { parentId } = await seedManagedSession();
+	const body = { idempotencyKey: "fork-key-0001", childDisplayName: "分支A" };
+	const first = (await (await post(parentId, body)).json()) as { action: { id: string } };
+	const replay = (await (await post(parentId, body)).json()) as { action: { id: string } };
+	expect(replay.action.id).toBe(first.action.id);
+	const conflict = await post(parentId, { ...body, childDisplayName: "分支B" });
+	expect(conflict.status).toBe(409);
+	expect(await conflict.json()).toEqual({ error: "opencode_fork_idempotency_conflict" });
+});
+
+test("different fork points are different requests (concurrent keys are independent)", async () => {
+	(config as Record<string, unknown>).opencodeForkEntry = true;
+	const { parentId } = await seedManagedSession();
+	const [a, b] = await Promise.all([
+		post(parentId, { idempotencyKey: "fork-key-aaaa", forkPointMessageId: "msg_one" }),
+		post(parentId, { idempotencyKey: "fork-key-bbbb", forkPointMessageId: "msg_two" }),
+	]);
+	expect(a.status).toBe(202);
+	expect(b.status).toBe(202);
+	const ids = new Set([
+		((await a.json()) as { action: { id: string } }).action.id,
+		((await b.json()) as { action: { id: string } }).action.id,
+	]);
+	expect(ids.size).toBe(2);
+	expect(await getDb().select().from(opencodeForkRequests)).toHaveLength(2);
+});
+
+test("the same key after completion still replays the original action", async () => {
+	(config as Record<string, unknown>).opencodeForkEntry = true;
+	const { parentId } = await seedManagedSession();
+	const body = { idempotencyKey: "fork-key-cccc" };
+	const first = (await (await post(parentId, body)).json()) as { action: { id: string } };
+	await getDb()
+		.update(controlActions)
+		.set({ status: "succeeded" })
+		.where(eq(controlActions.id, first.action.id));
+	const again = (await (await post(parentId, body)).json()) as { action: { id: string } };
+	expect(again.action.id).toBe(first.action.id);
+});
+
+test("a DIFFERENT actor with the same key gets its own action", async () => {
+	(config as Record<string, unknown>).opencodeForkEntry = true;
+	const { parentId } = await seedManagedSession();
+	// Two service identities (no user id) share the '' owner scope in the unique
+	// index, so use two real user ids to exercise the per-actor scope. The auth
+	// context is not switchable in this harness, so the DB scope is asserted
+	// directly: same key, two users → two rows (the index is actor-scoped).
+	await getDb().insert(controlActions).values([
+		{
+			id: crypto.randomUUID(),
+			sessionId: parentId,
+			actionType: "opencode_fork",
+			status: "queued",
+			idempotencyKey: "fork-key-dddd",
+			requestedByUserId: "user-a",
+			metadata: {},
+		},
+		{
+			id: crypto.randomUUID(),
+			sessionId: parentId,
+			actionType: "opencode_fork",
+			status: "queued",
+			idempotencyKey: "fork-key-dddd",
+			requestedByUserId: "user-b",
+			metadata: {},
+		},
+	]);
+	expect(await getDb().select().from(controlActions)).toHaveLength(2);
+});
+
+test("invalid field types are 400 — never coerced into a full fork", async () => {
+	(config as Record<string, unknown>).opencodeForkEntry = true;
+	const { parentId } = await seedManagedSession();
+	for (const body of [
+		{ forkPointMessageId: 0 },
+		{ forkPointMessageId: false },
+		{ childDisplayName: 0 },
+		{ idempotencyKey: "short" },
+		{ idempotencyKey: "bad key with spaces" },
+		{ unknownField: "x" },
+	]) {
+		const res = await post(parentId, body);
+		expect(res.status).toBe(400);
+	}
+	expect(await getDb().select().from(controlActions)).toHaveLength(0);
 });

@@ -526,7 +526,8 @@ export async function queueOpenCodeAction(
 		.where(eq(sessionControlBindings.sessionId, sessionId));
 	if (!binding || binding.origin !== "agentpulse_launch")
 		throw new SessionControlOriginError("session_observe_only");
-	return withTransaction(async (tx) => {
+	let forkRequestHash: string | null = null;
+	const transaction = withTransaction(async (tx) => {
 		const fence = await tx
 			.update(providerInstances)
 			.set({ protocolVersion: "1.18.35" })
@@ -539,6 +540,44 @@ export async function queueOpenCodeAction(
 			)
 			.returning();
 		if (!fence.length) throw new SessionControlOriginError("provider_binding_invalid");
+		if (kind === "opencode_fork") {
+			const [instance] = await tx
+				.select()
+				.from(providerInstances)
+				.where(eq(providerInstances.id, binding.instanceId ?? ""));
+			// This slice forks the INSTANCE's launching session only.
+			if (!instance || instance.sessionId !== sessionId)
+				throw new Error("opencode_fork_child_source_unsupported");
+			if (
+				input.forkPointMessageId !== undefined &&
+				input.forkPointMessageId !== null &&
+				(typeof input.forkPointMessageId !== "string" ||
+					!/^msg_[A-Za-z0-9_-]{1,180}$/.test(input.forkPointMessageId))
+			)
+				throw new Error("opencode_fork_point_invalid");
+			if (
+				input.childDisplayName !== undefined &&
+				(typeof input.childDisplayName !== "string" || input.childDisplayName.length > 120)
+			)
+				throw new Error("opencode_fork_label_invalid");
+			forkRequestHash = createHash("sha256")
+				.update(
+					JSON.stringify({
+						version: 1,
+						sessionId,
+						instanceId: binding.instanceId,
+						generation: binding.generation,
+						nativeSessionId: binding.nativeSessionId,
+						forkPointMessageId:
+							typeof input.forkPointMessageId === "string" ? input.forkPointMessageId : null,
+						childDisplayName:
+							typeof input.childDisplayName === "string" && input.childDisplayName.trim()
+								? input.childDisplayName.trim()
+								: "分支",
+					}),
+				)
+				.digest("hex");
+		}
 		if (kind !== "interaction_response") {
 			const queued = await tx
 				.select()
@@ -549,7 +588,33 @@ export async function queueOpenCodeAction(
 						inArray(controlActions.status, ["queued", "running"]),
 					),
 				);
-			if (kind !== "prompt") {
+			if (kind === "opencode_fork") {
+				const key = typeof input.idempotencyKey === "string" ? input.idempotencyKey : null;
+				if (key) {
+					const [existing] = await tx
+						.select()
+						.from(controlActions)
+						.where(
+							and(
+								eq(controlActions.actionType, "opencode_fork"),
+								eq(controlActions.idempotencyKey, key),
+								sql`COALESCE(${controlActions.requestedByUserId}, '') = ${actor.userId ?? ""}`,
+							),
+						)
+						.limit(1);
+					if (existing) {
+						const stored = (existing.metadata as Record<string, unknown> | null)?.forkRequestHash;
+						if (stored !== forkRequestHash)
+							throw new Error("opencode_fork_idempotency_conflict");
+						return existing;
+					}
+				} else if (
+					queued.some((row: typeof controlActions.$inferSelect) => row.actionType === "opencode_fork")
+				) {
+					// No key: never borrow another request's action.
+					throw new Error("opencode_fork_busy");
+				}
+			} else if (kind !== "prompt") {
 				const existing = queued.find(
 					(row: typeof controlActions.$inferSelect) => row.actionType === kind,
 				);
@@ -760,6 +825,10 @@ export async function queueOpenCodeAction(
 							: {}),
 					}
 				: {};
+		const forkIdempotencyKey =
+			kind === "opencode_fork" && typeof input.idempotencyKey === "string"
+				? input.idempotencyKey
+				: null;
 		const [action] = await tx
 			.insert(controlActions)
 			.values({
@@ -768,6 +837,7 @@ export async function queueOpenCodeAction(
 				actionType: kind,
 				requestedBy: actor.label,
 				requestedByUserId: actor.userId,
+				...(forkIdempotencyKey ? { idempotencyKey: forkIdempotencyKey } : {}),
 				metadata: {
 					agentType: "opencode",
 					instanceId: binding.instanceId,
@@ -800,7 +870,7 @@ export async function queueOpenCodeAction(
 								answers: input.answers,
 							}
 						: {}),
-					...(kind === "opencode_fork" ? forkMetadata : {}),
+					...(kind === "opencode_fork" ? { ...forkMetadata, forkRequestHash } : {}),
 				},
 			})
 			.returning();
@@ -825,6 +895,31 @@ export async function queueOpenCodeAction(
 		}
 		return action;
 	});
+	if (kind === "opencode_fork" && typeof input.idempotencyKey === "string") {
+		try {
+			return await transaction;
+		} catch (error) {
+			// Concurrent requests race on uq_fork_action_idem: re-read and answer
+			// with the winner (identical body) or a conflict (different body).
+			if (!/UNIQUE constraint failed|duplicate key value/i.test(String(error))) throw error;
+			const [existing] = await getDb()
+				.select()
+				.from(controlActions)
+				.where(
+					and(
+						eq(controlActions.actionType, "opencode_fork"),
+						eq(controlActions.idempotencyKey, input.idempotencyKey),
+						sql`COALESCE(${controlActions.requestedByUserId}, '') = ${actor.userId ?? ""}`,
+					),
+				)
+				.limit(1);
+			if (!existing) throw error;
+			const stored = (existing.metadata as Record<string, unknown> | null)?.forkRequestHash;
+			if (stored !== forkRequestHash) throw new Error("opencode_fork_idempotency_conflict");
+			return existing;
+		}
+	}
+	return transaction;
 }
 export async function interruptOpenCodeInstance(
 	supervisorId: string,
