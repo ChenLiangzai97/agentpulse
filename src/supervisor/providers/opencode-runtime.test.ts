@@ -859,3 +859,87 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 	},
 	120000,
 );
+
+
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: an abort response can never mark a REPLACEMENT claim",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-abort-race-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": { name: "Fixture", tool_call: true, limit: { context: 32768, output: 2048 } },
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const cwd = join(root, "project");
+		await mkdir(cwd);
+		const stateDirectory = join(root, "state");
+		const instanceId = "abort-race-instance";
+		const claimsDir = join(stateDirectory, "claims", instanceId);
+		const pool = new OpenCodeRuntimePool({
+			executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+			profilePath,
+			stateDirectory,
+			maxInstances: 1,
+			idleTimeoutMs: 60000,
+			stopGraceMs: 1000,
+		});
+		const { readdir } = await import("node:fs/promises");
+		try {
+			const runtime = await pool.start({
+				instanceId,
+				generation: 1,
+				sessionId: "abort-race-session",
+				cwd,
+				title: "abort race",
+			});
+			// Turn 1: abort. Wait for settlement (file deleted).
+			await runtime.prompt("P0_ABORT");
+			await runtime.abort();
+			for (let i = 0; i < 80; i++) {
+				if ((await readdir(claimsDir)).length === 0) break;
+				await runtime.snapshot();
+				await Bun.sleep(100);
+			}
+			expect(await readdir(claimsDir)).toEqual([]);
+			// A delayed write from the OLD claim must not resurrect the file.
+			await Bun.sleep(700);
+			expect(await readdir(claimsDir)).toEqual([]);
+			// Turn 2 (replacement claim): must NOT carry the old abort marker.
+			await runtime.prompt("P0_HELLO");
+			const files = await readdir(claimsDir);
+			expect(files.length).toBe(1);
+			const record = JSON.parse(await readFile(join(claimsDir, files[0] as string), "utf8"));
+			expect(record.abortRequested).toBe(false);
+			await runtime.snapshot();
+			await runtime.stop();
+		} finally {
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+	120000,
+);

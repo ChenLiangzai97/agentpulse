@@ -68,6 +68,13 @@ export async function bindSession(sessionId: string, supervisorId: string, actor
 }
 
 export async function queueResume(sessionId: string, actor: Actor) {
+	// Managed OpenCode has NO resume path yet: its protected stop/resume epoch is
+	// still open. The generic resume would bypass that gate (and cannot relaunch
+	// an OpenCode instance), so it is explicitly refused for OpenCode only.
+	const provenance = await inspectOpenCodeProvenance(sessionId);
+	// Only a VALID managed OpenCode binding is refused here; an observe-only or
+	// external session keeps its normal authorization error path.
+	if (provenance?.bindingValid) throw new Error("opencode_resume_not_supported");
 	await assertSessionControlOrigin(sessionId, actor);
 	await assertCanEditSessionNotes(actor, sessionId);
 	const [managed] = await getDb()
