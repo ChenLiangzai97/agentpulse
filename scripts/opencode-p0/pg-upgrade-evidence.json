@@ -1,5 +1,5 @@
 {
- "probe": "ap_upgrade_probe_5459e834_1323_4f82_87c9_79f84dcd0421",
+ "probe": "ap_upgrade_probe_c4707a5c_23a6_4943_8d89_c082f278df44",
  "columnsBefore": [
   "created_at",
   "generation",
@@ -41,7 +41,7 @@
  "childBinding": {
   "session_id": "upgrade-child",
   "origin": "agentpulse_launch",
-  "instance_id": "78f7ed19-794c-404a-bae3-92398aff5139",
+  "instance_id": "ea530ec3-22aa-40e9-95a7-125537163467",
   "native_session_id": "ses_upgrade_child",
   "generation": 1
  },

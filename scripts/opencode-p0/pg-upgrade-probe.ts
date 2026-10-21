@@ -179,6 +179,7 @@ try {
 			(afterDelete?.parent_session_id ?? null) === null &&
 			evidence.childForkAfterDelete === null &&
 			childBinding?.origin === "agentpulse_launch" &&
+			childBinding?.instance_id === instanceRow?.id &&
 			childBinding?.native_session_id === "ses_upgrade_child" &&
 			Number(childBinding?.generation) === 1;
 	} finally {

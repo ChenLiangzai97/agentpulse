@@ -314,7 +314,15 @@ try {
 				},
 			})
 			.where(eqOp(schema.controlActions.id, staleFork?.id ?? ""));
-		const before = await getDb().select().from(schema.managedSessions);
+		const before = {
+			sessions: (await getDb().select().from(schema.sessions)).length,
+			managed: (await getDb().select().from(schema.managedSessions)).length,
+			bindings: (await getDb().select().from(schema.sessionControlBindings)).length,
+			lineage: (await getDb().select().from(schema.opencodeForks)).length,
+			ledgerIdentities: (await getDb().select().from(schema.opencodeForkRequests)).filter(
+				(row) => row.identity !== null,
+			).length,
+		};
 		const rejected = await finalizeOpenCodeFork({
 			actionId: staleFork?.id ?? "",
 			supervisorId: second.supervisorId,
@@ -331,11 +339,26 @@ try {
 			.then(() => "COMMITTED")
 			.catch((error: Error) => error.message);
 		expect(rejected === "provider_binding_invalid", "e2-rejected");
-		const after = await getDb().select().from(schema.managedSessions);
-		expect(after.length === before.length, "e2-no-partial-artifacts");
+		const after = {
+			sessions: (await getDb().select().from(schema.sessions)).length,
+			managed: (await getDb().select().from(schema.managedSessions)).length,
+			bindings: (await getDb().select().from(schema.sessionControlBindings)).length,
+			lineage: (await getDb().select().from(schema.opencodeForks)).length,
+			ledgerIdentities: (await getDb().select().from(schema.opencodeForkRequests)).filter(
+				(row) => row.identity !== null,
+			).length,
+		};
+		expect(
+			before.sessions === after.sessions &&
+				before.managed === after.managed &&
+				before.bindings === after.bindings &&
+				before.lineage === after.lineage &&
+				before.ledgerIdentities === after.ledgerIdentities,
+			"e2-no-partial-artifacts",
+		);
 		evidence.scenarioE = {
 			finalizeFirst: { stop: stopDuringFinalize, replayed: finalized.replayed },
-			stopFirst: { rejected, managedRowsUnchanged: after.length === before.length },
+			stopFirst: { rejected, artifactsUnchanged: before, artifactsAfter: after },
 		};
 	}
 
