@@ -344,12 +344,6 @@ export function createManagedOpenCodeProvider(
 				}
 				return;
 			}
-			if (action.actionType === "opencode_resume") {
-				// The server already cleared the durable stop marker when it accepted
-				// the resume; there is no native work to do here.
-				runtime.touch();
-				return;
-			}
 			if (action.actionType === "opencode_fork") {
 				// PRECONDITIONS FIRST: no native fork when the result channel is
 				// missing or the source is outside this slice (bound ROOT session,

@@ -514,8 +514,7 @@ export async function queueOpenCodeAction(
 		| "prompt"
 		| "interaction_response"
 		| "opencode_command"
-		| "opencode_fork"
-		| "opencode_resume",
+		| "opencode_fork",
 	input: Json,
 	actor: Actor,
 ) {
@@ -541,62 +540,34 @@ export async function queueOpenCodeAction(
 			)
 			.returning();
 		if (!fence.length) throw new SessionControlOriginError("provider_binding_invalid");
-		if (kind === "stop" || kind === "opencode_resume") {
-			const [sessionRow] = await tx
-				.select({ metadata: sessions.metadata })
-				.from(sessions)
-				.where(eq(sessions.sessionId, sessionId))
-				.limit(1);
-			const stoppedAt = (sessionRow?.metadata as Record<string, unknown> | null)?.controlStoppedAt;
-			if (kind === "opencode_resume") {
-				// Resume only makes sense while the instance lives; a stopped
-				// instance needs a relaunch (open item).
-				await tx
-					.update(sessions)
-					.set({ metadata: metadataSetSql({ controlStoppedAt: null } as unknown as Parameters<typeof metadataSetSql>[0]) })
-					.where(eq(sessions.sessionId, sessionId));
-			} else {
-				if (stoppedAt) throw new Error("opencode_session_already_stopped");
-				await tx
-					.update(sessions)
-					.set({ metadata: metadataSetSql({ controlStoppedAt: new Date().toISOString() } as unknown as Parameters<typeof metadataSetSql>[0]) })
-					.where(eq(sessions.sessionId, sessionId));
-				// Cancel queued deliveries and invalidate pending approvals.
-				await tx
-					.update(controlActions)
-					.set({
-						status: "failed",
-						error: "opencode_session_stopped",
-						finishedAt: new Date().toISOString(),
-						updatedAt: new Date().toISOString(),
-					})
-					.where(
-						and(
-							eq(controlActions.sessionId, sessionId),
-							eq(controlActions.actionType, "prompt"),
-							eq(controlActions.status, "queued"),
-						),
-					);
-				await tx
-					.update(providerInteractions)
-					.set({ status: "expired", updatedAt: new Date().toISOString() })
-					.where(
-						and(
-							eq(providerInteractions.sessionId, sessionId),
-							eq(providerInteractions.status, "pending"),
-						),
-					);
-			}
-		}
-		if (kind === "prompt") {
-			const [sessionRow] = await tx
-				.select({ metadata: sessions.metadata })
-				.from(sessions)
-				.where(eq(sessions.sessionId, sessionId))
-				.limit(1);
-			const stoppedAt = (sessionRow?.metadata as Record<string, unknown> | null)?.controlStoppedAt;
-			// Durable refusal: stopped sessions reject new work until resume.
-			if (stoppedAt) throw new Error("opencode_session_stopped");
+		if (kind === "stop") {
+			// Monotonic cancellation only. STOP/RESUME GATING (a protected epoch
+			// that fences every executable action, claim and result) is NOT yet
+			// implemented — no marker is written and no resume path is exposed.
+			await tx
+				.update(controlActions)
+				.set({
+					status: "failed",
+					error: "opencode_session_stopped",
+					finishedAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+				})
+				.where(
+					and(
+						eq(controlActions.sessionId, sessionId),
+						eq(controlActions.actionType, "prompt"),
+						eq(controlActions.status, "queued"),
+					),
+				);
+			await tx
+				.update(providerInteractions)
+				.set({ status: "expired", updatedAt: new Date().toISOString() })
+				.where(
+					and(
+						eq(providerInteractions.sessionId, sessionId),
+						eq(providerInteractions.status, "pending"),
+					),
+				);
 		}
 		if (kind === "opencode_fork") {
 			const [instance] = await tx

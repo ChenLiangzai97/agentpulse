@@ -445,19 +445,41 @@ export class OpenCodeRuntimePool {
 			 * never interleave two same-target attempts. A baseline failure frees
 			 * only THIS claim id.
 			 */
-			const release = (id: string, claim: Claim) => {
+			// Per-claim file operations are SERIALIZED: an abort-intent write and a
+			// settlement delete can never interleave (no resurrected records).
+			const claimFileOps = new Map<string, Promise<void>>();
+			const enqueueClaimFileOp = (claimId: string, op: () => Promise<void>): Promise<void> => {
+				const previous = claimFileOps.get(claimId) ?? Promise.resolve();
+				let tracked: Promise<void>;
+				tracked = previous.then(op, op).finally(() => {
+					if (claimFileOps.get(claimId) === tracked) claimFileOps.delete(claimId);
+				});
+				claimFileOps.set(claimId, tracked);
+				return tracked;
+			};
+			const release = async (id: string, claim: Claim) => {
 				if (executing.get(id) !== claim) return;
 				executing.delete(id);
 				if (!claim.recordPath) return;
-				// Cleanup failures stay OBSERVABLE and the file stays for
-				// reconciliation — never silently swallowed.
-				void unlink(claim.recordPath).catch((error: unknown) => {
+				try {
+					await enqueueClaimFileOp(claim.id, async () => {
+						try {
+							await unlink(claim.recordPath as string);
+						} catch (error) {
+							if ((error as { code?: string }).code === "ENOENT") return;
+							throw error;
+						}
+					});
+				} catch (error) {
+					// Cannot delete the durable record: FAIL CLOSED now (block the
+					// target) and keep the attempt observable.
+					unsettled.set(id, { messageID: claim.messageID, kind: claim.state.kind });
 					cleanupIssues.push({
 						claimId: claim.id,
-						path: claim.recordPath ?? "",
+						path: claim.recordPath,
 						error: error instanceof Error ? error.message : "unlink_failed",
 					});
-				});
+				}
 			};
 			const integrate = async (
 				kind: "prompt" | "command",
@@ -502,7 +524,7 @@ export class OpenCodeRuntimePool {
 					);
 					await request<unknown[]>(`/session/${encodeURIComponent(id)}/message`);
 				} catch (error) {
-					release(id, claim);
+					await release(id, claim);
 					throw error;
 				}
 				return { id, path: id === native.id ? nativePath : `/session/${encodeURIComponent(id)}`, claim };
@@ -703,7 +725,7 @@ export class OpenCodeRuntimePool {
 						// DEFINITIVE rejection (4xx) never accepted the turn — free it.
 						// Transport loss/timeout/5xx is UNKNOWN: keep the claim held.
 						const status = Number(/opencode_http_(\d{3})/.exec(String((error as Error).message))?.[1]);
-						if (status >= 400 && status < 500) release(claim.id, claim.claim);
+						if (status >= 400 && status < 500) await release(claim.id, claim.claim);
 						throw new Error("opencode_prompt_delivery_uncertain", { cause: error });
 					}
 				},
@@ -729,39 +751,41 @@ export class OpenCodeRuntimePool {
 							/opencode_http_(\d{3})/.exec(String((error as Error).message))?.[1],
 						);
 						// Only a definitive 4xx proves the command never ran.
-						if (status >= 400 && status < 500) release(claim.id, claim.claim);
+						if (status >= 400 && status < 500) await release(claim.id, claim.claim);
 						throw error;
 					}
 					runtime.touch();
 				},
 				abort: async (nativeSessionId?: string) => {
 					const id = nativeSessionId ?? native.id;
-					// pathFor also enforces the trusted addressable set.
-					await request(`${pathFor(nativeSessionId)}/abort`, {});
-					// HTTP acceptance is NOT termination — the claim stays held until
-					// a snapshot proves the target idle with no in-flight reply.
+					// Capture the target claim BEFORE the request and persist the
+					// abort INTENT first: a slow response can never be applied to a
+					// replacement claim, and a failed write REFUSES the abort.
 					const held = executing.get(id);
-					if (held) {
-						held.state = markAbort(held.state, snapshotSeq + 1);
-						if (held.recordPath && held.attempt)
-							void writePrivateFileAtomic(
-								held.recordPath,
+					if (held?.recordPath && held.attempt) {
+						const path = held.recordPath;
+						const attempt = held.attempt;
+						const messageID = held.messageID;
+						const kind = held.state.kind;
+						await enqueueClaimFileOp(held.id, () =>
+							writePrivateFileAtomic(
+								path,
 								JSON.stringify({
 									version: 1,
-									...held.attempt,
-									messageID: held.messageID,
-									kind: held.state.kind,
+									...attempt,
+									messageID,
+									kind,
 									abortRequested: true,
 									createdAt: new Date().toISOString(),
 								}),
-							).catch((error: unknown) => {
-								cleanupIssues.push({
-									claimId: held.id,
-									path: held.recordPath ?? "",
-									error: error instanceof Error ? error.message : "abort_record_failed",
-								});
-							});
+							),
+						);
 					}
+					await request(`${pathFor(nativeSessionId)}/abort`, {});
+					// Apply the response ONLY to the same claim identity.
+					const current = executing.get(id);
+					if (held && current && current.id === held.id)
+						current.state = markAbort(current.state, snapshotSeq + 1);
 					runtime.touch();
 				},
 				stop: async () => {
@@ -874,7 +898,7 @@ export class OpenCodeRuntimePool {
 						};
 						const outcome = observeClaim(claim.state, observation);
 						claim.state = outcome.state;
-						if (outcome.release) release(id, claim);
+						if (outcome.release) await release(id, claim);
 					}
 					const boundBusy = status[native.id]?.type === "busy" || status[native.id]?.type === "retry";
 					const entry = this.instances.get(input.sessionId);
