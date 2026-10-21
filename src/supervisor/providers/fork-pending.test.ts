@@ -27,6 +27,7 @@ async function harness(directory: string, over: Partial<Parameters<typeof execut
 		},
 		report: async (record: ForkRecord) => {
 			calls.reports.push(record);
+			return { token: record.claimToken };
 		},
 		register: (id: string) => calls.registered.push(id),
 		...over,
@@ -99,6 +100,7 @@ test("lost report then restart: re-report the SAME child and keep the original t
 			report: async (record) => {
 				calls.reports.push(record);
 				if (calls.reports.length === 1) throw new Error("network_lost");
+				return { token: record.claimToken };
 			},
 		});
 		await expect(executeOrReportFork(attempt)).rejects.toThrow("network_lost");
@@ -108,6 +110,7 @@ test("lost report then restart: re-report the SAME child and keep the original t
 			claimToken: "token-2",
 			report: async (record) => {
 				calls.reports.push(record);
+				return { token: record.claimToken };
 			},
 		});
 		const outcome = await executeOrReportFork(second.attempt);
@@ -198,6 +201,7 @@ test("REAL HTTP 500 from the result endpoint keeps the record; retry over HTTP s
 			report: async (record: ForkRecord) => {
 				const res = await fetch(endpoint, { method: "POST", body: JSON.stringify(record) });
 				if (!res.ok) throw new Error(`report_${res.status}`);
+				return { token: record.claimToken };
 			},
 			register: () => {},
 		};

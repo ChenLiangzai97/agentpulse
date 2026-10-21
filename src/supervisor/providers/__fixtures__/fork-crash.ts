@@ -24,6 +24,6 @@ await executeOrReportFork({
 		await writeFile(join(directory, marker), "forked");
 		process.exit(9);
 	},
-	report: async () => {},
+	report: async (record) => ({ token: record.claimToken }),
 	register: () => {},
 });

@@ -367,12 +367,36 @@ export function createManagedOpenCodeProvider(
 							typeof metadata.forkPointMessageId === "string" ? metadata.forkPointMessageId : null,
 						capture: () => runtime.captureForkSnapshot(null),
 						fork: () => runtime.forkSession(undefined, {}),
-						report: (record) =>
-							report(action.id, {
-								claimToken: record.claimToken,
-								childNativeSessionId: String(record.childNativeSessionId ?? ""),
-								parentSnapshot: record.parentSnapshot as ForkSnapshot,
-							}),
+						report: async (record) => {
+							const childNativeSessionId = String(record.childNativeSessionId ?? "");
+							const parentSnapshot = record.parentSnapshot as ForkSnapshot;
+							// Idempotent replays need the token the SERVER accepted; a
+							// re-claim replaced it, so fall back to the CURRENT claim
+							// token — the CAS stays strict, this claim is the valid one.
+							const tokens = [
+								...(record.finalizedToken ? [record.finalizedToken] : []),
+								record.claimToken,
+								claimToken,
+							].filter((token, index, all) => all.indexOf(token) === index);
+							let lastError: unknown = null;
+							for (const token of tokens) {
+								try {
+									await report(action.id, {
+										claimToken: token,
+										childNativeSessionId,
+										parentSnapshot,
+									});
+									return { token };
+								} catch (error) {
+									lastError = error;
+									const status = (error as { status?: number }).status;
+									// Only an authorization/CAS refusal is worth another
+									// token; transport errors must surface unchanged.
+									if (status !== 403 && status !== 409) throw error;
+								}
+							}
+							throw lastError;
+						},
 						// The child becomes addressable ONLY after the server confirmed
 						// the managed binding (2xx = committed transaction).
 						register: (childNativeSessionId) => runtime.registerManagedChild(childNativeSessionId),
