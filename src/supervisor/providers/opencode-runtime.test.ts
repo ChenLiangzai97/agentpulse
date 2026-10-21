@@ -392,3 +392,212 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 	},
 	60000,
 );
+
+// Explicit opt-in: REAL native fork + real crash, then recovery refusal.
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: crash right after the native fork leaves an intent that refuses to re-fork",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-native-fork-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": {
+								name: "Fixture",
+								tool_call: true,
+								limit: { context: 32768, output: 2048 },
+							},
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const cwd = join(root, "project");
+		const stateDirectory = join(root, "state");
+		const marker = join(root, "native-child.json");
+		const instanceId = "native-fork-instance";
+		const actionId = "native-fork-action";
+		try {
+			const child = Bun.spawn(
+				[
+					"bun",
+					join(import.meta.dir, "__fixtures__", "native-fork-crash.ts"),
+					cwd,
+					profilePath,
+					stateDirectory,
+					instanceId,
+					actionId,
+					marker,
+				],
+				{ stdout: "ignore", stderr: "ignore" },
+			);
+			expect(await child.exited).toBe(9);
+			const { child: childNative, parent } = JSON.parse(await readFile(marker, "utf8"));
+			expect(childNative.startsWith("ses_")).toBe(true);
+			// The ledger holds an INTENT for exactly this action/instance.
+			const ledgerDirectory = join(stateDirectory, "fork-ledger", instanceId);
+			const record = JSON.parse(
+				await readFile(join(ledgerDirectory, `fork-${actionId}.json`), "utf8"),
+			);
+			expect(record.phase).toBe("intent");
+			// Recovery refuses: the native fork may have happened, so forking
+			// again could duplicate it. No report, no new fork.
+			const { executeOrReportFork } = await import("./fork-pending.js");
+			let forks = 0;
+			await expect(
+				executeOrReportFork({
+					directory: ledgerDirectory,
+					identity: { actionId, instanceId, generation: 1 },
+					nativeSessionId: parent,
+					claimToken: "recovery-token",
+					forkPointMessageId: null,
+					capture: async () => {
+						throw new Error("must_not_capture");
+					},
+					fork: async () => {
+						forks += 1;
+						return { id: "ses_should_not_exist" };
+					},
+					report: async () => {
+						throw new Error("must_not_report");
+					},
+					register: () => {},
+				}),
+			).rejects.toThrow("opencode_fork_outcome_unknown");
+			expect(forks).toBe(0);
+		} finally {
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+	120000,
+);
+
+// Explicit opt-in: REAL native copyOf fork truncates the child history.
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: fork with a messageID copies only the prefix up to that message",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-copyof-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": {
+								name: "Fixture",
+								tool_call: true,
+								limit: { context: 32768, output: 2048 },
+							},
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const pool = new OpenCodeRuntimePool({
+			executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+			profilePath,
+			stateDirectory: join(root, "instances"),
+			maxInstances: 1,
+			idleTimeoutMs: 60000,
+			stopGraceMs: 1000,
+		});
+		const cwd = join(root, "project");
+		await mkdir(cwd);
+		const runtime = await pool.start({
+			instanceId: "copyof-instance",
+			generation: 1,
+			sessionId: "copyof-parent",
+			cwd,
+			title: "copyOf fixture",
+		});
+		const messageList = async (nativeId: string) =>
+			runtime.request<{ info: { id: string; role: string; parentID?: string } }[]>(
+				`/session/${encodeURIComponent(nativeId)}/message`,
+			);
+		const waitTurn = async () => {
+			for (let i = 0; i < 160; i++) {
+				const snapshot = await runtime.snapshot();
+				const assistants = (snapshot.messages as { info?: Record<string, unknown> }[]).filter(
+					(message) => message.info?.role === "assistant",
+				);
+				const last = assistants.at(-1)?.info as
+					| { time?: { completed?: unknown }; finish?: unknown }
+					| undefined;
+				if (
+					(snapshot.status as { type?: string })?.type !== "busy" &&
+					last?.time?.completed &&
+					last?.finish !== "tool-calls"
+				)
+					return;
+				await Bun.sleep(150);
+			}
+			throw new Error("turn timeout");
+		};
+		try {
+			for (const text of ["P0_HELLO", "P0_HELLO", "P0_HELLO"]) {
+				await runtime.prompt(text);
+				await waitTurn();
+				await runtime.snapshot(); // settle the claim
+			}
+			const parentMessages = await messageList(runtime.nativeSessionId);
+			const users = parentMessages.filter((message) => message.info.role === "user");
+			expect(users.length).toBe(3);
+			const forkPoint = users[1]?.info.id;
+			const snapshot = await runtime.captureForkSnapshot(forkPoint ?? null);
+			expect(snapshot.messages.some((message) => message.nativeId === forkPoint)).toBe(true);
+			const child = await runtime.forkSession(undefined, { messageID: forkPoint });
+			const childMessages = await messageList(child.id);
+			// copyOf EVIDENCE: the native fork point is EXCLUSIVE and ids are
+			// REMAPPED — the child keeps only the history BEFORE the named
+			// message (so a 3-turn parent forked at user #2 keeps 1 user turn),
+			// and none of the parent's message ids survive.
+			expect(childMessages.length).toBeLessThan(parentMessages.length);
+			const childUsers = childMessages.filter((message) => message.info.role === "user");
+			expect(childUsers.length).toBe(1);
+			const parentIds = new Set(parentMessages.map((message) => message.info.id));
+			expect(childMessages.some((message) => parentIds.has(message.info.id))).toBe(false);
+			await runtime.stop();
+		} finally {
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+	120000,
+);

@@ -39,6 +39,8 @@ export interface OpenCodeRuntime {
 	cwd: string;
 	pid: number;
 	directory: string;
+	/** Stable fork ledger for this instance (survives runtime restarts). */
+	ledgerDirectory: string;
 	request<T = unknown>(path: string, body?: unknown): Promise<T>;
 	prompt(
 		text: string,
@@ -157,11 +159,20 @@ export class OpenCodeRuntimePool {
 		this.starting.add(input.sessionId);
 		let process: ReturnType<typeof Bun.spawn> | undefined;
 		let directory: string | undefined;
+		let ledgerDirectory: string | undefined;
 		try {
 			const profile = await readOpenCodeProfile(this.config.profilePath);
 			const cwd = await realpath(input.cwd);
 			await mkdir(this.config.stateDirectory, { recursive: true, mode: 0o700 });
 			directory = await mkdtemp(join(this.config.stateDirectory, "instance-"));
+			// The fork ledger must outlive a runtime restart: it lives in a
+			// STABLE per-instance directory, not in the ephemeral instance dir.
+			ledgerDirectory = join(
+				this.config.stateDirectory,
+				"fork-ledger",
+				input.instanceId.replace(/[^A-Za-z0-9_-]/g, "_"),
+			);
+			await mkdir(ledgerDirectory, { recursive: true, mode: 0o700 });
 			const isolated: Record<string, string> = {};
 			for (const key of [
 				"XDG_CONFIG_HOME",
@@ -354,7 +365,9 @@ export class OpenCodeRuntimePool {
 				if (!last) return false;
 				const time = last.info.time as { completed?: unknown } | undefined;
 				if (!time?.completed || last.info.error) return false;
-				if (last.info.finish !== "stop") return false;
+				// "tool-calls" means the turn CONTINUES with another step. A
+				// completed message with no finish marker is terminal.
+				if (last.info.finish === "tool-calls") return false;
 				return !runningTools([last]);
 			};
 			const runningTools = (list: unknown[]) =>
@@ -413,6 +426,7 @@ export class OpenCodeRuntimePool {
 			};
 			const subscriptions = new Set<() => void>();
 			const runtime: OpenCodeRuntime = {
+				ledgerDirectory: ledgerDirectory ?? directory,
 				/**
 				 * Evidence captured in the CONTROLLED WINDOW before the native fork.
 				 * The server verifies this exact snapshot; the action metadata mirror

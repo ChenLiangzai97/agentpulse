@@ -366,8 +366,19 @@ export function createManagedOpenCodeProvider(
 						claimToken,
 						forkPointMessageId:
 							typeof metadata.forkPointMessageId === "string" ? metadata.forkPointMessageId : null,
-						capture: () => runtime.captureForkSnapshot(null),
-						fork: () => runtime.forkSession(undefined, {}),
+						capture: () =>
+							runtime.captureForkSnapshot(
+								typeof metadata.forkPointMessageId === "string"
+									? metadata.forkPointMessageId
+									: null,
+							),
+						// copyOf: the native fork accepts the message id; the child
+						// history is truncated there (verified by the runtime test).
+						fork: (forkPointMessageId) =>
+							runtime.forkSession(
+								undefined,
+								forkPointMessageId ? { messageID: forkPointMessageId } : {},
+							),
 						report: (record) =>
 							reportForkWithTokenFallback({
 								record,

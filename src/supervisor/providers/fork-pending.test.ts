@@ -22,7 +22,7 @@ async function harness(directory: string, over: Partial<Parameters<typeof execut
 		claimToken: "token-1",
 		forkPointMessageId: null as string | null,
 		capture: async () => snapshot,
-		fork: async () => {
+		fork: async (_forkPointMessageId: string | null) => {
 			calls.forks += 1;
 			return { id: "ses_child" };
 		},
@@ -146,12 +146,31 @@ test("a repeated claim after commit replays and re-registers the SAME child", as
 	}
 });
 
-test("a requested fork point is refused rather than silently full-forking", async () => {
+test("an UNKNOWN fork point is refused instead of silently full-forking", async () => {
 	const directory = await mkdtemp(join(tmpdir(), "fork-ledger-"));
 	try {
 		const { attempt, calls } = await harness(directory, { forkPointMessageId: "msg_2" });
-		await expect(executeOrReportFork(attempt)).rejects.toThrow("opencode_fork_point_unsupported");
+		await expect(executeOrReportFork(attempt)).rejects.toThrow("opencode_fork_point_unknown");
 		expect(calls.forks).toBe(0);
+	} finally {
+		await rm(directory, { recursive: true, force: true });
+	}
+});
+
+test("a known fork point is passed to the native fork and recorded", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "fork-ledger-"));
+	try {
+		const seen = { point: null as string | null };
+		const { attempt } = await harness(directory, {
+			forkPointMessageId: "msg_1",
+			fork: async (forkPointMessageId) => {
+				seen.point = forkPointMessageId;
+				return { id: "ses_child" };
+			},
+			capture: async () => ({ ...snapshot, forkPointMessageId: "msg_1" }),
+		});
+		expect(await executeOrReportFork(attempt)).toBe("forked");
+		expect(seen.point).toBe("msg_1");
 	} finally {
 		await rm(directory, { recursive: true, force: true });
 	}

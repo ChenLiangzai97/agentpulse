@@ -136,10 +136,10 @@ export interface ForkAttempt {
 	nativeSessionId: string;
 	/** Claim token of THIS claim; a recorded child keeps its ORIGINAL token. */
 	claimToken: string;
-	/** A specific fork point is not supported at the native layer yet. */
+	/** Optional copyOf point; must exist in the captured parent snapshot. */
 	forkPointMessageId: string | null;
 	capture: () => Promise<ForkSnapshot>;
-	fork: () => Promise<{ id: string }>;
+	fork: (forkPointMessageId: string | null) => Promise<{ id: string }>;
 	/** Reports the record; resolves with the token the server ACCEPTED. */
 	report: (record: ForkRecord) => Promise<{ token: string }>;
 	/** Called only after the report confirmed the managed binding. */
@@ -149,10 +149,6 @@ export interface ForkAttempt {
 export async function executeOrReportFork(
 	attempt: ForkAttempt,
 ): Promise<"forked" | "reported" | "replayed"> {
-	if (attempt.forkPointMessageId)
-		// Recording a fork point while performing a FULL fork would lie about
-		// what happened; refuse instead.
-		throw new Error("opencode_fork_point_unsupported");
 	const existing = await readForkRecord(attempt.directory, attempt.identity, attempt.nativeSessionId);
 	if (existing?.phase === "intent")
 		// The process died between the intent and the native result. The fork may
@@ -187,7 +183,14 @@ export async function executeOrReportFork(
 	};
 	await writeRecord(attempt.directory, attempt.identity, base);
 	const parentSnapshot = await attempt.capture();
-	const created = await attempt.fork();
+	// copyOf: the point must be IN the evidence we just captured; an unknown id
+	// would silently degrade to a full fork.
+	if (
+		attempt.forkPointMessageId &&
+		!parentSnapshot.messages.some((message) => message.nativeId === attempt.forkPointMessageId)
+	)
+		throw new Error("opencode_fork_point_unknown");
+	const created = await attempt.fork(attempt.forkPointMessageId);
 	const record: ForkRecord = {
 		...base,
 		phase: "created",
