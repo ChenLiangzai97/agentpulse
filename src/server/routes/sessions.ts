@@ -903,6 +903,26 @@ sessionsRouter.post("/sessions/:sessionId/stop", async (c: Context) => {
 	}
 });
 
+sessionsRouter.post("/sessions/:sessionId/resume", async (c: Context) => {
+	try {
+		const authUser = c.get("authUser") as AuthUser | undefined;
+		const action = await queueOpenCodeAction(
+			c.req.param("sessionId"),
+			"opencode_resume",
+			{},
+			actorFromAuthUser(authUser),
+		);
+		return c.json({ action }, 202);
+	} catch (error) {
+		if (error instanceof SessionControlOriginError)
+			return c.json({ error: error.code }, error.status);
+		return c.json(
+			{ error: error instanceof Error ? error.message : "Unable to resume" },
+			400,
+		);
+	}
+});
+
 sessionsRouter.post("/sessions/:sessionId/fork", async (c: Context) => {
 	// Fork REQUEST acceptance. Closed unless the operator opens the entry.
 	if (!config.opencodeForkEntry)
