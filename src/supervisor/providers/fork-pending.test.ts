@@ -174,3 +174,47 @@ test("REAL process crash right after the native fork: recovery refuses, never fo
 		await rm(directory, { recursive: true, force: true });
 	}
 });
+
+test("REAL HTTP 500 from the result endpoint keeps the record; retry over HTTP succeeds", async () => {
+	const directory = await mkdtemp(join(tmpdir(), "fork-ledger-"));
+	let status = 500;
+	const received: unknown[] = [];
+	const server = Bun.serve({
+		port: 0,
+		async fetch(request) {
+			received.push(await request.json());
+			return new Response("boom", { status });
+		},
+	});
+	try {
+		const endpoint = `http://127.0.0.1:${server.port}/fork-result`;
+		const attempt = {
+			directory,
+			identity,
+			claimToken: "token-1",
+			forkPointMessageId: null,
+			capture: async () => snapshot,
+			fork: async () => ({ id: "ses_child" }),
+			report: async (record: ForkRecord) => {
+				const res = await fetch(endpoint, { method: "POST", body: JSON.stringify(record) });
+				if (!res.ok) throw new Error(`report_${res.status}`);
+			},
+			register: () => {},
+		};
+		await expect(executeOrReportFork(attempt)).rejects.toThrow("report_500");
+		// The durable record survived the server failure.
+		const { readForkRecord } = await import("./fork-pending.js");
+		const record = await readForkRecord(directory, identity);
+		expect(record?.phase).toBe("created");
+		expect(record?.childNativeSessionId).toBe("ses_child");
+		status = 200;
+		const outcome = await executeOrReportFork({ ...attempt, claimToken: "token-2" });
+		expect(outcome).toBe("reported");
+		expect(received).toHaveLength(2);
+		expect((received[1] as ForkRecord).claimToken).toBe("token-1");
+		expect(await readForkRecord(directory, identity)).toMatchObject({ phase: "done" });
+	} finally {
+		server.stop(true);
+		await rm(directory, { recursive: true, force: true });
+	}
+});
