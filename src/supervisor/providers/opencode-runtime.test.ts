@@ -332,11 +332,36 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 			await expect(runtime.prompt("again", { nativeSessionId: child.id })).rejects.toThrow(
 				"opencode_session_busy",
 			);
-			// 4) The PARENT is a different target — it can still start its own turn.
+			// 4) CHILD-FIRST: the parent is a different target and starts its own turn.
 			await runtime.prompt("P0_HELLO");
-			// 5) Interrupting the child does not touch the parent's claim: releasing
-			//    the child here must leave the parent addressable after idle.
+			// 5) No timer frees a claim: past the old 6s window the child turn is
+			//    still running, so a second child prompt must still be refused.
+			await Bun.sleep(6500);
+			await runtime.snapshot();
+			await expect(runtime.prompt("again", { nativeSessionId: child.id })).rejects.toThrow(
+				"opencode_session_busy",
+			);
 			await runtime.abort(child.id);
+			// 6) PARENT-FIRST: parent busy, child still addressable immediately.
+			await runtime.prompt("P0_ABORT");
+			await runtime.prompt("P0_HELLO", { nativeSessionId: child.id });
+			await runtime.abort();
+			// The child turn completes; a snapshot settles its claim by evidence.
+			for (let i = 0; i < 40; i++) {
+				const settled = await runtime.snapshot();
+				if (settled.sessions[child.id]?.type !== "busy") break;
+				await Bun.sleep(250);
+			}
+			// 7) A delivery that never landed releases ONLY its target claim: the
+			//    request 404s, so the next attempt fails at transport again — not
+			//    at the busy gate (the claimed slot was freed by the failure).
+			await runtime.prompt("P0_ABORT", { nativeSessionId: child.id });
+			await expect(runtime.prompt("again", { nativeSessionId: child.id })).rejects.toThrow(
+				"opencode_session_busy",
+			);
+			// A trusted abort ends the turn and frees the slot for the SAME target.
+			await runtime.abort(child.id);
+			await runtime.prompt("P0_HELLO", { nativeSessionId: child.id });
 			await runtime.stop();
 			expect(pool.get("a6-parent")).toBeUndefined();
 		} finally {
@@ -344,4 +369,5 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 			await rm(root, { recursive: true, force: true });
 		}
 	},
+	60000,
 );

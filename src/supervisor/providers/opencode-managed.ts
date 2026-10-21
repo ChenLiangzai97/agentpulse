@@ -296,12 +296,13 @@ export function createManagedOpenCodeProvider(
 							if (epoch !== (interruptEpoch.get(epochKey) ?? 0))
 								throw new Error("opencode_prompt_cancelled_before_delivery");
 							const status = await runtime.snapshot();
-							if (
-								(status.status as { type: string }).type === "idle" &&
-								!status.permissions.length &&
-								!status.questions.length
-							)
-								break;
+							// Gate on THIS target only: a busy sibling session or its
+							// pending card must not block the parent (and vice versa).
+							const targetStatus = status.sessions[epochKey]?.type ?? "idle";
+							const blocked =
+								status.permissions.some((item) => (item as { sessionID?: string }).sessionID === epochKey) ||
+								status.questions.some((item) => (item as { sessionID?: string }).sessionID === epochKey);
+							if (targetStatus === "idle" && !blocked) break;
 							if (Date.now() > deadline) throw new Error("opencode_prompt_wait_timeout");
 							await Bun.sleep(250);
 						}
@@ -345,12 +346,15 @@ export function createManagedOpenCodeProvider(
 							if (epoch !== (interruptEpoch.get(epochKey) ?? 0))
 								throw new Error("opencode_prompt_cancelled_before_delivery");
 							const status = await runtime.snapshot();
-							if (
-								(status.status as { type: string }).type === "idle" &&
-								!status.permissions.length &&
-								!status.questions.length
-							)
-								break;
+							const targetStatus = status.sessions[epochKey]?.type ?? "idle";
+							const blocked =
+								status.permissions.some(
+									(item) => (item as { sessionID?: string }).sessionID === epochKey,
+								) ||
+								status.questions.some(
+									(item) => (item as { sessionID?: string }).sessionID === epochKey,
+								);
+							if (targetStatus === "idle" && !blocked) break;
 							if (Date.now() > deadline) throw new Error("opencode_prompt_wait_timeout");
 							await Bun.sleep(250);
 						}

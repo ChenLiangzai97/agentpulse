@@ -64,6 +64,7 @@ export interface OpenCodeRuntime {
 		permissions: unknown[];
 		questions: unknown[];
 		status: unknown;
+		sessions: Record<string, { type: string }>;
 		commands?: unknown[];
 		agents?: unknown[];
 		providers?: unknown;
@@ -276,26 +277,42 @@ export class OpenCodeRuntimePool {
 			// Per-target execution claims: ONE turn in flight per native session.
 			// Check-and-set is atomic within this single-threaded runtime, so two
 			// immediate prompts can never both pass before a snapshot reports busy.
-			const executing = new Map<string, number>(); // native id -> claimed at
-			const seenBusy = new Set<string>();
+			interface Claim {
+				baseline: Set<string>;
+				seenBusy: boolean;
+			}
+			// native id -> in-flight claim bound to the REQUEST identity.
+			const executing = new Map<string, Claim>();
 			// Targets must be in the TRUSTED addressable set (bound session or a
 			// child registered from an authenticated fork result).
-			const integrate = (target?: string): { id: string; path: string } => {
+			const messageIds = (list: unknown[]): Set<string> => {
+				const ids = new Set<string>();
+				for (const item of list) {
+					const id =
+						(item as { info?: { id?: unknown } })?.info?.id ?? (item as { id?: unknown })?.id;
+					if (typeof id === "string") ids.add(id);
+				}
+				return ids;
+			};
+			const integrate = async (target?: string): Promise<{ id: string; path: string }> => {
 				const id = target ?? native.id;
 				if (id !== native.id && !knownSessions.has(id))
 					throw new Error("opencode_unknown_native_session");
 				if (executing.has(id)) throw new Error("opencode_session_busy");
 				if (id === native.id) {
 					const current = this.instances.get(input.sessionId);
-					if (!current || current.busy || current.pending) throw new Error("opencode_session_busy");
+					if (!current || current.pending) throw new Error("opencode_session_busy");
 				}
-				executing.set(id, Date.now());
+				// Baseline is taken BEFORE delivery so completion is proven by a
+				// message id that did not exist at claim time (or a busy->idle
+				// transition). No timer ever frees a claim.
+				const baseline = messageIds(
+					await request<unknown[]>(`/session/${encodeURIComponent(id)}/message`),
+				);
+				executing.set(id, { baseline, seenBusy: false });
 				return { id, path: id === native.id ? nativePath : `/session/${encodeURIComponent(id)}` };
 			};
-			const release = (id: string) => {
-				executing.delete(id);
-				seenBusy.delete(id);
-			};
+			const release = (id: string) => executing.delete(id);
 			const pathFor = (target?: string): string => {
 				if (!target || target === native.id) return nativePath;
 				if (!knownSessions.has(target)) throw new Error("opencode_unknown_native_session");
@@ -368,7 +385,7 @@ export class OpenCodeRuntimePool {
 					if (entry) entry.lastUsed = Date.now();
 				},
 				prompt: async (text, options) => {
-					const claim = integrate(options?.nativeSessionId);
+					const claim = await integrate(options?.nativeSessionId);
 					const entry = this.instances.get(input.sessionId);
 					if (entry) entry.lastUsed = Date.now();
 					// No explicit model: inherit the session's current one (a previous
@@ -390,7 +407,7 @@ export class OpenCodeRuntimePool {
 					// template as a user message and runs it. TUI built-ins are NOT
 					// valid here (verified: 1.18.35 answers UnknownError).
 					if (!/^[a-zA-Z0-9_-]+$/.test(command)) throw new Error("opencode_invalid_command");
-					const claim = integrate(options?.nativeSessionId);
+					const claim = await integrate(options?.nativeSessionId);
 					try {
 						await request(`${claim.path}/command`, {
 						command,
@@ -408,7 +425,10 @@ export class OpenCodeRuntimePool {
 					runtime.touch();
 				},
 				abort: async (nativeSessionId?: string) => {
+					// pathFor also enforces the trusted addressable set.
 					await request(`${pathFor(nativeSessionId)}/abort`, {});
+					// A successful abort is trusted evidence that the turn ended.
+					release(nativeSessionId ?? native.id);
 					runtime.touch();
 				},
 				stop: async () => {
@@ -493,29 +513,34 @@ export class OpenCodeRuntimePool {
 					// Snapshots OBSERVE descendants; they never add them to the
 					// addressable set (only an authenticated fork result does).
 					// A target is no longer executing once its native status is idle.
-					for (const [id, claimedAt] of [...executing]) {
+					for (const [id, claim] of [...executing]) {
 						const st = status[id]?.type;
 						if (st === "busy" || st === "retry") {
-							seenBusy.add(id);
+							claim.seenBusy = true;
 							continue;
 						}
-						// Release once the target was OBSERVED busy and is now idle
-						// (the turn really happened). A fast turn that never showed
-						// busy falls back to a grace window so a stale idle snapshot
-						// taken immediately after the claim cannot free it early.
-						if (seenBusy.has(id) || Date.now() - claimedAt > 6000) {
-							executing.delete(id);
-							seenBusy.delete(id);
-						}
+						// Trusted completion evidence for THIS request only:
+						// (a) the target was observed busy after the claim and is now
+						// idle, or (b) a message id absent from the pre-delivery
+						// baseline now exists (a fast turn). A stale idle snapshot,
+						// a missing status or elapsed time proves nothing — the
+						// claim stays held for reconciliation.
+						const current =
+							id === native.id
+								? messages
+								: (children.find((child) => child.session.id === id)?.messages ?? []);
+						const completed = [...messageIds(current)].some((value) => !claim.baseline.has(value));
+						if (claim.seenBusy || completed) executing.delete(id);
 					}
+					const boundBusy = status[native.id]?.type === "busy" || status[native.id]?.type === "retry";
 					const entry = this.instances.get(input.sessionId);
 					if (entry) {
-						entry.busy =
-							hasRunningTools ||
-							[...descendants].some(
-								(id) => status[id]?.type === "busy" || status[id]?.type === "retry",
-							);
-						entry.pending = permissions.some(belongs) || questions.some(belongs);
+						// Instance entry tracks the BOUND session only; a busy CHILD
+						// must not gate the parent (and vice versa).
+						entry.busy = boundBusy;
+						entry.pending = permissions.some(
+							(item) => (item as { sessionID?: string }).sessionID === native.id,
+						) || questions.some((item) => (item as { sessionID?: string }).sessionID === native.id);
 						if (entry.busy || entry.pending) entry.lastUsed = Date.now();
 					}
 					return {
@@ -523,13 +548,8 @@ export class OpenCodeRuntimePool {
 						children,
 						permissions: permissions.filter(belongs),
 						questions: questions.filter(belongs),
-						status:
-							hasRunningTools ||
-							[...descendants].some(
-								(id) => status[id]?.type === "busy" || status[id]?.type === "retry",
-							)
-								? { type: "busy" }
-								: (status[native.id] ?? { type: "idle" }),
+						status: status[native.id] ?? { type: "idle" },
+						sessions: status,
 						commands,
 						agents,
 						providers,
