@@ -93,6 +93,8 @@ export interface OpenCodeRuntime {
 	captureForkSnapshot(forkPointMessageId?: string | null): Promise<ForkSnapshot>;
 	/** Holds the instance/source session for the whole capture+fork window. */
 	withExclusiveFork<T>(run: () => Promise<T>): Promise<T>;
+	/** Conservative native termination evidence after an abort. */
+	waitForNativeTermination(target: string, timeoutMs?: number): Promise<boolean>;
 	/** Parent->child message map for the execution-time copyOf window. */
 	captureChildMap(childNativeSessionId: string, parentSnapshot: ForkSnapshot): Promise<ForkChildMap>;
 	/** Root-session full fork only; the child stays unaddressable until confirmed. */
@@ -573,6 +575,39 @@ export class OpenCodeRuntimePool {
 				 * exclusive at the fork point, so the child history is the parent
 				 * prefix: child[i] <-> parent[i], never by id lookup.
 				 */
+				/**
+				 * NATIVE termination evidence AFTER an abort: two consecutive
+				 * observations where the target is not busy, has no running tool and
+				 * its last assistant step is completed/cancelled. An empty local
+				 * claim set or an HTTP 200 is never enough by itself.
+				 */
+				async waitForNativeTermination(target: string, timeoutMs = 15_000) {
+					const deadline = Date.now() + timeoutMs;
+					let quiet = 0;
+					while (Date.now() < deadline) {
+						const view = await runtime.snapshot();
+						const list =
+							target === native.id
+								? view.messages
+								: (view.children ?? []).find((child) => child.session.id === target)?.messages ?? [];
+						const raw = view.sessions[target]?.type;
+						const busy = raw === "busy" || raw === "retry";
+						const lastAssistant = [...list]
+							.reverse()
+							.find(
+								(item) =>
+									(item as { info?: Record<string, unknown> }).info?.role === "assistant",
+							) as { info?: Record<string, unknown> } | undefined;
+						const info = lastAssistant?.info;
+						const time = info?.time as { completed?: unknown } | undefined;
+						const stepEnded = !info || Boolean(time?.completed) || Boolean(info.error);
+						if (!busy && !runningTools(list) && stepEnded) quiet += 1;
+						else quiet = 0;
+						if (quiet >= 2) return true;
+						await Bun.sleep(200);
+					}
+					return false;
+				},
 				async captureChildMap(
 					childNativeSessionId: string,
 					parentSnapshot: ForkSnapshot,

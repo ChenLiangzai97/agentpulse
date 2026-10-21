@@ -599,6 +599,8 @@ export async function updateControlAction(input: {
 	status: Exclude<ControlActionStatus, "queued">;
 	error?: string | null;
 	metadata?: Record<string, unknown> | null;
+	/** The execution token; required to accept a managed terminal result. */
+	claimToken?: string | null;
 }) {
 	// RESULT FENCE inside ONE transaction: the binding is read under the same
 	// transaction as the action write, and the stopping->stopped transition is a
@@ -619,6 +621,14 @@ export async function updateControlAction(input: {
 			return null;
 		const meta = (current.metadata ?? {}) as Record<string, unknown>;
 		const controlEpoch = typeof meta.controlEpoch === "number" ? meta.controlEpoch : null;
+		// TOKEN BINDING: a result from an OLD claim (same supervisor) must not
+		// overwrite the current running attempt.
+		if (
+			input.status !== "running" &&
+			typeof meta.claimToken === "string" &&
+			(input.claimToken ?? null) !== meta.claimToken
+		)
+			return null;
 		const managed =
 			meta.agentType === "opencode" ||
 			controlEpoch !== null ||
@@ -676,9 +686,11 @@ export async function updateControlAction(input: {
 		}
 		return { current, updated, status };
 	});
-	releaseExecutionLease(input.actionId);
 	if (!outcome) return null;
 	const { current, updated, status } = outcome;
+	// Release ONLY after an ACCEPTED terminal result (never on a rejected or
+	// heartbeat report, and only for the matching action+token).
+	if (status !== "running" && updated) releaseExecutionLease(input.actionId);
 	const timestamp = nowIso();
 	if (
 		current.actionType === "opencode_health" &&

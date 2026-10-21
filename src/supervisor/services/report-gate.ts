@@ -109,6 +109,8 @@ export type ControlStatusBody = {
 	status: "running" | "succeeded" | "failed";
 	error?: string | null;
 	metadata?: Record<string, unknown> | null;
+	/** Execution token of THIS attempt (required for managed terminal results). */
+	claimToken?: string | null;
 };
 
 export type StateReportResult = { session: Session; managedSession: ManagedSession };

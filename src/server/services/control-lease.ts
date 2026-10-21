@@ -43,21 +43,36 @@ export function releaseExecutionLease(actionId: string): void {
 	leases.delete(actionId);
 }
 
-/** Active (unexpired) leases for a session, pruning stale entries. */
+/**
+ * ALL leases for a session block STOP — an expired lease is UNKNOWN, not safe
+ * (the native call may still be running). Only an accepted terminal result for
+ * the same action+token releases it.
+ */
 export function activeLeases(sessionId: string): string[] {
+	return [...leases.entries()]
+		.filter(([, lease]) => lease.sessionId === sessionId)
+		.map(([actionId]) => actionId);
+}
+
+/** Leases past their TTL: they STILL block and need reconciliation. */
+export function unknownLeases(): { actionId: string; sessionId: string; expiredMs: number }[] {
 	const now = Date.now();
-	const active: string[] = [];
-	for (const [actionId, lease] of leases) {
-		if (lease.expiresAt <= now) {
-			leases.delete(actionId);
-			continue;
-		}
-		if (lease.sessionId === sessionId) active.push(actionId);
-	}
-	return active;
+	return [...leases.entries()]
+		.filter(([, lease]) => lease.expiresAt <= now)
+		.map(([actionId, lease]) => ({
+			actionId,
+			sessionId: lease.sessionId,
+			expiredMs: now - lease.expiresAt,
+		}));
 }
 
 /** Test/ops helper: drop all leases (control-plane state is in memory). */
 export function resetExecutionLeases(): void {
 	leases.clear();
+}
+
+/** Test/ops helper: force a lease past its TTL (it must STILL block). */
+export function expireExecutionLeaseForTests(actionId: string): void {
+	const lease = leases.get(actionId);
+	if (lease) lease.expiresAt = Date.now() - 1;
 }

@@ -26,7 +26,10 @@ import {
 	claimNextControlAction,
 	updateControlAction,
 } from "./control-actions.js";
-import { resetExecutionLeases } from "./control-lease.js";
+import {
+	expireExecutionLeaseForTests,
+	resetExecutionLeases,
+} from "./control-lease.js";
 import { reserveOpenCodeInstance } from "./opencode-control-provenance.js";
 import { queueOpenCodeAction } from "./opencode-managed.js";
 
@@ -262,6 +265,7 @@ test("EXECUTION permit: claim -> STOP -> permit is refused (deterministic interl
 		supervisorId: "stop-host",
 		status: "failed",
 		error: "test_done",
+		claimToken,
 	});
 	await queueOpenCodeAction(parentId, "stop", {}, actor);
 	// A permit for the OLD action is refused after the STOP (either the action is
@@ -345,4 +349,51 @@ test("two CONCURRENT claims of the same action: exactly one wins", async () => {
 	const winners = [a, b].filter(Boolean);
 	expect(winners).toHaveLength(1);
 	expect(winners[0]?.actionType).toBe("prompt");
+});
+
+test("an EXPIRED lease is UNKNOWN: STOP stays deferred (time never grants safety)", async () => {
+	const { parentId } = await seed();
+	await queueOpenCodeAction(parentId, "prompt", { prompt: "leased" }, actor);
+	const claimed = await claimNextControlAction("stop-host");
+	const claimToken = String((claimed?.metadata as Record<string, unknown>).claimToken ?? "");
+	await assertExecutionPermit({
+		actionId: claimed?.id ?? "",
+		supervisorId: "stop-host",
+		claimToken,
+	});
+	expireExecutionLeaseForTests(claimed?.id ?? "");
+	await expect(queueOpenCodeAction(parentId, "stop", {}, actor)).rejects.toThrow(
+		"opencode_stop_deferred",
+	);
+	// An old-token result cannot release it either.
+	await expect(
+		updateControlAction({
+			actionId: claimed?.id ?? "",
+			supervisorId: "stop-host",
+			status: "failed",
+			claimToken: "stale-token",
+		}),
+	).resolves.toBeNull();
+	await expect(queueOpenCodeAction(parentId, "stop", {}, actor)).rejects.toThrow(
+		"opencode_stop_deferred",
+	);
+	// The matching token's terminal result releases it.
+	await updateControlAction({
+		actionId: claimed?.id ?? "",
+		supervisorId: "stop-host",
+		status: "failed",
+		claimToken,
+	});
+	await expect(queueOpenCodeAction(parentId, "stop", {}, actor)).resolves.toBeTruthy();
+});
+
+test("a RUNNING action defers STOP after a control-service restart (no leases in memory)", async () => {
+	const { parentId } = await seed();
+	await queueOpenCodeAction(parentId, "prompt", { prompt: "running" }, actor);
+	const claimed = await claimNextControlAction("stop-host");
+	expect(claimed?.status).toBe("running");
+	resetExecutionLeases(); // simulate a restart: in-memory leases are gone
+	await expect(queueOpenCodeAction(parentId, "stop", {}, actor)).rejects.toThrow(
+		"opencode_stop_deferred",
+	);
 });

@@ -565,6 +565,7 @@ supervisorsAgentRouter.post(
 			status: "running" | "succeeded" | "failed";
 			error?: string | null;
 			metadata?: Record<string, unknown> | null;
+			claimToken?: string | null;
 		}>();
 		const action = await updateControlAction({
 			actionId,
@@ -572,6 +573,7 @@ supervisorsAgentRouter.post(
 			status: body.status,
 			error: body.error,
 			metadata: body.metadata ?? null,
+			claimToken: body.claimToken ?? null,
 		});
 		if (!action) return c.json({ error: "Control action not found" }, 404);
 		return c.json({ action });

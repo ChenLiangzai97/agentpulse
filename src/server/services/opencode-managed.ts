@@ -580,9 +580,28 @@ export async function queueOpenCodeAction(
 			if (!controlBinding) throw new SessionControlOriginError("provider_binding_invalid");
 			if (controlBinding.stopState !== "active") throw new Error("opencode_session_already_stopping");
 			// DRAIN: an execution permit already handed out must finish before the
-			// epoch advances (the permit holds the same mutex when registering);
-			// the operator's stop is retried explicitly, never executed halfway.
+			// epoch advances. Expired leases are UNKNOWN, never treated as safe.
+			// Running actions in the DB cover a control-service restart (leases are
+			// in memory); either one defers the stop for an explicit retry.
 			if (activeLeases(sessionId).length > 0) throw new Error("opencode_stop_deferred");
+			const running = await tx
+				.select({ id: controlActions.id })
+				.from(controlActions)
+				.where(
+					and(
+						eq(controlActions.sessionId, sessionId),
+						eq(controlActions.status, "running"),
+						inArray(controlActions.actionType, [
+							"prompt",
+							"opencode_command",
+							"opencode_fork",
+							"interaction_response",
+							"interrupt",
+						]),
+					),
+				)
+				.limit(1);
+			if (running.length > 0) throw new Error("opencode_stop_deferred");
 			controlEpoch = controlBinding.stopEpoch + 1;
 			await tx
 				.update(sessionControlBindings)

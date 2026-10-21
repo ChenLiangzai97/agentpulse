@@ -75,8 +75,18 @@ export function createControlActionHandler(
 	const log = deps.log ?? ((line: string) => console.log(line));
 
 	/** Status results, always through the gate: `succeeded` for a session that is now excluded becomes the generic failure. */
-	const report = (action: ControlAction, body: Parameters<ReportGate["reportControlStatus"]>[2]) =>
-		gate.reportControlStatus(action.id, action.sessionId ?? null, body, namedDirectory(action));
+	const report = (action: ControlAction, body: Parameters<ReportGate["reportControlStatus"]>[2]) => {
+		// Bind every result to the claim token issued with THIS action, so a late
+		// result from an older claim cannot overwrite a newer running attempt.
+		const claimToken =
+			typeof action.metadata?.claimToken === "string" ? action.metadata.claimToken : undefined;
+		return gate.reportControlStatus(
+			action.id,
+			action.sessionId ?? null,
+			claimToken ? { ...body, claimToken } : body,
+			namedDirectory(action),
+		);
+	};
 
 	async function stop(action: ControlAction, sessionId: string) {
 		try {

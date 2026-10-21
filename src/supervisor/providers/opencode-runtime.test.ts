@@ -1107,3 +1107,78 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 	},
 	120000,
 );
+
+
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: native termination evidence is required even with NO local claim",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-native-term-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": { name: "Fixture", tool_call: true, limit: { context: 32768, output: 2048 } },
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const cwd = join(root, "project");
+		await mkdir(cwd);
+		const pool = new OpenCodeRuntimePool({
+			executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+			profilePath,
+			stateDirectory: join(root, "state"),
+			maxInstances: 1,
+			idleTimeoutMs: 60000,
+			stopGraceMs: 1000,
+		});
+		try {
+			const runtime = await pool.start({
+				instanceId: "native-term-instance",
+				generation: 1,
+				sessionId: "native-term-session",
+				cwd,
+				title: "native termination",
+			});
+			// A RAW native turn: the runtime holds NO local claim for it.
+			const child = (await runtime.request("/session", { title: "raw child" })) as { id: string };
+			runtime.registerManagedChild(child.id); // addressable, but NO local claim
+			const messageID = "msg_raw_abort_test";
+			await runtime.request(`/session/${encodeURIComponent(child.id)}/prompt_async`, {
+				messageID,
+				parts: [{ type: "text", text: "P0_ABORT" }],
+			});
+			// Busy without a local claim: the empty claim set must NOT be treated as
+			// terminated.
+			expect(await runtime.waitForNativeTermination(child.id, 1500)).toBe(false);
+			// Abort it natively (standalone attempt), then require REAL evidence.
+			await runtime.abort(child.id);
+			expect(await runtime.waitForNativeTermination(child.id, 20_000)).toBe(true);
+			await runtime.stop();
+		} finally {
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+	120000,
+);

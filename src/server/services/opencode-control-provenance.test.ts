@@ -333,7 +333,16 @@ test("managed snapshot upserts parts and persistent interactions; priority actio
 			admin,
 		),
 	).rejects.toThrow("stale_or_answered");
-	expect((await claimNextControlAction("p1-host"))?.id).toBe(answer.id);
+	const claimedAnswer = await claimNextControlAction("p1-host");
+	expect(claimedAnswer?.id).toBe(answer.id);
+	// STOP drains running executions: finish the claimed answer first.
+	const { updateControlAction } = await import("./control-actions.js");
+	await updateControlAction({
+		actionId: answer.id,
+		supervisorId: "p1-host",
+		status: "succeeded",
+		claimToken: String((claimedAnswer?.metadata as Record<string, unknown>)?.claimToken ?? ""),
+	});
 	await queueOpenCodeAction("managed", "stop", {}, admin);
 	const stopping = await claimNextControlAction("p1-host");
 	expect(stopping?.actionType).toBe("stop");
