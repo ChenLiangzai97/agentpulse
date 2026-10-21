@@ -18,6 +18,7 @@ async function harness(directory: string, over: Partial<Parameters<typeof execut
 	const attempt = {
 		directory,
 		identity,
+		nativeSessionId: "ses_parent",
 		claimToken: "token-1",
 		forkPointMessageId: null as string | null,
 		capture: async () => snapshot,
@@ -194,6 +195,7 @@ test("REAL HTTP 500 from the result endpoint keeps the record; retry over HTTP s
 		const attempt = {
 			directory,
 			identity,
+			nativeSessionId: "ses_parent",
 			claimToken: "token-1",
 			forkPointMessageId: null,
 			capture: async () => snapshot,
@@ -221,4 +223,51 @@ test("REAL HTTP 500 from the result endpoint keeps the record; retry over HTTP s
 		server.stop(true);
 		await rm(directory, { recursive: true, force: true });
 	}
+});
+
+test("token fallback: a CAS refusal moves to the current claim; transport errors do not", async () => {
+	const { reportForkWithTokenFallback } = await import("./fork-pending.js");
+	const record = {
+		version: 1 as const,
+		actionId: "action-1",
+		instanceId: "instance-1",
+		generation: 3,
+		claimToken: "claim-1",
+		phase: "created" as const,
+		childNativeSessionId: "ses_child",
+		parentSnapshot: snapshot,
+	};
+	const seen: string[] = [];
+	const ok = await reportForkWithTokenFallback({
+		record,
+		currentClaimToken: "claim-2",
+		deliver: async (token) => {
+			seen.push(token);
+			if (token === "claim-1") throw Object.assign(new Error("refused"), { status: 403 });
+		},
+	});
+	expect(ok.token).toBe("claim-2");
+	expect(seen).toEqual(["claim-1", "claim-2"]);
+
+	const transport: string[] = [];
+	await expect(
+		reportForkWithTokenFallback({
+			record,
+			currentClaimToken: "claim-2",
+			deliver: async (token) => {
+				transport.push(token);
+				throw Object.assign(new Error("timeout"), { status: undefined });
+			},
+		}),
+	).rejects.toThrow("timeout");
+	expect(transport).toEqual(["claim-1"]); // never re-delivered after an unknown outcome
+
+	const replay = await reportForkWithTokenFallback({
+		record: { ...record, phase: "done", finalizedToken: "claim-2" },
+		currentClaimToken: "claim-3",
+		deliver: async (token) => {
+			if (token !== "claim-2") throw Object.assign(new Error("refused"), { status: 403 });
+		},
+	});
+	expect(replay.token).toBe("claim-2"); // committed replays use the ACCEPTED token first
 });

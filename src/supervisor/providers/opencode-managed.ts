@@ -11,7 +11,7 @@ import {
 	readOwnedOpenCodeHistory,
 	recoverOpenCodeHistory,
 } from "./opencode-recovery.js";
-import { executeOrReportFork } from "./fork-pending.js";
+import { executeOrReportFork, reportForkWithTokenFallback } from "./fork-pending.js";
 import type { ForkSnapshot } from "./fork-snapshot.js";
 import { OpenCodeRuntimePool } from "./opencode-runtime.js";
 
@@ -362,41 +362,23 @@ export function createManagedOpenCodeProvider(
 							instanceId: runtime.instanceId,
 							generation: runtime.generation,
 						},
+						nativeSessionId: runtime.nativeSessionId,
 						claimToken,
 						forkPointMessageId:
 							typeof metadata.forkPointMessageId === "string" ? metadata.forkPointMessageId : null,
 						capture: () => runtime.captureForkSnapshot(null),
 						fork: () => runtime.forkSession(undefined, {}),
-						report: async (record) => {
-							const childNativeSessionId = String(record.childNativeSessionId ?? "");
-							const parentSnapshot = record.parentSnapshot as ForkSnapshot;
-							// Idempotent replays need the token the SERVER accepted; a
-							// re-claim replaced it, so fall back to the CURRENT claim
-							// token — the CAS stays strict, this claim is the valid one.
-							const tokens = [
-								...(record.finalizedToken ? [record.finalizedToken] : []),
-								record.claimToken,
-								claimToken,
-							].filter((token, index, all) => all.indexOf(token) === index);
-							let lastError: unknown = null;
-							for (const token of tokens) {
-								try {
-									await report(action.id, {
+						report: (record) =>
+							reportForkWithTokenFallback({
+								record,
+								currentClaimToken: claimToken,
+								deliver: (token) =>
+									report(action.id, {
 										claimToken: token,
-										childNativeSessionId,
-										parentSnapshot,
-									});
-									return { token };
-								} catch (error) {
-									lastError = error;
-									const status = (error as { status?: number }).status;
-									// Only an authorization/CAS refusal is worth another
-									// token; transport errors must surface unchanged.
-									if (status !== 403 && status !== 409) throw error;
-								}
-							}
-							throw lastError;
-						},
+										childNativeSessionId: String(record.childNativeSessionId ?? ""),
+										parentSnapshot: record.parentSnapshot as ForkSnapshot,
+									}),
+							}),
 						// The child becomes addressable ONLY after the server confirmed
 						// the managed binding (2xx = committed transaction).
 						register: (childNativeSessionId) => runtime.registerManagedChild(childNativeSessionId),

@@ -11,6 +11,7 @@ const [directory, marker] = process.argv.slice(2);
 await executeOrReportFork({
 	directory,
 	identity: { actionId: "action-1", instanceId: "instance-1", generation: 1 },
+	nativeSessionId: "ses_parent",
 	claimToken: "token-1",
 	forkPointMessageId: null,
 	capture: async () => ({

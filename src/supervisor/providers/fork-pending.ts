@@ -49,6 +49,7 @@ const sameBinding = (record: ForkRecord, identity: ForkIdentity) =>
 export async function readForkRecord(
 	directory: string,
 	identity: ForkIdentity,
+	nativeSessionId?: string,
 ): Promise<ForkRecord | null> {
 	let text: string;
 	try {
@@ -73,6 +74,14 @@ export async function readForkRecord(
 	// A record that claims a child/snapshot must actually BE complete before it
 	// may be re-reported: never hand the server half-evidence.
 	if (parsed.phase !== "intent") {
+		// The recorded snapshot must belong to THIS instance and THIS native
+		// parent, not merely to a same-named action file.
+		if (
+			parsed.parentSnapshot?.instanceId !== identity.instanceId ||
+			(nativeSessionId !== undefined &&
+				parsed.parentSnapshot?.nativeSessionId !== nativeSessionId)
+		)
+			throw new Error("opencode_fork_ledger_corrupt");
 		if (
 			typeof parsed.childNativeSessionId !== "string" ||
 			!/^ses_[A-Za-z0-9_-]+$/.test(parsed.childNativeSessionId)
@@ -102,8 +111,9 @@ async function writeRecord(directory: string, identity: ForkIdentity, record: Fo
 	const handle = await open(temp, "w", 0o600);
 	try {
 		await handle.writeFile(JSON.stringify(record));
-		// Atomic rename protects against torn files; fsync makes the record
-		// survive a HOST crash (PowerPC/loss), not just a process exit.
+		// Atomic rename protects against torn files; fsync is ordered so the
+		// record is durable across a normal host crash path. (No power-loss
+		// experiment has been run — do not claim absolute crash safety.)
 		await handle.sync();
 	} finally {
 		await handle.close();
@@ -121,6 +131,9 @@ async function writeRecord(directory: string, identity: ForkIdentity, record: Fo
 export interface ForkAttempt {
 	directory: string;
 	identity: ForkIdentity;
+	/** The native parent this execution belongs to; a record from another
+	 *  parent (even same instance) is not trusted. */
+	nativeSessionId: string;
 	/** Claim token of THIS claim; a recorded child keeps its ORIGINAL token. */
 	claimToken: string;
 	/** A specific fork point is not supported at the native layer yet. */
@@ -140,7 +153,7 @@ export async function executeOrReportFork(
 		// Recording a fork point while performing a FULL fork would lie about
 		// what happened; refuse instead.
 		throw new Error("opencode_fork_point_unsupported");
-	const existing = await readForkRecord(attempt.directory, attempt.identity);
+	const existing = await readForkRecord(attempt.directory, attempt.identity, attempt.nativeSessionId);
 	if (existing?.phase === "intent")
 		// The process died between the intent and the native result. The fork may
 		// or may not exist; forking again could duplicate it. Reconciliation.
@@ -191,4 +204,34 @@ export async function executeOrReportFork(
 		finalizedToken: token,
 	});
 	return "forked";
+}
+
+/**
+ * Reports a fork result, reconciling the token the server currently accepts.
+ * Only an authorization/CAS refusal (403/409) moves on to the next candidate;
+ * transport failures never cause a second delivery. The returned token is the
+ * one the server ACCEPTED and must be persisted for future replays.
+ */
+export async function reportForkWithTokenFallback(params: {
+	record: ForkRecord;
+	currentClaimToken: string;
+	deliver: (token: string) => Promise<unknown>;
+}): Promise<{ token: string }> {
+	const candidates = [
+		...(params.record.finalizedToken ? [params.record.finalizedToken] : []),
+		params.record.claimToken,
+		params.currentClaimToken,
+	].filter((token, index, all) => all.indexOf(token) === index);
+	let lastError: unknown = null;
+	for (const token of candidates) {
+		try {
+			await params.deliver(token);
+			return { token };
+		} catch (error) {
+			lastError = error;
+			const status = (error as { status?: number }).status;
+			if (status !== 403 && status !== 409) throw error;
+		}
+	}
+	throw lastError;
 }
