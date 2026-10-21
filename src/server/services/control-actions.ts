@@ -1,4 +1,14 @@
-import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import {
+	type AnyColumn,
+	type SQL,
+	type SQLWrapper,
+	and,
+	asc,
+	eq,
+	isNotNull,
+	isNull,
+	sql,
+} from "drizzle-orm";
 import type {
 	ControlAction,
 	ControlActionStatus,
@@ -7,6 +17,7 @@ import type {
 	SupervisorCapabilities,
 } from "../../shared/types.js";
 import type { Actor } from "../auth/actor.js";
+import { config } from "../config.js";
 import { getDb } from "../db/client.js";
 import {
 	events,
@@ -447,6 +458,13 @@ async function finalizeCleanupWorkArea(projectId: string): Promise<void> {
 	await bumpVersionAndReload();
 }
 
+/** Dialect-safe single-key metadata write (PG metadata column is json). */
+function jsonKeySetSql(column: AnyColumn | SQLWrapper, key: string, value: string): SQL {
+	if (config.dialect === "postgres")
+		return sql`jsonb_set(coalesce(${column}::jsonb, '{}'::jsonb), ${`{${key}}`}, ${JSON.stringify(value)}::jsonb)::json`;
+	return sql`json_set(coalesce(${column}, '{}'), ${`$.${key}`}, json(${JSON.stringify(value)}))`;
+}
+
 export async function claimNextControlAction(supervisorId: string) {
 	await expireStaleControlLocksForSupervisor(supervisorId);
 
@@ -494,12 +512,17 @@ export async function claimNextControlAction(supervisorId: string) {
 	if (!candidate) return null;
 
 	const timestamp = nowIso();
+	// Claim/execution token: minted HERE, persisted with the claim, and echoed
+	// back in the result. Finalization CASes on it, so a re-claim (same status,
+	// new token) can never be completed by an older executor.
+	const claimToken = crypto.randomUUID();
 	const [updated] = await getDb()
 		.update(controlActions)
 		.set({
 			status: "running",
 			claimedBySupervisorId: supervisorId,
 			updatedAt: timestamp,
+			metadata: jsonKeySetSql(controlActions.metadata, "claimToken", claimToken),
 		})
 		.where(and(eq(controlActions.id, candidate.id), eq(controlActions.status, "queued")))
 		.returning();

@@ -243,19 +243,41 @@ export function createManagedOpenCodeProvider(
 			return active.has(sessionId);
 		},
 		async control(action: ControlAction) {
-			const entry = active.get(action.sessionId ?? "");
 			const metadata = action.metadata ?? {};
-			if (
-				!entry ||
-				metadata.instanceId !== entry.runtime.instanceId ||
-				metadata.generation !== entry.runtime.generation
-			)
-				throw new Error("opencode_control_binding_mismatch");
+			// A6 addressing: resolve the runtime by INSTANCE (one runtime per
+			// provider instance), not by the action's AgentPulse session id —
+			// a fork child's action carries the CHILD session id while the
+			// runtime stays keyed by the parent. The action must still name
+			// the matching instance/generation, and the resolved runtime must
+			// be the one holding that native session.
+			let entry: (typeof active extends Map<string, infer V> ? V : never) | undefined;
+			for (const candidate of active.values()) {
+				if (
+					metadata.instanceId === candidate.runtime.instanceId &&
+					metadata.generation === candidate.runtime.generation
+				) {
+					entry = candidate;
+					break;
+				}
+			}
+			if (!entry) throw new Error("opencode_control_binding_mismatch");
 			const runtime = entry.runtime;
-			if (action.actionType === "stop") return stop(runtime.sessionId);
+			// A6 addressing: pass the action's native session through. The runtime
+			// refuses anything outside the bound session + its LIVE subtree
+			// (opencode_unknown_native_session) — never a silent misroute.
+			const targetNative =
+				typeof metadata.nativeSessionId === "string" ? metadata.nativeSessionId : undefined;
+			// Stopping a CHILD aborts that native session only — the shared
+			// instance (and the parent) keep running. The instance stop is the
+			// separate, explicitly blast-radius operation for the bound session.
+			if (action.actionType === "stop") {
+				if (targetNative && targetNative !== runtime.nativeSessionId)
+					return runtime.abort(targetNative);
+				return stop(runtime.sessionId);
+			}
 			if (action.actionType === "interrupt") {
 				interruptEpoch.set(runtime.sessionId, (interruptEpoch.get(runtime.sessionId) ?? 0) + 1);
-				return runtime.abort();
+				return runtime.abort(targetNative);
 			}
 			if (action.actionType === "prompt") {
 				const epoch = interruptEpoch.get(runtime.sessionId) ?? 0;
@@ -281,11 +303,14 @@ export function createManagedOpenCodeProvider(
 						const model =
 							metadata.model && typeof metadata.model === "object"
 								? {
-										providerID: String((metadata.model as Record<string, unknown>).providerID ?? ""),
+										providerID: String(
+											(metadata.model as Record<string, unknown>).providerID ?? "",
+										),
 										modelID: String((metadata.model as Record<string, unknown>).modelID ?? ""),
 									}
 								: undefined;
 						await runtime.prompt(String(metadata.prompt ?? ""), {
+							...(targetNative ? { nativeSessionId: targetNative } : {}),
 							...(model ? { model } : {}),
 							...(typeof metadata.agent === "string" && metadata.agent
 								? { agent: metadata.agent }
@@ -327,7 +352,9 @@ export function createManagedOpenCodeProvider(
 						const commandModel =
 							metadata.model && typeof metadata.model === "object"
 								? {
-										providerID: String((metadata.model as Record<string, unknown>).providerID ?? ""),
+										providerID: String(
+											(metadata.model as Record<string, unknown>).providerID ?? "",
+										),
 										modelID: String((metadata.model as Record<string, unknown>).modelID ?? ""),
 									}
 								: undefined;
@@ -335,6 +362,7 @@ export function createManagedOpenCodeProvider(
 							command,
 							metadata.arguments ? String(metadata.arguments) : "",
 							{
+								...(targetNative ? { nativeSessionId: targetNative } : {}),
 								...(commandModel ? { model: commandModel } : {}),
 								...(typeof metadata.agent === "string" && metadata.agent
 									? { agent: metadata.agent }

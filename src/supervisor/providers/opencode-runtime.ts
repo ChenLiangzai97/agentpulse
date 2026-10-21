@@ -40,14 +40,23 @@ export interface OpenCodeRuntime {
 	request<T = unknown>(path: string, body?: unknown): Promise<T>;
 	prompt(
 		text: string,
-		options?: { model?: { providerID: string; modelID: string }; agent?: string },
+		options?: {
+			model?: { providerID: string; modelID: string };
+			agent?: string;
+			/** Target native session (default: the bound one; a fork child must be known). */
+			nativeSessionId?: string;
+		},
 	): Promise<void>;
 	runCommand(
 		command: string,
 		args?: string,
-		options?: { model?: { providerID: string; modelID: string }; agent?: string },
+		options?: {
+			model?: { providerID: string; modelID: string };
+			agent?: string;
+			nativeSessionId?: string;
+		},
 	): Promise<void>;
-	abort(): Promise<void>;
+	abort(nativeSessionId?: string): Promise<void>;
 	stop(): Promise<void>;
 	snapshot(): Promise<{
 		messages: unknown[];
@@ -257,6 +266,16 @@ export class OpenCodeRuntimePool {
 			if (native.directory !== cwd || !/^ses_[A-Za-z0-9_-]+$/.test(native.id))
 				throw new Error("opencode_directory_mismatch");
 			const nativePath = `/session/${encodeURIComponent(native.id)}`;
+			// A6: native sessions this runtime may address. The bound session plus
+			// any live subtree member learned from snapshots. Anything else is an
+			// explicit refusal — a bare id never grants execution.
+			const knownSessions = new Set<string>([native.id]);
+			const childBusy = new Set<string>();
+			const pathFor = (target?: string): string => {
+				if (!target || target === native.id) return nativePath;
+				if (!knownSessions.has(target)) throw new Error("opencode_unknown_native_session");
+				return `/session/${encodeURIComponent(target)}`;
+			};
 			const subscriptions = new Set<() => void>();
 			const runtime: OpenCodeRuntime = {
 				subscribe(onEvent) {
@@ -318,15 +337,21 @@ export class OpenCodeRuntimePool {
 					if (entry) entry.lastUsed = Date.now();
 				},
 				prompt: async (text, options) => {
+					const target = options?.nativeSessionId;
+					const targetPath = pathFor(target);
 					const entry = this.instances.get(input.sessionId);
-					if (!entry || entry.busy || entry.pending) throw new Error("opencode_session_busy");
-					entry.busy = true;
-					entry.lastUsed = Date.now();
+					if (!target || target === native.id) {
+						if (!entry || entry.busy || entry.pending) throw new Error("opencode_session_busy");
+					} else if (childBusy.has(target)) {
+						throw new Error("opencode_session_busy");
+					}
+					childBusy.add(target ?? native.id);
+					if (entry) entry.lastUsed = Date.now();
 					// No explicit model: inherit the session's current one (a previous
 					// explicit carry switches it natively and stickily per session).
 					// Never retry an ambiguous transport failure: native messageID is not part-idempotent.
 					try {
-						await request(`${nativePath}/prompt_async`, {
+						await request(`${targetPath}/prompt_async`, {
 							...(options?.model ? { model: options.model } : {}),
 							...(options?.agent ? { agent: options.agent } : {}),
 							parts: [{ type: "text", text }],
@@ -340,7 +365,7 @@ export class OpenCodeRuntimePool {
 					// template as a user message and runs it. TUI built-ins are NOT
 					// valid here (verified: 1.18.35 answers UnknownError).
 					if (!/^[a-zA-Z0-9_-]+$/.test(command)) throw new Error("opencode_invalid_command");
-					await request(`${nativePath}/command`, {
+					await request(`${pathFor(options?.nativeSessionId)}/command`, {
 						command,
 						arguments: args ?? "",
 						messageID: `msg_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`,
@@ -352,8 +377,8 @@ export class OpenCodeRuntimePool {
 					});
 					runtime.touch();
 				},
-				abort: async () => {
-					await request(`${nativePath}/abort`, {});
+				abort: async (nativeSessionId?: string) => {
+					await request(`${pathFor(nativeSessionId)}/abort`, {});
 					runtime.touch();
 				},
 				stop: async () => {
@@ -374,18 +399,27 @@ export class OpenCodeRuntimePool {
 					await rm(configPath, { force: true });
 				},
 				snapshot: async () => {
-					const [messages, permissions, questions, status, nativeSessions, commands, agents, providers] =
-						await Promise.all([
-							request<unknown[]>(`${nativePath}/message`),
-							request<unknown[]>("/permission"),
-							request<unknown[]>("/question"),
-							request<Record<string, { type: string }>>("/session/status"),
-							request<Record<string, unknown>[]>("/session"),
-							request<unknown[]>("/command").catch(() => []),
-							request<unknown[]>("/agent").catch(() => []),
-							request<unknown>("/config/providers").catch(() => null),
-						]);
+					const [
+						messages,
+						permissions,
+						questions,
+						status,
+						nativeSessions,
+						commands,
+						agents,
+						providers,
+					] = await Promise.all([
+						request<unknown[]>(`${nativePath}/message`),
+						request<unknown[]>("/permission"),
+						request<unknown[]>("/question"),
+						request<Record<string, { type: string }>>("/session/status"),
+						request<Record<string, unknown>[]>("/session"),
+						request<unknown[]>("/command").catch(() => []),
+						request<unknown[]>("/agent").catch(() => []),
+						request<unknown>("/config/providers").catch(() => null),
+					]);
 					const descendants = new Set<string>([native.id]);
+					for (const id of knownSessions) descendants.add(id);
 					for (let depth = 0; depth < 64; depth++) {
 						let changed = false;
 						for (const session of nativeSessions) {
@@ -426,6 +460,12 @@ export class OpenCodeRuntimePool {
 									);
 								}),
 						);
+					for (const id of descendants) knownSessions.add(id);
+					// A child is no longer executing once its native status is idle.
+					for (const id of [...childBusy]) {
+						const st = status[id]?.type;
+						if (st !== "busy" && st !== "retry") childBusy.delete(id);
+					}
 					const entry = this.instances.get(input.sessionId);
 					if (entry) {
 						entry.busy =
