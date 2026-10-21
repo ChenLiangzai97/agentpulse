@@ -32,6 +32,13 @@ try {
 	const oldDir = await mkdtemp(join(tmpdir(), "ap-migrations-old-"));
 	await cp("drizzle/postgres", oldDir, { recursive: true });
 	await rm(join(oldDir, "0016_session_stop_epoch.sql"));
+	// HISTORICAL DDL: the pre-release 0015 (no FKs, no provider/native/generation
+	// columns, no identity_json) exactly as released at commit 8849856.
+	const { execSync } = await import("node:child_process");
+	const historical = execSync("git show 8849856:drizzle/postgres/0015_fork_infra.sql", {
+		encoding: "utf8",
+	});
+	await writeFile(join(oldDir, "0015_fork_infra.sql"), historical);
 	const journal = JSON.parse(await readFile(join(oldDir, "meta/_journal.json"), "utf8")) as {
 		entries: { tag: string }[];
 	};
@@ -55,6 +62,19 @@ try {
 			INSERT INTO session_control_bindings (session_id, origin, native_session_id, generation)
 			VALUES ('upgrade-1', 'external_observer', NULL, NULL)
 		`;
+		// Lineage + ledger + a child binding + notes: all must survive.
+		await scratch`
+			INSERT INTO sessions (id, session_id, agent_type, cwd, notes)
+			VALUES (${crypto.randomUUID()}, 'upgrade-child', 'opencode', '/tmp', 'keep my notes')
+		`;
+		await scratch`
+			INSERT INTO opencode_forks (child_session_id, parent_session_id, request_action_id, parent_label_json)
+			VALUES ('upgrade-child', 'upgrade-1', 'upgrade-action', '{"directParentSessionId":"upgrade-1"}')
+		`;
+		await scratch`
+			INSERT INTO opencode_fork_requests (action_id, request_hash, parent_snapshot_json)
+			VALUES ('upgrade-action', 'hash', '{"version":1,"messages":[]}')
+		`;
 		await rm(oldDir, { recursive: true, force: true });
 
 		// 2) Apply the REAL migrations (adds 0016).
@@ -68,6 +88,40 @@ try {
 			SELECT session_id, stop_state, stop_epoch FROM session_control_bindings WHERE session_id = 'upgrade-1'
 		`) as { session_id: string; stop_state: string; stop_epoch: number }[];
 		evidence.preservedRow = row ?? null;
+		const [child] = (await scratch`
+			SELECT child_session_id, parent_session_id FROM opencode_forks WHERE child_session_id = 'upgrade-child'
+		`) as { child_session_id: string; parent_session_id: string | null }[];
+		const [notes] = (await scratch`
+			SELECT notes FROM sessions WHERE session_id = 'upgrade-child'
+		`) as { notes: string }[];
+		evidence.lineage = child ?? null;
+		evidence.childNotes = notes?.notes ?? null;
+		const fks = (await scratch`
+			SELECT conname, confdeltype FROM pg_constraint
+			WHERE conrelid = 'opencode_forks'::regclass AND contype = 'f'
+			ORDER BY conname
+		`) as { conname: string; confdeltype: string }[];
+		evidence.forksFks = fks;
+		const [ledger] = (await scratch`
+			SELECT action_id FROM opencode_fork_requests WHERE action_id = 'upgrade-action'
+		`) as { action_id: string }[];
+		evidence.ledger = ledger ?? null;
+		const [idem] = (await scratch`
+			SELECT indexname FROM pg_indexes WHERE indexname = 'uq_fork_action_idem'
+		`) as { indexname: string }[];
+		evidence.idemIndex = idem ?? null;
+		// Delete semantics: removing the parent session must SET NULL, not cascade.
+		await scratch`DELETE FROM sessions WHERE session_id = 'upgrade-1'`;
+		const [afterDelete] = (await scratch`
+			SELECT parent_session_id FROM opencode_forks WHERE child_session_id = 'upgrade-child'
+		`) as { parent_session_id: string | null }[];
+		evidence.parentAfterDelete = afterDelete ?? null;
+		// Deleting the child cascades its lineage row.
+		await scratch`DELETE FROM sessions WHERE session_id = 'upgrade-child'`;
+		const [childFork] = (await scratch`
+			SELECT child_session_id FROM opencode_forks WHERE child_session_id = 'upgrade-child'
+		`) as { child_session_id: string }[];
+		evidence.childForkAfterDelete = childFork ?? null;
 		// 3) The protected-row lock path works on PG.
 		await scratch.begin(async (tx) => {
 			await tx`SELECT session_id FROM session_control_bindings WHERE session_id = 'upgrade-1' FOR UPDATE`;
@@ -78,7 +132,16 @@ try {
 			(evidence.columnsAfter as string[]).includes("stop_state") &&
 			(evidence.columnsAfter as string[]).includes("stop_epoch") &&
 			row?.stop_state === "active" &&
-			Number(row?.stop_epoch) === 0;
+			Number(row?.stop_epoch) === 0 &&
+			child?.parent_session_id === "upgrade-1" &&
+			notes?.notes === "keep my notes" &&
+			fks.some((fk) => fk.conname.endsWith("child_session_id_sessions_session_id_fk") && fk.confdeltype === "c") &&
+			fks.some((fk) => fk.conname.endsWith("parent_session_id_sessions_session_id_fk") && fk.confdeltype === "n") &&
+			Boolean(ledger) &&
+			Boolean(idem) &&
+			evidence.parentAfterDelete !== null &&
+			(afterDelete?.parent_session_id ?? null) === null &&
+			evidence.childForkAfterDelete === null;
 	} finally {
 		await scratch.end({ timeout: 5 }).catch(() => {});
 	}

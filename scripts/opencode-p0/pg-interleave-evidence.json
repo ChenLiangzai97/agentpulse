@@ -1,18 +1,21 @@
 {
- "probe": "ap_interleave_probe_86a96268_33a0_4fd6_a513_f6e6ff223edd",
- "claim": {
-  "id": "a4d375e6-eabf-4eac-9af3-ec1de2860e63",
-  "type": "prompt"
+ "probe": "ap_interleave_probe_3add4978_f2a7_4511_b067_14baa7036004",
+ "scenarioA": {
+  "stop1": "opencode_stop_deferred",
+  "permitBefore": "allowed",
+  "report": "failed"
  },
- "stop": null,
- "stopError": "Error: opencode_stop_deferred",
- "action": {
-  "status": "running",
-  "epoch": 0
+ "scenarioB": {
+  "stopState": "stopping",
+  "claimed": null
  },
- "binding": {
-  "stopState": "active",
-  "stopEpoch": 0
+ "scenarioC": {
+  "stop1": "opencode_stop_deferred",
+  "permitAfter": "provider_binding_invalid"
  },
- "permit": "ALLOWED"
+ "scenarioD": {
+  "waitedMs": 409,
+  "blockedWhileHeld": true
+ },
+ "ok": true
 }

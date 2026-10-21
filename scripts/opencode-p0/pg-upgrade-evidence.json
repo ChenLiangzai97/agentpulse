@@ -1,5 +1,5 @@
 {
- "probe": "ap_upgrade_probe_4c04c35e_826d_418d_af27_4cfb22303278",
+ "probe": "ap_upgrade_probe_8c9118d1_70b4_43d1_a978_b81228a91248",
  "columnsBefore": [
   "created_at",
   "generation",
@@ -23,6 +23,31 @@
   "stop_state": "active",
   "stop_epoch": 0
  },
+ "lineage": {
+  "child_session_id": "upgrade-child",
+  "parent_session_id": "upgrade-1"
+ },
+ "childNotes": "keep my notes",
+ "forksFks": [
+  {
+   "conname": "opencode_forks_child_session_id_sessions_session_id_fk",
+   "confdeltype": "c"
+  },
+  {
+   "conname": "opencode_forks_parent_session_id_sessions_session_id_fk",
+   "confdeltype": "n"
+  }
+ ],
+ "ledger": {
+  "action_id": "upgrade-action"
+ },
+ "idemIndex": {
+  "indexname": "uq_fork_action_idem"
+ },
+ "parentAfterDelete": {
+  "parent_session_id": null
+ },
+ "childForkAfterDelete": null,
  "forUpdate": true,
  "ok": true
 }
