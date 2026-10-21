@@ -95,6 +95,7 @@ export interface OpenCodeRuntime {
 	abortPending(target: string): boolean;
 	reconcileUnsettled(target: string): Promise<boolean>;
 	withResumeLock<T>(target: string, run: () => Promise<T>): Promise<T>;
+	markResumeUncertain(target: string): void;
 	unsettledAbortAttempts(): {
 		attemptId: string;
 		nativeSessionId: string;
@@ -366,6 +367,9 @@ export class OpenCodeRuntimePool {
 			// Targets under a controlled RESUME (check + report window): no new
 			// delivery or abort may start while the resume decision is in flight.
 			const resumeLocked = new Set<string>();
+			// A resume whose report outcome is UNKNOWN: permanently frozen until an
+			// explicit reconciliation clears it.
+			const resumeUncertain = new Set<string>();
 			// INDEPENDENT durable abort attempts (survive restarts; multiple per
 			// target; a standalone abort has no claim record of its own).
 			const attemptsDirectory = join(
@@ -576,7 +580,8 @@ export class OpenCodeRuntimePool {
 					throw new Error("opencode_unknown_native_session");
 				if (claimsQuarantined) throw new Error("opencode_claims_quarantine");
 				if (abortAttempts.frozen(id)) throw new Error("opencode_abort_pending");
-				if (resumeLocked.has(id)) throw new Error("opencode_resume_pending");
+				if (resumeLocked.has(id) || resumeUncertain.has(id))
+					throw new Error("opencode_resume_pending");
 				if (unsettled.has(id)) throw new Error("opencode_session_unsettled");
 				if (forking) throw new Error("opencode_session_busy");
 				if (executing.has(id)) throw new Error("opencode_session_busy");
@@ -853,6 +858,15 @@ export class OpenCodeRuntimePool {
 				 * for the duration of the check (and the server's conditional flip +
 				 * token/epoch fence cover the report boundary).
 				 */
+				/** Unknown resume outcome: keep the target frozen until reconciliation. */
+				markResumeUncertain(target: string) {
+					resumeUncertain.add(target);
+					cleanupIssues.push({
+						claimId: target,
+						path: "",
+						error: "resume_report_uncertain",
+					});
+				},
 				async withResumeLock<T>(target: string, run: () => Promise<T>): Promise<T> {
 					if (target !== native.id && !knownSessions.has(target))
 						throw new Error("opencode_unknown_native_session");
@@ -995,7 +1009,8 @@ export class OpenCodeRuntimePool {
 					// A target with NO claim is still frozen while the request is in
 					// flight (a prompt may start during the delay and be killed by this
 					// very abort): claimEnded starts true, the response releases it.
-					if (resumeLocked.has(id)) throw new Error("opencode_resume_pending");
+					if (resumeLocked.has(id) || resumeUncertain.has(id))
+					throw new Error("opencode_resume_pending");
 					abortAttempts.begin(id, attemptId, held?.id ?? "");
 					const attemptPath = join(attemptsDirectory, `${attemptId}.json`);
 					attemptFiles.set(attemptId, attemptPath);

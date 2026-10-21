@@ -1476,9 +1476,15 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 				await expect(runtime.prompt("blocked")).rejects.toThrow("opencode_resume_pending");
 				await expect(runtime.abort()).rejects.toThrow("opencode_resume_pending");
 			});
-			// The lock is released after the check.
-			await runtime.prompt("P0_HELLO");
-			await runtime.snapshot();
+			// A LOST resume report marks the target UNCERTAIN: the lock is NOT
+			// released, so a new delivery/abort is still refused afterwards.
+			await expect(
+				runtime.withResumeLock(runtime.nativeSessionId, async () => {
+					runtime.markResumeUncertain(runtime.nativeSessionId);
+					throw new Error("report_response_lost");
+				}),
+			).rejects.toThrow("report_response_lost");
+			await expect(runtime.prompt("after lost report")).rejects.toThrow("opencode_resume_pending");
 			await runtime.stop();
 		} finally {
 			mock.kill();

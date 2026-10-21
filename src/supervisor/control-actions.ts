@@ -40,7 +40,10 @@ import { isUnderAnyRoot, resolveTrustedRoots } from "./services/prelaunch-action
 import { type ReportGate, controlRefusalBody } from "./services/report-gate.js";
 
 export type ControlProviders = {
-	openCodeControl?: (action: ControlAction) => Promise<void>;
+	openCodeControl?: (
+		action: ControlAction,
+		report: (body: { status: "succeeded" | "failed"; error?: string }) => Promise<void>,
+	) => Promise<void>;
 	openCodeHealth?: () => Promise<string>;
 	stopManagedCodexSession: typeof stopManagedCodexSession;
 	promptClaudeHeadlessSession: typeof promptClaudeHeadlessSession;
@@ -291,15 +294,22 @@ export function createControlActionHandler(
 		}
 
 		if (action.metadata?.agentType === "opencode") {
+			let reported = false;
 			try {
 				if (!providers.openCodeControl) throw new Error("OpenCode provider unavailable");
-				await providers.openCodeControl(action);
-				await report(action, { status: "succeeded" });
-			} catch (error) {
-				await report(action, {
-					status: "failed",
-					error: error instanceof Error ? error.message : "OpenCode action failed",
+				await providers.openCodeControl(action, async (body: { status: "succeeded" | "failed"; error?: string }) => {
+					await report(action, body);
+					reported = true;
 				});
+				if (!reported) await report(action, { status: "succeeded" });
+			} catch (error) {
+				// If the provider already reported (resume reports inside its lock),
+				// the outcome is settled/unknown — never send a second report.
+				if (!reported)
+					await report(action, {
+						status: "failed",
+						error: error instanceof Error ? error.message : "OpenCode action failed",
+					});
 			}
 			return;
 		}

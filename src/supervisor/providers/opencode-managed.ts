@@ -259,7 +259,10 @@ export function createManagedOpenCodeProvider(
 		owns(sessionId: string) {
 			return active.has(sessionId);
 		},
-		async control(action: ControlAction) {
+		async control(
+			action: ControlAction,
+			report?: (body: { status: "succeeded" | "failed"; error?: string }) => Promise<void>,
+		) {
 			const metadata = action.metadata ?? {};
 			// A6 addressing: resolve the runtime by INSTANCE (one runtime per
 			// provider instance), not by the action's AgentPulse session id —
@@ -381,8 +384,10 @@ export function createManagedOpenCodeProvider(
 			}
 			if (action.actionType === "opencode_resume") {
 				// SECOND PHASE: the target must be the same addressable, LIVE native
-				// session; no claim/abort may be unresolved; deliveries/aborts are
-				// blocked for the check window.
+				// session; no claim/abort may be unresolved. The RESULT REPORT happens
+				// INSIDE the lock, so the server's flip is accepted before the target
+				// can accept a new delivery or abort. A lost response keeps the lock
+				// (UNCERTAIN) for reconciliation instead of unlocking first.
 				const resumeTarget = targetNative ?? runtime.nativeSessionId;
 				await runtime.withResumeLock(resumeTarget, async () => {
 					if (
@@ -390,6 +395,14 @@ export function createManagedOpenCodeProvider(
 						runtime.abortPending(resumeTarget)
 					)
 						throw new Error("opencode_session_unsettled");
+					if (!report) throw new Error("opencode_resume_report_unavailable");
+					try {
+						await report({ status: "succeeded" });
+					} catch (error) {
+						// Unknown outcome: keep the target frozen, never unlock first.
+						runtime.markResumeUncertain(resumeTarget);
+						throw error;
+					}
 					runtime.touch();
 				});
 				return;
