@@ -1,5 +1,5 @@
 {
- "probe": "ap_upgrade_probe_8c9118d1_70b4_43d1_a978_b81228a91248",
+ "probe": "ap_upgrade_probe_5459e834_1323_4f82_87c9_79f84dcd0421",
  "columnsBefore": [
   "created_at",
   "generation",
@@ -38,16 +38,23 @@
    "confdeltype": "n"
   }
  ],
+ "childBinding": {
+  "session_id": "upgrade-child",
+  "origin": "agentpulse_launch",
+  "instance_id": "78f7ed19-794c-404a-bae3-92398aff5139",
+  "native_session_id": "ses_upgrade_child",
+  "generation": 1
+ },
  "ledger": {
   "action_id": "upgrade-action"
  },
  "idemIndex": {
   "indexname": "uq_fork_action_idem"
  },
+ "forUpdate": true,
  "parentAfterDelete": {
   "parent_session_id": null
  },
  "childForkAfterDelete": null,
- "forUpdate": true,
  "ok": true
 }

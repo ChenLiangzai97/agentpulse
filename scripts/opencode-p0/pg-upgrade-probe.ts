@@ -75,6 +75,30 @@ try {
 			INSERT INTO opencode_fork_requests (action_id, request_hash, parent_snapshot_json)
 			VALUES ('upgrade-action', 'hash', '{"version":1,"messages":[]}')
 		`;
+		// A CHILD managed binding (fork child on the same instance) that must keep
+		// every field through the upgrade.
+		await scratch`
+			INSERT INTO supervisors (id, host_name, platform, arch, version, status, trusted_roots_json, capabilities_json)
+			VALUES ('upgrade-host', 'upgrade-host', 'linux', 'x64', 't', 'connected', '["/tmp"]'::jsonb, '{}'::jsonb)
+		`;
+		await scratch`
+			INSERT INTO launch_requests (id, launch_correlation_id, agent_type, cwd, requested_launch_mode, claimed_by_supervisor_id, status)
+			VALUES (${crypto.randomUUID()}, 'upgrade-child', 'opencode', '/tmp', 'managed_opencode', 'upgrade-host', 'launching')
+		`;
+		const [launchRow] = (await scratch`
+			SELECT id FROM launch_requests WHERE launch_correlation_id = 'upgrade-child'
+		`) as { id: string }[];
+		await scratch`
+			INSERT INTO provider_instances (id, agent_type, supervisor_id, launch_request_id, session_id, cwd, generation, state)
+			VALUES (${crypto.randomUUID()}, 'opencode', 'upgrade-host', ${launchRow?.id}, 'upgrade-child', '/tmp', 1, 'running')
+		`;
+		const [instanceRow] = (await scratch`
+			SELECT id FROM provider_instances WHERE session_id = 'upgrade-child'
+		`) as { id: string }[];
+		await scratch`
+			INSERT INTO session_control_bindings (session_id, origin, instance_id, native_session_id, generation)
+			VALUES ('upgrade-child', 'agentpulse_launch', ${instanceRow?.id}, 'ses_upgrade_child', 1)
+		`;
 		await rm(oldDir, { recursive: true, force: true });
 
 		// 2) Apply the REAL migrations (adds 0016).
@@ -102,6 +126,17 @@ try {
 			ORDER BY conname
 		`) as { conname: string; confdeltype: string }[];
 		evidence.forksFks = fks;
+		const [childBinding] = (await scratch`
+			SELECT session_id, origin, instance_id, native_session_id, generation
+			FROM session_control_bindings WHERE session_id = 'upgrade-child'
+		`) as {
+			session_id: string;
+			origin: string;
+			instance_id: string | null;
+			native_session_id: string | null;
+			generation: number | null;
+		}[];
+		evidence.childBinding = childBinding ?? null;
 		const [ledger] = (await scratch`
 			SELECT action_id FROM opencode_fork_requests WHERE action_id = 'upgrade-action'
 		`) as { action_id: string }[];
@@ -110,6 +145,11 @@ try {
 			SELECT indexname FROM pg_indexes WHERE indexname = 'uq_fork_action_idem'
 		`) as { indexname: string }[];
 		evidence.idemIndex = idem ?? null;
+		// 3) The protected-row lock path works on PG (lock a row that still exists).
+		await scratch.begin(async (tx) => {
+			await tx`SELECT session_id FROM session_control_bindings WHERE session_id = 'upgrade-child' FOR UPDATE`;
+		});
+		evidence.forUpdate = true;
 		// Delete semantics: removing the parent session must SET NULL, not cascade.
 		await scratch`DELETE FROM sessions WHERE session_id = 'upgrade-1'`;
 		const [afterDelete] = (await scratch`
@@ -122,11 +162,7 @@ try {
 			SELECT child_session_id FROM opencode_forks WHERE child_session_id = 'upgrade-child'
 		`) as { child_session_id: string }[];
 		evidence.childForkAfterDelete = childFork ?? null;
-		// 3) The protected-row lock path works on PG.
-		await scratch.begin(async (tx) => {
-			await tx`SELECT session_id FROM session_control_bindings WHERE session_id = 'upgrade-1' FOR UPDATE`;
-		});
-		evidence.forUpdate = true;
+
 		evidence.ok =
 			evidence.columnsAfter instanceof Array &&
 			(evidence.columnsAfter as string[]).includes("stop_state") &&
@@ -141,7 +177,10 @@ try {
 			Boolean(idem) &&
 			evidence.parentAfterDelete !== null &&
 			(afterDelete?.parent_session_id ?? null) === null &&
-			evidence.childForkAfterDelete === null;
+			evidence.childForkAfterDelete === null &&
+			childBinding?.origin === "agentpulse_launch" &&
+			childBinding?.native_session_id === "ses_upgrade_child" &&
+			Number(childBinding?.generation) === 1;
 	} finally {
 		await scratch.end({ timeout: 5 }).catch(() => {});
 	}

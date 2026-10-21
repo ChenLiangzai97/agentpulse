@@ -39,6 +39,8 @@ try {
 		"../../src/server/services/control-actions.js"
 	);
 	const { queueOpenCodeAction } = await import("../../src/server/services/opencode-managed.js");
+	const { finalizeOpenCodeFork } = await import("../../src/server/services/opencode-fork-service.js");
+	const { config } = await import("../../src/server/config.js");
 	await initializeDatabase();
 
 	const seed = async (suffix: string) => {
@@ -84,7 +86,7 @@ try {
 			nativeSessionId: `ses_${suffix}`,
 			generation: 1,
 		});
-		return { sessionId, supervisorId: `pg-host-${suffix}` };
+		return { sessionId, supervisorId: `pg-host-${suffix}`, instanceId: instance.id };
 	};
 	const binding = async (sessionId: string) => {
 		const [row] = await getDb()
@@ -179,6 +181,162 @@ try {
 		}).then(() => "ALLOWED").catch((error: Error) => error.message);
 		expect(permitAfter !== "ALLOWED", "c-permit-after");
 		evidence.scenarioC = { stop1, permitAfter };
+	}
+
+	// E) FINALIZE x STOP, both orders, with a real transaction barrier.
+	{
+		(config as Record<string, unknown>).opencodeForkEntry = true;
+		// E1: finalize holds its transaction (FOR UPDATE on the binding) behind a
+		// barrier; STOP is attempted meanwhile and must be deferred; finalize then
+		// commits the FULL child chain and STOP applies on retry.
+		const first = await seed("e1");
+		await queueOpenCodeAction(
+			first.sessionId,
+			"opencode_fork",
+			{ idempotencyKey: "pg-fork-e1" },
+			{ label: "u", userId: "u-e1" } as never,
+		);
+		const forkAction = await claimNextControlAction(first.supervisorId);
+		expect(forkAction?.actionType === "opencode_fork", "e1-claim");
+		const forkToken = String((forkAction?.metadata as Record<string, unknown>)?.claimToken ?? "");
+		let reachedBarrier: (() => void) | null = null;
+		let releaseBarrier: (() => void) | null = null;
+		const barrierReached = new Promise<void>((resolve) => {
+			reachedBarrier = resolve;
+		});
+		const barrier = new Promise<void>((resolve) => {
+			releaseBarrier = resolve;
+		});
+		const finalizing = finalizeOpenCodeFork(
+			{
+				actionId: forkAction?.id ?? "",
+				supervisorId: first.supervisorId,
+				claimToken: forkToken,
+				childNativeSessionId: "ses_pg_fork_child_e1",
+				parentSnapshot: {
+					version: 1,
+					instanceId: first.instanceId,
+					nativeSessionId: "ses_e1",
+					messages: [],
+					forkPointMessageId: null,
+				},
+			},
+			{
+				beforeFinalCas: async () => {
+					reachedBarrier?.();
+					await barrier;
+				},
+			},
+		);
+		await barrierReached;
+		const stopDuringFinalize = await queueOpenCodeAction(
+			first.sessionId,
+			"stop",
+			{},
+			{ label: "u", userId: "u-e1" } as never,
+		)
+			.then(() => "applied")
+			.catch((error: Error) => error.message);
+		expect(stopDuringFinalize === "opencode_stop_deferred", "e1-stop-deferred");
+		releaseBarrier?.();
+		const finalized = await finalizing;
+		expect(finalized.replayed === false, "e1-finalized");
+		// Full success chain: session + managed + binding + lineage + ledger identity.
+		const { eq: eqOp } = await import("drizzle-orm");
+		const [childSession] = await getDb()
+			.select()
+			.from(schema.sessions)
+			.where(eqOp(schema.sessions.sessionId, finalized.childSessionId));
+		const [childManaged] = await getDb()
+			.select()
+			.from(schema.managedSessions)
+			.where(eqOp(schema.managedSessions.sessionId, finalized.childSessionId));
+		const [childBinding] = await getDb()
+			.select()
+			.from(schema.sessionControlBindings)
+			.where(eqOp(schema.sessionControlBindings.sessionId, finalized.childSessionId));
+		const [childLineage] = await getDb()
+			.select()
+			.from(schema.opencodeForks)
+			.where(eqOp(schema.opencodeForks.childSessionId, finalized.childSessionId));
+		const [ledgerRow] = await getDb()
+			.select()
+			.from(schema.opencodeForkRequests)
+			.where(eqOp(schema.opencodeForkRequests.actionId, forkAction?.id ?? ""));
+		expect(
+			Boolean(childSession) &&
+				Boolean(childManaged) &&
+				Boolean(childBinding) &&
+				Boolean(childLineage) &&
+				Boolean((ledgerRow?.identity as Record<string, unknown> | null)?.result),
+			"e1-full-chain",
+		);
+		// STOP retries after the fork finished and applies.
+		await queueOpenCodeAction(
+			first.sessionId,
+			"stop",
+			{},
+			{ label: "u", userId: "u-e1" } as never,
+		);
+		expect((await binding(first.sessionId))?.stopState === "stopping", "e1-stop-after");
+
+		// E2: STOP commits FIRST; a stale fork attempt cannot finalize (whole
+		// transaction rolls back, zero child artifacts).
+		const second = await seed("e2");
+		await queueOpenCodeAction(
+			second.sessionId,
+			"opencode_fork",
+			{ idempotencyKey: "pg-fork-e2" },
+			{ label: "u", userId: "u-e2" } as never,
+		);
+		const staleFork = await claimNextControlAction(second.supervisorId);
+		const staleToken = String((staleFork?.metadata as Record<string, unknown>)?.claimToken ?? "");
+		// STOP first: this cancels the QUEUED fork; the claimed one is running and
+		// would defer, so report it as failed first, then STOP, then simulate a
+		// stale running attempt with the OLD epoch.
+		await updateControlAction({
+			actionId: staleFork?.id ?? "",
+			supervisorId: second.supervisorId,
+			status: "failed",
+			claimToken: staleToken,
+			error: "pre_stop",
+		});
+		await queueOpenCodeAction(second.sessionId, "stop", {}, { label: "u", userId: "u-e2" } as never);
+		expect((await binding(second.sessionId))?.stopState === "stopping", "e2-stopping");
+		await getDb()
+			.update(schema.controlActions)
+			.set({
+				status: "running",
+				metadata: {
+					...((staleFork?.metadata as Record<string, unknown>) ?? {}),
+					controlEpoch: 0,
+					claimToken: "stale-token-e2",
+				},
+			})
+			.where(eqOp(schema.controlActions.id, staleFork?.id ?? ""));
+		const before = await getDb().select().from(schema.managedSessions);
+		const rejected = await finalizeOpenCodeFork({
+			actionId: staleFork?.id ?? "",
+			supervisorId: second.supervisorId,
+			claimToken: "stale-token-e2",
+			childNativeSessionId: "ses_pg_fork_child_e2",
+			parentSnapshot: {
+				version: 1,
+				instanceId: second.instanceId,
+				nativeSessionId: "ses_e2",
+				messages: [],
+				forkPointMessageId: null,
+			},
+		})
+			.then(() => "COMMITTED")
+			.catch((error: Error) => error.message);
+		expect(rejected === "provider_binding_invalid", "e2-rejected");
+		const after = await getDb().select().from(schema.managedSessions);
+		expect(after.length === before.length, "e2-no-partial-artifacts");
+		evidence.scenarioE = {
+			finalizeFirst: { stop: stopDuringFinalize, replayed: finalized.replayed },
+			stopFirst: { rejected, managedRowsUnchanged: after.length === before.length },
+		};
 	}
 
 	// D) TWO CONNECTIONS: an open FOR UPDATE transaction makes STOP wait.

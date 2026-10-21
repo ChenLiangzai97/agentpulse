@@ -1,5 +1,5 @@
 {
- "probe": "ap_interleave_probe_3add4978_f2a7_4511_b067_14baa7036004",
+ "probe": "ap_interleave_probe_d43eda7a_b140_4ecf_808e_7737538d686f",
  "scenarioA": {
   "stop1": "opencode_stop_deferred",
   "permitBefore": "allowed",
@@ -13,8 +13,18 @@
   "stop1": "opencode_stop_deferred",
   "permitAfter": "provider_binding_invalid"
  },
+ "scenarioE": {
+  "finalizeFirst": {
+   "stop": "opencode_stop_deferred",
+   "replayed": false
+  },
+  "stopFirst": {
+   "rejected": "provider_binding_invalid",
+   "managedRowsUnchanged": true
+  }
+ },
  "scenarioD": {
-  "waitedMs": 409,
+  "waitedMs": 408,
   "blockedWhileHeld": true
  },
  "ok": true
