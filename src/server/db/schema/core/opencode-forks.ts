@@ -41,8 +41,13 @@ export const opencodeForksPg = pgTable(
 );
 
 export const opencodeForkRequestsSqlite = sqliteTable("opencode_fork_requests", {
+	// NOTE: intentionally NO FK to control_actions — deleting the parent session
+	// cascades the fork ACTION (control_actions.session_id CASCADE), but the
+	// creation evidence must survive that (review round 42).
 	actionId: text("action_id").primaryKey(),
 	requestHash: text("request_hash").notNull(),
+	/** Immutable creation identity (instance/direct parent/native/generation/origin). */
+	identity: jsonColumn<Record<string, unknown> | null>("sqlite", "identity_json"),
 	parentSnapshot: jsonColumn<Record<string, unknown> | null>("sqlite", "parent_snapshot_json"),
 	childMap: jsonColumn<Record<string, unknown> | null>("sqlite", "child_map_json"),
 	createdAt: tsColumn("sqlite", "created_at"),
@@ -51,6 +56,7 @@ export const opencodeForkRequestsSqlite = sqliteTable("opencode_fork_requests", 
 export const opencodeForkRequestsPg = pgTable("opencode_fork_requests", {
 	actionId: pgText("action_id").primaryKey(),
 	requestHash: pgText("request_hash").notNull(),
+	identity: jsonColumn<Record<string, unknown> | null>("postgres", "identity_json"),
 	parentSnapshot: jsonColumn<Record<string, unknown> | null>("postgres", "parent_snapshot_json"),
 	childMap: jsonColumn<Record<string, unknown> | null>("postgres", "child_map_json"),
 	createdAt: tsColumn("postgres", "created_at"),

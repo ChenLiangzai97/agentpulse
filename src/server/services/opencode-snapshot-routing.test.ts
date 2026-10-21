@@ -91,28 +91,37 @@ async function seedInstance() {
 
 async function seedTrustedFork(
 	childSessionId: string,
-	parentSessionId: string,
+	directParentSessionId: string,
 	instanceId: string,
-	nativeSessionId: string,
+	childNativeSessionId: string,
 	generation: number,
 	overrides: Partial<{
 		actionPresent: boolean;
-		emptySnapshot: boolean;
 		providerInstanceId: string;
 		ledgerNative: string;
 		ledgerGeneration: number;
 		actionParent: string;
+		instanceOrigin: string;
+		parentNative: string;
+		snapshotInstance: string;
+		snapshotNative: string;
+		snapshotVersion: number;
+		withLabel: boolean;
 	}> = {},
+	parentNativeSessionId = "ses_parent",
 ) {
 	const [action] = await getDb()
 		.insert(controlActions)
 		.values({
-			sessionId: childSessionId,
+			// Fork request targets the DIRECT PARENT — never the child.
+			sessionId: overrides.actionParent ?? directParentSessionId,
 			actionType: "opencode_fork",
 			requestedBy: "user",
 			status: "succeeded",
 			metadata: {
-				parentSessionId: overrides.actionParent ?? parentSessionId,
+				instanceOriginSessionId: overrides.instanceOrigin ?? "a3-parent",
+				directParentSessionId,
+				nativeSessionId: overrides.parentNative ?? parentNativeSessionId,
 				providerInstanceId: overrides.providerInstanceId ?? instanceId,
 				generation: overrides.ledgerGeneration ?? generation,
 			},
@@ -124,17 +133,37 @@ async function seedTrustedFork(
 			.values({
 				actionId: action.id,
 				requestHash: "h-a3",
-				parentSnapshot: overrides.emptySnapshot ? {} : { messages: [{ nativeId: "msg_p" }] },
+				identity: {
+					instanceOriginSessionId: overrides.instanceOrigin ?? "a3-parent",
+					directParentSessionId,
+					nativeSessionId: overrides.parentNative ?? parentNativeSessionId,
+					providerInstanceId: overrides.providerInstanceId ?? instanceId,
+					generation: overrides.ledgerGeneration ?? generation,
+				},
+				parentSnapshot: {
+					version: overrides.snapshotVersion ?? 1,
+					instanceId: overrides.snapshotInstance ?? instanceId,
+					nativeSessionId:
+						overrides.snapshotNative ?? overrides.parentNative ?? parentNativeSessionId,
+					messages: [],
+				},
 			});
 	await getDb()
 		.insert(opencodeForks)
 		.values({
 			childSessionId,
-			parentSessionId,
+			parentSessionId: directParentSessionId,
+			parentLabel:
+				overrides.withLabel === false
+					? null
+					: {
+							directParentSessionId,
+							parentNativeSessionId: overrides.parentNative ?? parentNativeSessionId,
+						},
 			forkPointMessageId: null,
 			requestActionId: action.id,
 			providerInstanceId: overrides.providerInstanceId ?? instanceId,
-			nativeSessionId: overrides.ledgerNative ?? nativeSessionId,
+			nativeSessionId: overrides.ledgerNative ?? childNativeSessionId,
 			generation: overrides.ledgerGeneration ?? generation,
 		});
 	return action;
@@ -362,7 +391,7 @@ describe("A3 full creation-chain regressions (review round 41)", () => {
 		const instance = await seedInstance();
 		await seedChild("a3-empty", instance.id, "ses_empty");
 		await seedTrustedFork("a3-empty", "a3-parent", instance.id, "ses_empty", 1, {
-			emptySnapshot: true,
+			snapshotVersion: 0,
 		});
 		expect(await rejected(instance.id, "ses_empty")).toBe("provider_binding_invalid");
 	});
@@ -377,7 +406,13 @@ describe("A3 full creation-chain regressions (review round 41)", () => {
 				actionType: "prompt",
 				requestedBy: "user",
 				status: "succeeded",
-				metadata: { parentSessionId: "a3-parent", providerInstanceId: instance.id, generation: 1 },
+				metadata: {
+					instanceOriginSessionId: "a3-parent",
+					directParentSessionId: "a3-nonfork",
+					nativeSessionId: "ses_nonfork",
+					providerInstanceId: instance.id,
+					generation: 1,
+				},
 			})
 			.returning();
 		await getDb()
@@ -385,8 +420,20 @@ describe("A3 full creation-chain regressions (review round 41)", () => {
 			.values({
 				actionId: action.id,
 				requestHash: "h",
-				parentSnapshot: { messages: [] },
-			}); // ledger row (FK -> control_actions, present)
+				identity: {
+					instanceOriginSessionId: "a3-parent",
+					directParentSessionId: "a3-nonfork",
+					nativeSessionId: "ses_nonfork",
+					providerInstanceId: instance.id,
+					generation: 1,
+				},
+				parentSnapshot: {
+					version: 1,
+					instanceId: instance.id,
+					nativeSessionId: "ses_nonfork",
+					messages: [],
+				},
+			});
 		await getDb().insert(opencodeForks).values({
 			childSessionId: "a3-nonfork",
 			parentSessionId: "a3-parent",
@@ -450,5 +497,83 @@ describe("A3 full creation-chain regressions (review round 41)", () => {
 				),
 			);
 		expect(rows2).toHaveLength(1); // verified domain → skip (managed)
+	});
+});
+
+describe("A3 two-anchor contract regressions (review round 42)", () => {
+	async function seedChild(sessionId: string, instanceId: string, native: string) {
+		await getDb().insert(sessions).values({ sessionId, agentType: "opencode", cwd: "/tmp" });
+		await getDb()
+			.insert(managedSessions)
+			.values({
+				sessionId,
+				launchRequestId: (
+					await getDb()
+						.select()
+						.from(launchRequests)
+						.where(eq(launchRequests.launchCorrelationId, "a3-parent"))
+				)[0].id,
+				supervisorId: "a3-host",
+				providerSessionId: native,
+				managedState: "managed",
+			});
+		await getDb().insert(sessionControlBindings).values({
+			sessionId,
+			origin: "agentpulse_launch",
+			instanceId,
+			nativeSessionId: native,
+			generation: 1,
+		});
+	}
+	const rejected = async (instanceId: string, native: string) =>
+		acceptOpenCodeSnapshot("a3-host", instanceId, baseInput(native)).then(
+			() => "NO_THROW",
+			(e: Error) => e.message,
+		);
+
+	test("forking FROM a child (child-of-child) is accepted: direct parent ≠ instance origin", async () => {
+		const instance = await seedInstance();
+		await seedChild("a3-c1", instance.id, "ses_c1");
+		// c1 is itself a fork child of a3-parent (direct parent of c1)
+		await seedTrustedFork("a3-c1", "a3-parent", instance.id, "ses_c1", 1);
+		// c2 is forked FROM c1 — direct parent is c1, origin stays a3-parent
+		await seedChild("a3-c2", instance.id, "ses_c2");
+		await seedTrustedFork(
+			"a3-c2",
+			"a3-c1",
+			instance.id,
+			"ses_c2",
+			1,
+			{ instanceOrigin: "a3-parent" },
+			"ses_c1",
+		);
+		const out = await acceptOpenCodeSnapshot("a3-host", instance.id, baseInput("ses_c2"));
+		expect(out).toBeTruthy();
+	});
+
+	test("deleting the DIRECT PARENT keeps the child trusted through the action metadata + label", async () => {
+		const instance = await seedInstance();
+		await seedChild("a3-dc", instance.id, "ses_dc");
+		await seedChild("a3-parent2", instance.id, "ses_parent2");
+		await seedTrustedFork("a3-dc", "a3-parent2", instance.id, "ses_dc", 1, {}, "ses_parent2");
+		expect(await rejected(instance.id, "ses_dc")).toBe("NO_THROW");
+		// delete the direct parent (not the instance origin) → SET NULL + label
+		await getDb().delete(sessions).where(eq(sessions.sessionId, "a3-parent2"));
+		expect(await rejected(instance.id, "ses_dc")).toBe("NO_THROW");
+	});
+
+	test("a snapshot naming the WRONG instance or native identity is not creation evidence", async () => {
+		const instance = await seedInstance();
+		await seedChild("a3-snap1", instance.id, "ses_snap1");
+		await seedTrustedFork("a3-snap1", "a3-parent", instance.id, "ses_snap1", 1, {
+			snapshotNative: "ses_WRONG",
+		});
+		expect(await rejected(instance.id, "ses_snap1")).toBe("provider_binding_invalid");
+
+		await seedChild("a3-snap2", instance.id, "ses_snap2");
+		await seedTrustedFork("a3-snap2", "a3-parent", instance.id, "ses_snap2", 1, {
+			snapshotInstance: "other-instance",
+		});
+		expect(await rejected(instance.id, "ses_snap2")).toBe("provider_binding_invalid");
 	});
 });

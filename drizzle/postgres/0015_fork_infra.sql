@@ -15,10 +15,10 @@ CREATE INDEX "idx_opencode_forks_parent" ON "opencode_forks" ("parent_session_id
 CREATE TABLE "opencode_fork_requests" (
 	"action_id" text PRIMARY KEY NOT NULL,
 	"request_hash" text NOT NULL,
+	"identity_json" text,
 	"parent_snapshot_json" text,
 	"child_map_json" text,
-	"created_at" text DEFAULT CURRENT_TIMESTAMP NOT NULL,
-	CONSTRAINT "opencode_fork_requests_action_id_control_actions_id_fk" FOREIGN KEY ("action_id") REFERENCES "control_actions"("id") ON UPDATE no action ON DELETE cascade
+	"created_at" text DEFAULT CURRENT_TIMESTAMP NOT NULL
 );--> statement-breakpoint
 CREATE UNIQUE INDEX "uq_fork_action_idem" ON "control_actions" (COALESCE("requested_by_user_id",''),"idempotency_key") WHERE "action_type" = 'opencode_fork' AND "idempotency_key" IS NOT NULL;--> statement-breakpoint
 ALTER TABLE "provider_instances" ADD COLUMN "source_instance_id" text;

@@ -1164,8 +1164,9 @@ async function runLegacySqliteInit(sqlite: Database): Promise<void> {
 		)`,
 		"CREATE INDEX IF NOT EXISTS idx_opencode_forks_parent ON opencode_forks(parent_session_id)",
 		`CREATE TABLE IF NOT EXISTS opencode_fork_requests (
-			action_id TEXT PRIMARY KEY REFERENCES control_actions(id) ON DELETE CASCADE,
+			action_id TEXT PRIMARY KEY,
 			request_hash TEXT NOT NULL,
+			identity_json TEXT,
 			parent_snapshot_json TEXT,
 			child_map_json TEXT,
 			created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -1176,6 +1177,7 @@ async function runLegacySqliteInit(sqlite: Database): Promise<void> {
 		"ALTER TABLE opencode_forks ADD COLUMN provider_instance_id TEXT",
 		"ALTER TABLE opencode_forks ADD COLUMN native_session_id TEXT",
 		"ALTER TABLE opencode_forks ADD COLUMN generation INTEGER",
+		"ALTER TABLE opencode_fork_requests ADD COLUMN identity_json TEXT",
 	];
 
 	// Vector search opt-in. The embeddings table only materializes when

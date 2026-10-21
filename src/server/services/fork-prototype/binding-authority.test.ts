@@ -205,24 +205,45 @@ describe("A1/A3 shared trusted-fork-child validation", () => {
 		const [action] = await getDb()
 			.insert(controlActions)
 			.values({
-				sessionId: "ba-child",
+				// request targets the DIRECT PARENT; the ledger records the child
+				sessionId: "ba-parent",
 				actionType: "opencode_fork",
 				requestedBy: "user",
 				status: "succeeded",
-				metadata: { parentSessionId: "ba-parent", providerInstanceId: instanceId, generation: 1 },
+				metadata: {
+					instanceOriginSessionId: "ba-parent",
+					directParentSessionId: "ba-parent",
+					nativeSessionId: "ses_p",
+					providerInstanceId: instanceId,
+					generation: 1,
+				},
 			})
 			.returning();
 		await getDb()
 			.insert(opencodeForkRequests)
-			.values({ actionId: action.id, requestHash: "h", parentSnapshot: { messages: [] } });
-		await getDb().insert(opencodeForks).values({
-			childSessionId: "ba-child",
-			parentSessionId: "ba-parent",
-			requestActionId: action.id,
-			providerInstanceId: instanceId,
-			nativeSessionId: "ses_c",
-			generation: 1,
-		});
+			.values({
+				actionId: action.id,
+				requestHash: "h",
+				identity: {
+					instanceOriginSessionId: "ba-parent",
+					directParentSessionId: "ba-parent",
+					nativeSessionId: "ses_p",
+					providerInstanceId: instanceId,
+					generation: 1,
+				},
+				parentSnapshot: { version: 1, instanceId, nativeSessionId: "ses_p", messages: [] },
+			});
+		await getDb()
+			.insert(opencodeForks)
+			.values({
+				childSessionId: "ba-child",
+				parentSessionId: "ba-parent",
+				parentLabel: { directParentSessionId: "ba-parent", parentNativeSessionId: "ses_p" },
+				requestActionId: action.id,
+				providerInstanceId: instanceId,
+				nativeSessionId: "ses_c",
+				generation: 1,
+			});
 		expect((await inspectOpenCodeProvenance("ba-child"))?.bindingValid).toBe(true);
 		await expect(assertSessionControlOrigin("ba-child", adminActor)).resolves.toBeUndefined();
 		// parent deletion keeps the child authorized (instance/launch association survives)

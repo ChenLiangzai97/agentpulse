@@ -722,6 +722,9 @@ export async function queueOpenCodeAction(
 					agentType: "opencode",
 					instanceId: binding.instanceId,
 					generation: binding.generation,
+					// A6 addressing: the RESOLVED binding's native session id —
+					// a fork child's action names the child, not the parent.
+					nativeSessionId: binding.nativeSessionId,
 					...(kind === "prompt"
 						? {
 								prompt: input.prompt,
