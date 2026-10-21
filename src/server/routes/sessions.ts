@@ -54,6 +54,7 @@ import {
 	queueStopAction,
 	retryLaunchForSession,
 } from "../services/control-actions.js";
+import { config } from "../config.js";
 import { toSessionEventDtos } from "../services/event-dto.js";
 import { notifySessionUpdated } from "../services/notifier.js";
 import {
@@ -882,6 +883,38 @@ sessionsRouter.post("/sessions/:sessionId/stop", async (c: Context) => {
 		return c.json({ action }, 202);
 	} catch (error) {
 		return c.json({ error: error instanceof Error ? error.message : "Unable to queue stop" }, 400);
+	}
+});
+
+sessionsRouter.post("/sessions/:sessionId/fork", async (c: Context) => {
+	// Fork REQUEST acceptance. Closed unless the operator opens the entry.
+	if (!config.opencodeForkEntry)
+		return c.json({ error: "opencode_fork_entry_closed" }, 403);
+	try {
+		const body = await c.req.json<{
+			forkPointMessageId?: string;
+			childDisplayName?: string;
+		}>();
+		const authUser = c.get("authUser") as AuthUser | undefined;
+		const action = await queueOpenCodeAction(
+			c.req.param("sessionId"),
+			"opencode_fork",
+			{
+				...(body.forkPointMessageId
+					? { forkPointMessageId: body.forkPointMessageId }
+					: {}),
+				...(body.childDisplayName ? { childDisplayName: body.childDisplayName } : {}),
+			},
+			actorFromAuthUser(authUser),
+		);
+		return c.json({ action }, 202);
+	} catch (error) {
+		if (error instanceof SessionControlOriginError)
+			return c.json({ error: error.code }, error.status);
+		return c.json(
+			{ error: error instanceof Error ? error.message : "Unable to queue fork" },
+			400,
+		);
 	}
 });
 

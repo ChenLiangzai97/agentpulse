@@ -9,6 +9,7 @@ import {
 	events,
 	controlActions,
 	managedSessions,
+	opencodeForkRequests,
 	providerInstances,
 	providerInteractions,
 	sessionControlBindings,
@@ -507,7 +508,13 @@ export async function writeOpenCodePrefs(
 
 export async function queueOpenCodeAction(
 	sessionId: string,
-	kind: "interrupt" | "stop" | "prompt" | "interaction_response" | "opencode_command",
+	kind:
+		| "interrupt"
+		| "stop"
+		| "prompt"
+		| "interaction_response"
+		| "opencode_command"
+		| "opencode_fork",
 	input: Json,
 	actor: Actor,
 ) {
@@ -670,6 +677,28 @@ export async function queueOpenCodeAction(
 			)
 				throw new Error("opencode_invalid_command");
 		}
+		if (kind === "opencode_fork") {
+			const [instance] = await tx
+				.select()
+				.from(providerInstances)
+				.where(eq(providerInstances.id, binding.instanceId ?? ""));
+			// This slice forks the INSTANCE's launching session only; a child as
+			// a copy source is not supported yet.
+			if (!instance || instance.sessionId !== sessionId)
+				throw new Error("opencode_fork_child_source_unsupported");
+			if (
+				input.forkPointMessageId !== undefined &&
+				input.forkPointMessageId !== null &&
+				(typeof input.forkPointMessageId !== "string" ||
+					!/^msg_[A-Za-z0-9_-]{1,180}$/.test(input.forkPointMessageId))
+			)
+				throw new Error("opencode_fork_point_invalid");
+			if (
+				input.childDisplayName !== undefined &&
+				(typeof input.childDisplayName !== "string" || input.childDisplayName.length > 120)
+			)
+				throw new Error("opencode_fork_label_invalid");
+		}
 		if (kind === "opencode_command" && input.model !== undefined) {
 			const model = input.model as { providerID?: unknown; modelID?: unknown } | null;
 			if (
@@ -710,6 +739,27 @@ export async function queueOpenCodeAction(
 			(input.agent === null || typeof input.agent !== "string" || input.agent.length > 120)
 		)
 			throw new Error("invalid_prompt_agent");
+		const [instanceForFork] =
+			kind === "opencode_fork"
+				? await tx
+						.select()
+						.from(providerInstances)
+						.where(eq(providerInstances.id, binding.instanceId ?? ""))
+				: [];
+		const forkMetadata =
+			kind === "opencode_fork"
+				? {
+						instanceOriginSessionId: instanceForFork?.sessionId ?? "",
+						directParentSessionId: sessionId,
+						childDisplayName:
+							typeof input.childDisplayName === "string" && input.childDisplayName.trim()
+								? input.childDisplayName.trim()
+								: "分支",
+						...(typeof input.forkPointMessageId === "string"
+							? { forkPointMessageId: input.forkPointMessageId }
+							: {}),
+					}
+				: {};
 		const [action] = await tx
 			.insert(controlActions)
 			.values({
@@ -750,9 +800,29 @@ export async function queueOpenCodeAction(
 								answers: input.answers,
 							}
 						: {}),
+					...(kind === "opencode_fork" ? forkMetadata : {}),
 				},
 			})
 			.returning();
+		if (kind === "opencode_fork") {
+			// The acceptance ledger row is what finalize verifies. The identity
+			// (claim token etc.) is only filled in by the supervisor report.
+			await tx.insert(opencodeForkRequests).values({
+				actionId,
+				requestHash: createHash("sha256")
+					.update(
+						JSON.stringify({
+							sessionId,
+							instanceId: binding.instanceId,
+							generation: binding.generation,
+							nativeSessionId: binding.nativeSessionId,
+							forkPointMessageId: input.forkPointMessageId ?? null,
+						}),
+					)
+					.digest("hex"),
+				identity: null,
+			});
+		}
 		return action;
 	});
 }
