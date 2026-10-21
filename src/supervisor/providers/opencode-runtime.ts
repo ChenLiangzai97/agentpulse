@@ -96,9 +96,14 @@ export interface OpenCodeRuntime {
 	reconcileUnsettled(target: string): Promise<boolean>;
 	withResumeLock<T>(target: string, run: () => Promise<T>): Promise<T>;
 	markResumeUncertain(target: string): Promise<void>;
+	persistResumeIntent(
+		target: string,
+		intent: { actionId: string; claimToken: string; epoch: number },
+	): Promise<void>;
+	resolveResumeIntent(target: string): Promise<boolean>;
 	uncertainResumes(): string[];
 	/** Clears an uncertain resume ONLY after an external, verified reconciliation. */
-	clearResumeUncertain(target: string): Promise<void>;
+	clearResumeUncertain(target: string): Promise<boolean>;
 	unsettledAbortAttempts(): {
 		attemptId: string;
 		nativeSessionId: string;
@@ -433,7 +438,15 @@ export class OpenCodeRuntimePool {
 				}
 			}
 			await mkdir(uncertainDirectory, { recursive: true, mode: 0o700 });
-			for (const name of await readdir(uncertainDirectory).catch(() => [] as string[])) {
+			let uncertainFiles: string[];
+			try {
+				uncertainFiles = await readdir(uncertainDirectory);
+			} catch {
+				// Fail closed: we cannot enumerate resume intents.
+				claimsQuarantined = true;
+				uncertainFiles = [];
+			}
+			for (const name of uncertainFiles) {
 				if (!name.endsWith(".json")) continue;
 				try {
 					const record = JSON.parse(
@@ -889,8 +902,16 @@ export class OpenCodeRuntimePool {
 				 * token/epoch fence cover the report boundary).
 				 */
 				/** Unknown resume outcome: keep the target frozen until reconciliation. */
-				async markResumeUncertain(target: string) {
-					resumeUncertain.add(target);
+				/**
+				 * Persist the resume INTENT (action/token/epoch/identity) BEFORE the
+				 * success report. A crash after the commit but before the response is
+				 * then still visible as an unresolved intent. Write failures are
+				 * fail-closed: the caller must not report success.
+				 */
+				async persistResumeIntent(
+					target: string,
+					intent: { actionId: string; claimToken: string; epoch: number },
+				) {
 					const path = join(uncertainDirectory, `${encodeURIComponent(target)}.json`);
 					await writePrivateFileAtomic(
 						path,
@@ -899,16 +920,36 @@ export class OpenCodeRuntimePool {
 							instanceId: input.instanceId,
 							generation: input.generation,
 							nativeSessionId: target,
+							actionId: intent.actionId,
+							claimToken: intent.claimToken,
+							epoch: intent.epoch,
 							createdAt: new Date().toISOString(),
 						}),
-					).catch((error: unknown) => {
-						cleanupIssues.push({
-							claimId: target,
-							path,
-							error: error instanceof Error ? error.message : "resume_uncertain_persist_failed",
-						});
-					});
-					cleanupIssues.push({ claimId: target, path, error: "resume_report_uncertain" });
+					);
+					resumeUncertain.add(target);
+					cleanupIssues.push({ claimId: intent.actionId, path, error: "resume_intent_pending" });
+				},
+				/** The success report landed: the intent is resolved. */
+				async resolveResumeIntent(target: string) {
+					const path = join(uncertainDirectory, `${encodeURIComponent(target)}.json`);
+					try {
+						await unlink(path);
+					} catch (error) {
+						if ((error as { code?: string }).code !== "ENOENT") {
+							cleanupIssues.push({
+								claimId: target,
+								path,
+								error: error instanceof Error ? error.message : "resume_intent_unlink_failed",
+							});
+							return false;
+						}
+					}
+					resumeUncertain.delete(target);
+					return true;
+				},
+				async markResumeUncertain(target: string) {
+					// Kept for the pre-report failure path (no intent was written).
+					resumeUncertain.add(target);
 				},
 				uncertainResumes() {
 					return [...resumeUncertain];
@@ -929,8 +970,21 @@ export class OpenCodeRuntimePool {
 					}
 				},
 				async clearResumeUncertain(target: string) {
+					const path = join(uncertainDirectory, `${encodeURIComponent(target)}.json`);
+					try {
+						await unlink(path);
+					} catch (error) {
+						if ((error as { code?: string }).code !== "ENOENT") {
+							cleanupIssues.push({
+								claimId: target,
+								path,
+								error: error instanceof Error ? error.message : "resume_clear_unlink_failed",
+							});
+							return false; // stay frozen until the durable record is gone
+						}
+					}
 					resumeUncertain.delete(target);
-					await unlink(join(uncertainDirectory, `${encodeURIComponent(target)}.json`)).catch(() => {});
+					return true;
 				},
 				unsettledAbortAttempts() {
 					return [...persistedAttempts.values()];

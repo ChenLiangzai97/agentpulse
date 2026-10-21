@@ -1480,7 +1480,11 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 			// released, so a new delivery/abort is still refused afterwards.
 			await expect(
 				runtime.withResumeLock(runtime.nativeSessionId, async () => {
-					runtime.markResumeUncertain(runtime.nativeSessionId);
+					await runtime.persistResumeIntent(runtime.nativeSessionId, {
+						actionId: "action-resume",
+						claimToken: "token-resume",
+						epoch: 2,
+					});
 					throw new Error("report_response_lost");
 				}),
 			).rejects.toThrow("report_response_lost");
@@ -1503,10 +1507,99 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 			await expect(
 				restarted.withResumeLock(runtime.nativeSessionId, async () => "x"),
 			).rejects.toThrow("opencode_resume_uncertain");
-			await restarted.clearResumeUncertain(runtime.nativeSessionId);
+			expect(await restarted.clearResumeUncertain(runtime.nativeSessionId)).toBe(true);
 			expect(restarted.uncertainResumes()).toEqual([]);
 			await restarted.stop();
 		} finally {
+			mock.kill();
+			await rm(root, { recursive: true, force: true });
+		}
+	},
+	120000,
+);
+
+
+test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
+	"real CLI: resume intent persistence and clearing are fail-closed",
+	async () => {
+		const root = await mkdtemp(join(tmpdir(), "ap-resume-intent-"));
+		const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+			stdout: "pipe",
+			stderr: "ignore",
+		});
+		const reader = mock.stdout.getReader();
+		let line = "";
+		while (!line.includes("\n")) {
+			const next = await reader.read();
+			if (next.done) throw new Error("mock exited");
+			line += new TextDecoder().decode(next.value);
+		}
+		const port = Number(line.trim());
+		const profilePath = join(root, "profile.json");
+		await writeFile(
+			profilePath,
+			JSON.stringify({
+				model: "p0/fixture-model",
+				provider: {
+					p0: {
+						npm: "@ai-sdk/openai-compatible",
+						options: { baseURL: `http://127.0.0.1:${port}/v1`, apiKey: "p0-fixture-key" },
+						models: {
+							"fixture-model": { name: "Fixture", tool_call: true, limit: { context: 32768, output: 2048 } },
+						},
+					},
+				},
+			}),
+			{ mode: 0o600 },
+		);
+		const cwd = join(root, "project");
+		await mkdir(cwd);
+		const stateDirectory = join(root, "state");
+		const instanceId = "resume-intent-instance";
+		const { chmod } = await import("node:fs/promises");
+		const uncertainDir = join(stateDirectory, "resume-uncertain", instanceId);
+		const pool = new OpenCodeRuntimePool({
+			executable: process.env.AGENTPULSE_OPENCODE_COMMAND || "opencode",
+			profilePath,
+			stateDirectory,
+			maxInstances: 1,
+			idleTimeoutMs: 60000,
+			stopGraceMs: 1000,
+		});
+		try {
+			const runtime = await pool.start({
+				instanceId,
+				generation: 1,
+				sessionId: "resume-intent-session",
+				cwd,
+				title: "resume intent",
+			});
+			await chmod(uncertainDir, 0o000);
+			// A write failure must REFUSE the report (throw), never silently continue.
+			await expect(
+				runtime.persistResumeIntent(runtime.nativeSessionId, {
+					actionId: "a",
+					claimToken: "t",
+					epoch: 1,
+				}),
+			).rejects.toThrow();
+			await chmod(uncertainDir, 0o700);
+			await runtime.persistResumeIntent(runtime.nativeSessionId, {
+				actionId: "a",
+				claimToken: "t",
+				epoch: 1,
+			});
+			expect(runtime.uncertainResumes()).toContain(runtime.nativeSessionId);
+			// A failed unlink keeps the target frozen.
+			await chmod(uncertainDir, 0o000);
+			expect(await runtime.clearResumeUncertain(runtime.nativeSessionId)).toBe(false);
+			expect(runtime.uncertainResumes()).toContain(runtime.nativeSessionId);
+			await chmod(uncertainDir, 0o700);
+			expect(await runtime.clearResumeUncertain(runtime.nativeSessionId)).toBe(true);
+			expect(runtime.uncertainResumes()).toEqual([]);
+			await runtime.stop();
+		} finally {
+			await chmod(uncertainDir, 0o700).catch(() => {});
 			mock.kill();
 			await rm(root, { recursive: true, force: true });
 		}

@@ -300,11 +300,13 @@ export function createControlActionHandler(
 			let reportOwned = false;
 			try {
 				if (!providers.openCodeControl) throw new Error("OpenCode provider unavailable");
-				await providers.openCodeControl(action, async (body: { status: "succeeded" | "failed"; error?: string }) => {
+				const deliver = async (body: { status: "succeeded" | "failed"; error?: string }) => {
+					// Single ownership point for EVERY status delivery.
 					reportOwned = true;
 					await report(action, body);
-				});
-				if (!reportOwned) await report(action, { status: "succeeded" });
+				};
+				await providers.openCodeControl(action, deliver);
+				if (!reportOwned) await deliver({ status: "succeeded" });
 			} catch (error) {
 				if (!reportOwned)
 					await report(action, {

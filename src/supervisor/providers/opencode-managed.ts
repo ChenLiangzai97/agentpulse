@@ -396,13 +396,23 @@ export function createManagedOpenCodeProvider(
 					)
 						throw new Error("opencode_session_unsettled");
 					if (!report) throw new Error("opencode_resume_report_unavailable");
+					const resumeEpoch =
+						typeof metadata.controlEpoch === "number" ? metadata.controlEpoch : -1;
+					// INTENT BEFORE THE REPORT: a crash after the server commit but before
+					// the response leaves a durable unresolved intent. A write failure
+					// REFUSES the report (fail-closed).
+					await runtime.persistResumeIntent(resumeTarget, {
+						actionId: action.id,
+						claimToken: String(metadata.claimToken ?? ""),
+						epoch: resumeEpoch,
+					});
 					try {
 						await report({ status: "succeeded" });
 					} catch (error) {
-						// Unknown outcome: keep the target frozen, never unlock first.
-						await runtime.markResumeUncertain(resumeTarget);
+						// Unknown outcome: the intent stays, the target stays frozen.
 						throw error;
 					}
+					await runtime.resolveResumeIntent(resumeTarget);
 					runtime.touch();
 				});
 				return;

@@ -78,3 +78,37 @@ test("an error BEFORE any report still reports failed once", async () => {
 	expect(reports).toHaveLength(1);
 	expect(reports[0]?.body.status).toBe("failed");
 });
+
+test("the DEFAULT success delivery also owns its report (lost response -> no failed fallback)", async () => {
+	const calls: { path: string; body: Record<string, unknown> }[] = [];
+	const { handle } = (() => {
+		const request = async (path: string, options?: RequestInit) => {
+			calls.push({ path, body: options?.body ? JSON.parse(String(options.body)) : {} });
+			if (path.endsWith("/control-actions/act-1/status"))
+				throw new Error("status_response_lost");
+			return { session: { displayName: "x" }, managedSession: {}, events: [] };
+		};
+		const gate = createReportGate({ request, supervisorId: SUPERVISOR_ID, home, now: () => 0, log: () => {} });
+		return {
+			handle: createControlActionHandler({
+				gate,
+				trustedRoots: [join(home, "trusted")],
+				providers: {
+					stopManagedCodexSession: async () => {},
+					promptClaudeHeadlessSession: async () => ({}) as never,
+					promptClaudeInteractiveSession: async () => ({}) as never,
+					// Provider returns WITHOUT reporting: the handler's default path runs.
+					openCodeControl: async () => {},
+				} as unknown as ControlProviders,
+				executeCleanupWorkArea: (async () => ({ removed: false, resolvedPath: "" })) as never,
+				log: () => {},
+			}),
+		};
+	})();
+	await handle(action());
+	const reports = statusReports(calls);
+	// Exactly ONE attempt: the default success. The thrown response must NOT
+	// trigger a second (failed) report.
+	expect(reports).toHaveLength(1);
+	expect(reports[0]?.body.status).toBe("succeeded");
+});
