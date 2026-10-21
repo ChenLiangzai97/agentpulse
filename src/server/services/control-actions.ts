@@ -25,6 +25,7 @@ import {
 	launchRequests,
 	managedSessions,
 	projects,
+	sessionControlBindings,
 	sessions,
 	supervisors,
 } from "../db/schema/index.js";
@@ -517,6 +518,33 @@ export async function claimNextControlAction(supervisorId: string) {
 	}
 	if (!candidate) return null;
 
+	// EXECUTION FENCE: a queued action whose protected epoch is stale (stop
+	// happened after it was queued) or whose session is stopping/stopped must
+	// never be handed out. It is failed here, not silently executed.
+	const candidateMeta = (candidate.metadata ?? {}) as Record<string, unknown>;
+	if (candidate.sessionId && typeof candidateMeta.controlEpoch === "number") {
+		const [binding] = await getDb()
+			.select()
+			.from(sessionControlBindings)
+			.where(eq(sessionControlBindings.sessionId, candidate.sessionId))
+			.limit(1);
+		const staleEpoch = binding ? candidateMeta.controlEpoch !== binding.stopEpoch : true;
+		const blocked =
+			binding && binding.stopState !== "active" && candidate.actionType !== "stop";
+		if (staleEpoch || blocked) {
+			await getDb()
+				.update(controlActions)
+				.set({
+					status: "failed",
+					error: "opencode_session_stopped",
+					finishedAt: nowIso(),
+					updatedAt: nowIso(),
+				})
+				.where(eq(controlActions.id, candidate.id));
+			return null;
+		}
+	}
+
 	const timestamp = nowIso();
 	// Claim/execution token: minted HERE, persisted with the claim, and echoed
 	// back in the result. Finalization CASes on it, so a re-claim (same status,
@@ -549,18 +577,55 @@ export async function updateControlAction(input: {
 		.limit(1);
 	if (!current || current.claimedBySupervisorId !== input.supervisorId) return null;
 
+	// RESULT FENCE: a success for a stale protected epoch (or for any executable
+	// action while the session is stopping/stopped) is NOT accepted. STOP itself
+	// transitions stopping -> stopped only for the CURRENT epoch.
+	const currentMeta = (current.metadata ?? {}) as Record<string, unknown>;
+	const controlEpoch =
+		typeof currentMeta.controlEpoch === "number" ? currentMeta.controlEpoch : null;
+	let status = input.status;
+	let error = input.error ?? null;
+	let binding: typeof sessionControlBindings.$inferSelect | undefined;
+	if (current.sessionId && controlEpoch !== null) {
+		[binding] = await getDb()
+			.select()
+			.from(sessionControlBindings)
+			.where(eq(sessionControlBindings.sessionId, current.sessionId))
+			.limit(1);
+		if (binding && status === "succeeded") {
+			const isStop = current.actionType === "stop";
+			const stale = controlEpoch !== binding.stopEpoch;
+			const stopped = !isStop && binding.stopState !== "active";
+			if (stale || stopped) {
+				status = "failed";
+				error = "opencode_session_stopped";
+			}
+		}
+	}
 	const timestamp = nowIso();
 	const [updated] = await getDb()
 		.update(controlActions)
 		.set({
-			status: input.status,
-			error: input.error ?? null,
+			status,
+			error,
 			metadata: input.metadata ?? current.metadata,
-			finishedAt: input.status === "running" ? null : timestamp,
+			finishedAt: status === "running" ? null : timestamp,
 			updatedAt: timestamp,
 		})
 		.where(eq(controlActions.id, input.actionId))
 		.returning();
+	if (
+		binding &&
+		status === "succeeded" &&
+		current.actionType === "stop" &&
+		binding.stopState === "stopping" &&
+		controlEpoch === binding.stopEpoch
+	) {
+		await getDb()
+			.update(sessionControlBindings)
+			.set({ stopState: "stopped" })
+			.where(eq(sessionControlBindings.sessionId, current.sessionId ?? ""));
+	}
 
 	if (
 		current.actionType === "opencode_health" &&

@@ -76,6 +76,10 @@ export const sessionControlBindingsSqlite = sqliteTable(
 		}),
 		nativeSessionId: text("native_session_id"),
 		generation: integer("generation"),
+		// PROTECTED stop gate (fork design D): every executable action carries the
+		// epoch it was queued at; stop increments it and moves active->stopping.
+		stopState: text("stop_state").notNull().default("active"),
+		stopEpoch: integer("stop_epoch").notNull().default(0),
 		createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
 	},
 	(t) => ({
@@ -103,6 +107,8 @@ export const sessionControlBindingsPg = pgTable(
 		}),
 		nativeSessionId: pgText("native_session_id"),
 		generation: pgInteger("generation"),
+		stopState: pgText("stop_state").notNull().default("active"),
+		stopEpoch: pgInteger("stop_epoch").notNull().default(0),
 		createdAt: tsColumn("postgres", "created_at"),
 	},
 	(t) => ({

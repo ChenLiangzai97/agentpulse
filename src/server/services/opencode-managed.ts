@@ -540,10 +540,29 @@ export async function queueOpenCodeAction(
 			)
 			.returning();
 		if (!fence.length) throw new SessionControlOriginError("provider_binding_invalid");
+		// PROTECTED STOP GATE: the binding carries the epoch every executable
+		// action is queued at; STOP increments it and moves active -> stopping.
+		const [controlBinding] = await tx
+			.select()
+			.from(sessionControlBindings)
+			.where(eq(sessionControlBindings.sessionId, sessionId))
+			.limit(1);
+		const executable =
+			kind === "prompt" ||
+			kind === "opencode_command" ||
+			kind === "opencode_fork" ||
+			kind === "interaction_response" ||
+			kind === "interrupt";
+		let controlEpoch = controlBinding?.stopEpoch ?? 0;
 		if (kind === "stop") {
-			// Monotonic cancellation only. STOP/RESUME GATING (a protected epoch
-			// that fences every executable action, claim and result) is NOT yet
-			// implemented — no marker is written and no resume path is exposed.
+			if (!controlBinding) throw new SessionControlOriginError("provider_binding_invalid");
+			if (controlBinding.stopState !== "active") throw new Error("opencode_session_already_stopping");
+			controlEpoch = controlBinding.stopEpoch + 1;
+			await tx
+				.update(sessionControlBindings)
+				.set({ stopState: "stopping", stopEpoch: controlEpoch })
+				.where(eq(sessionControlBindings.sessionId, sessionId));
+			// Cancel EVERY queued executable delivery, not just prompts.
 			await tx
 				.update(controlActions)
 				.set({
@@ -555,7 +574,13 @@ export async function queueOpenCodeAction(
 				.where(
 					and(
 						eq(controlActions.sessionId, sessionId),
-						eq(controlActions.actionType, "prompt"),
+						inArray(controlActions.actionType, [
+							"prompt",
+							"opencode_command",
+							"opencode_fork",
+							"interaction_response",
+							"interrupt",
+						]),
 						eq(controlActions.status, "queued"),
 					),
 				);
@@ -568,6 +593,8 @@ export async function queueOpenCodeAction(
 						eq(providerInteractions.status, "pending"),
 					),
 				);
+		} else if (executable && controlBinding && controlBinding.stopState !== "active") {
+			throw new Error("opencode_session_stopping");
 		}
 		if (kind === "opencode_fork") {
 			const [instance] = await tx
@@ -899,7 +926,8 @@ export async function queueOpenCodeAction(
 								answers: input.answers,
 							}
 						: {}),
-					...(kind === "opencode_fork" ? { ...forkMetadata, forkRequestHash } : {}),
+					controlEpoch,
+				...(kind === "opencode_fork" ? { ...forkMetadata, forkRequestHash } : {}),
 				},
 			})
 			.returning();

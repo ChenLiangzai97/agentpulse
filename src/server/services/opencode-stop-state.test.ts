@@ -1,9 +1,9 @@
 /**
- * STOP cancellation semantics that ARE safe today: queued prompt deliveries are
- * cancelled and pending approvals expire. The PROTECTED stop/resume epoch that
- * must fence every executable action, claim and result is NOT implemented yet —
- * no marker is written and no resume entry is exposed, so these tests assert
- * only the monotonic cancellation, never a "stopped" state.
+ * PROTECTED stop gate (fork design D): the binding carries an epoch; STOP
+ * increments it and moves active -> stopping; executable actions are refused
+ * while stopping; the claim fence never hands out stale-epoch actions; the
+ * result fence refuses stale successes and only a CURRENT stop success moves
+ * stopping -> stopped. Resume is NOT implemented (no entry).
  */
 import "../db/__test_db.js";
 import { beforeAll, beforeEach, expect, test } from "bun:test";
@@ -11,14 +11,16 @@ import { eq } from "drizzle-orm";
 import { getDb, initializeDatabase } from "../db/client.js";
 import {
 	controlActions,
+	events as eventsTable,
 	launchRequests,
 	managedSessions,
 	providerInstances,
+	providerInteractions as providerInteractionsTable,
 	sessionControlBindings,
 	sessions,
 	supervisors,
 } from "../db/schema/index.js";
-import { events as eventsTable, providerInteractions as providerInteractionsTable } from "../db/schema/index.js";
+import { claimNextControlAction, updateControlAction } from "./control-actions.js";
 import { reserveOpenCodeInstance } from "./opencode-control-provenance.js";
 import { queueOpenCodeAction } from "./opencode-managed.js";
 
@@ -86,60 +88,108 @@ async function seed() {
 	return { parentId, instance };
 }
 
-test("stop cancels queued prompt deliveries (monotonic, no state claim)", async () => {
+const bindingOf = async (sessionId: string) => {
+	const [row] = await getDb()
+		.select()
+		.from(sessionControlBindings)
+		.where(eq(sessionControlBindings.sessionId, sessionId));
+	return row;
+};
+
+test("STOP increments the epoch, moves to stopping and cancels every queued executable action", async () => {
 	const { parentId } = await seed();
 	await queueOpenCodeAction(parentId, "prompt", { prompt: "queued work" }, actor);
-	await queueOpenCodeAction(parentId, "stop", {}, actor);
+	const stop = await queueOpenCodeAction(parentId, "stop", {}, actor);
+	const binding = await bindingOf(parentId);
+	expect(binding?.stopState).toBe("stopping");
+	expect(binding?.stopEpoch).toBe(1);
+	expect((stop.metadata as Record<string, unknown>).controlEpoch).toBe(1);
 	const actions = await getDb()
 		.select()
 		.from(controlActions)
 		.where(eq(controlActions.sessionId, parentId));
-	const prompt = actions.find((action) => action.actionType === "prompt");
-	expect(prompt?.status).toBe("failed");
-	expect(prompt?.error).toBe("opencode_session_stopped");
-	// NO protected stopped state is claimed: new work is NOT silently gated by
-	// an unverified marker.
-	const [row] = await getDb().select().from(sessions).where(eq(sessions.sessionId, parentId));
-	expect((row?.metadata as Record<string, unknown>)?.controlStoppedAt ?? null).toBeNull();
+	expect(actions.find((a) => a.actionType === "prompt")?.status).toBe("failed");
+	// While stopping, NO executable action can be queued (not just prompts).
+	for (const kind of ["prompt", "opencode_command", "opencode_fork"] as const) {
+		await expect(
+			queueOpenCodeAction(
+				parentId,
+				kind,
+				kind === "prompt" ? { prompt: "x" } : kind === "opencode_command" ? { command: "x" } : {},
+				actor,
+			),
+		).rejects.toThrow("opencode_session_stopping");
+	}
 });
 
-test("an EXPIRED interaction is never resurrected as pending by a later snapshot", async () => {
+test("the CLAIM fence fails a stale-epoch action instead of executing it", async () => {
 	const { parentId, instance } = await seed();
-	const { acceptOpenCodeSnapshot } = await import("./opencode-managed.js");
-	const { providerInteractions } = await import("../db/schema/index.js");
-	const permission = { id: "per_1", sessionID: "ses_parent", type: "permission" };
-	await acceptOpenCodeSnapshot("stop-host", instance.id, {
-		generation: 1,
-		nativeSessionId: "ses_parent",
-		messages: [],
-		permissions: [permission],
-		questions: [],
-		status: { type: "busy" },
-	});
-	const [pending] = await getDb()
-		.select()
-		.from(providerInteractions)
-		.where(eq(providerInteractions.sessionId, parentId));
-	expect(pending?.status).toBe("pending");
-	// STOP expires it (monotonic side effect)...
 	await queueOpenCodeAction(parentId, "stop", {}, actor);
-	const [expired] = await getDb()
-		.select()
-		.from(providerInteractions)
-		.where(eq(providerInteractions.sessionId, parentId));
-	expect(expired?.status).toBe("expired");
-	// ...and a LATER snapshot re-listing the same native request cannot re-open it.
-	await acceptOpenCodeSnapshot("stop-host", instance.id, {
-		generation: 1,
-		nativeSessionId: "ses_parent",
-		messages: [],
-		permissions: [permission],
-		questions: [],
-		status: { type: "busy" },
+	// An action queued at the OLD epoch (e.g. a claim from before the stop).
+	const [stale] = await getDb()
+		.insert(controlActions)
+		.values({
+			id: crypto.randomUUID(),
+			sessionId: parentId,
+			actionType: "prompt",
+			status: "queued",
+			metadata: {
+				agentType: "opencode",
+				instanceId: instance.id,
+				generation: 1,
+				nativeSessionId: "ses_parent",
+				controlEpoch: 0,
+				prompt: "stale",
+			},
+			createdAt: new Date(Date.now() - 60_000).toISOString(),
+			updatedAt: new Date().toISOString(),
+		})
+		.returning();
+	// The STOP (current epoch) is claimable; the stale prompt is not.
+	const claimed = await claimNextControlAction("stop-host");
+	expect(claimed?.actionType).toBe("stop");
+	expect(await claimNextControlAction("stop-host")).toBeNull();
+	const [after] = await getDb().select().from(controlActions).where(eq(controlActions.id, stale.id));
+	expect(after?.status).toBe("failed");
+	expect(after?.error).toBe("opencode_session_stopped");
+});
+
+test("the RESULT fence refuses stale successes and only a current STOP success marks stopped", async () => {
+	const { parentId } = await seed();
+	const stop = await queueOpenCodeAction(parentId, "stop", {}, actor);
+	await getDb()
+		.update(controlActions)
+		.set({ status: "running", claimedBySupervisorId: "stop-host" })
+		.where(eq(controlActions.id, stop.id));
+	// A stale stop (old epoch) reporting success must NOT transition to stopped.
+	await getDb()
+		.update(controlActions)
+		.set({
+			metadata: { ...(stop.metadata as Record<string, unknown>), controlEpoch: 0 },
+		})
+		.where(eq(controlActions.id, stop.id));
+	const refused = await updateControlAction({
+		actionId: stop.id,
+		supervisorId: "stop-host",
+		status: "succeeded",
 	});
-	const [after] = await getDb()
-		.select()
-		.from(providerInteractions)
-		.where(eq(providerInteractions.sessionId, parentId));
-	expect(after?.status).toBe("expired");
+	expect(refused?.status).toBe("failed");
+	expect(refused?.error).toBe("opencode_session_stopped");
+	expect((await bindingOf(parentId))?.stopState).toBe("stopping");
+	// The CURRENT stop success completes the transition.
+	await getDb()
+		.update(controlActions)
+		.set({
+			status: "running",
+			metadata: { ...(stop.metadata as Record<string, unknown>), controlEpoch: 1 },
+			claimedBySupervisorId: "stop-host",
+		})
+		.where(eq(controlActions.id, stop.id));
+	const accepted = await updateControlAction({
+		actionId: stop.id,
+		supervisorId: "stop-host",
+		status: "succeeded",
+	});
+	expect(accepted?.status).toBe("succeeded");
+	expect((await bindingOf(parentId))?.stopState).toBe("stopped");
 });

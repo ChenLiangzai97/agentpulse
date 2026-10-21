@@ -11,4 +11,8 @@ export const PROVIDER_CONTROL_SQLITE_MIGRATIONS = [
 	// A4 source-domain association (added after the CREATE so legacy installs
 	// with an older provider_instances shape gain it too).
 	"ALTER TABLE provider_instances ADD COLUMN source_instance_id TEXT",
+	// Protected stop gate (fork design D), added after the CREATE so legacy
+	// installs with the older bindings shape gain it too.
+	"ALTER TABLE session_control_bindings ADD COLUMN stop_state TEXT NOT NULL DEFAULT 'active'",
+	"ALTER TABLE session_control_bindings ADD COLUMN stop_epoch INTEGER NOT NULL DEFAULT 0",
 ];
