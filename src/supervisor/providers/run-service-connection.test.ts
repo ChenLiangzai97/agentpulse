@@ -1,0 +1,120 @@
+import { afterAll, expect, test } from "bun:test";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { processStartTicks } from "./opencode-recovery.js";
+import {
+	connectRunService,
+	createRunServiceStore,
+	fetchRunServiceIdentity,
+	runServiceDirectory,
+} from "./run-service-connection.js";
+
+const root = await mkdtemp(join(tmpdir(), "ap-run-store-"));
+afterAll(() => rm(root, { recursive: true, force: true }));
+
+test("paths come from root+instance only (no caller paths, no traversal)", () => {
+	expect(() => runServiceDirectory(root, "../escape")).toThrow("run_service_invalid_instance");
+	expect(runServiceDirectory(root, "ok-1").startsWith(root)).toBe(true);
+});
+
+test("manifest/token must be private and owned by this uid", async () => {
+	const store = createRunServiceStore(root);
+	const directory = await store.ensure("perms");
+	const manifest = {
+		version: 1 as const,
+		instanceId: "perms",
+		generation: 1,
+		nativeSessionId: "ses_p",
+		pid: process.pid,
+		startTicks: await processStartTicks(process.pid),
+		url: "http://127.0.0.1:1",
+		tokenPath: join(directory, "token"),
+	};
+	await store.write("perms", manifest, "tok");
+	expect(await store.readToken("perms")).toBe("tok");
+	await chmod(join(directory, "token"), 0o644);
+	await expect(store.readToken("perms")).rejects.toThrow("run_service_not_private");
+	await chmod(join(directory, "token"), 0o600);
+});
+
+test("the adapter refuses a redirect WITHOUT forwarding credentials", async () => {
+	let hit = 0;
+	const server = Bun.serve({
+		port: 0,
+		fetch() {
+			hit += 1;
+			return new Response("", { status: 302, headers: { Location: "http://example.com/" } });
+		},
+	});
+	try {
+		await expect(
+			fetchRunServiceIdentity(`http://127.0.0.1:${server.port}`, "tok"),
+		).rejects.toThrow("run_service_redirect_refused");
+		expect(hit).toBe(1); // no follow-up request
+	} finally {
+		server.stop(true);
+	}
+});
+
+test("the adapter times out and refuses non-loopback URLs", async () => {
+	const server = Bun.serve({ port: 0, async fetch() {
+		await Bun.sleep(2000);
+		return Response.json({});
+	} });
+	try {
+		await expect(
+			fetchRunServiceIdentity(`http://127.0.0.1:${server.port}`, "tok", { timeoutMs: 150 }),
+		).rejects.toThrow();
+	} finally {
+		server.stop(true);
+	}
+	await expect(fetchRunServiceIdentity("http://10.0.0.1:1", "tok")).rejects.toThrow(
+		"run_service_not_loopback",
+	);
+});
+
+test("connectRunService end-to-end over the real store + adapter (and a wrong tick refusal)", async () => {
+	const instanceId = "e2e";
+	const directory = await createRunServiceStore(root).ensure(instanceId);
+	const ticks = await processStartTicks(process.pid);
+	const server = Bun.serve({
+		port: 0,
+		hostname: "127.0.0.1",
+		async fetch(request) {
+			const auth = request.headers.get("authorization") ?? "";
+			if (auth !== `Basic ${btoa("agentpulse:tok")}`)
+				return new Response("no", { status: 401 });
+			return Response.json({
+				instanceId,
+				generation: 1,
+				nativeSessionId: "ses_e2e",
+				pid: process.pid,
+				startTicks: ticks,
+			});
+		},
+	});
+	try {
+		const manifest = {
+			version: 1 as const,
+			instanceId,
+			generation: 1,
+			nativeSessionId: "ses_e2e",
+			pid: process.pid,
+			startTicks: ticks,
+			url: `http://127.0.0.1:${server.port}`,
+			tokenPath: join(directory, "token"),
+		};
+		await createRunServiceStore(root).write(instanceId, manifest, "tok");
+		const expected = { instanceId, generation: 1, nativeSessionId: "ses_e2e" };
+		expect(await connectRunService(root, instanceId, expected)).toMatchObject({ ok: true });
+		// Forged start ticks in the manifest -> PID-reuse refusal.
+		await createRunServiceStore(root).write(instanceId, { ...manifest, startTicks: "0" }, "tok");
+		expect(await connectRunService(root, instanceId, expected)).toEqual({
+			ok: false,
+			reason: "process_gone_or_reused",
+		});
+	} finally {
+		server.stop(true);
+	}
+});
