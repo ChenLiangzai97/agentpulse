@@ -20,6 +20,7 @@ import {
 	sessions,
 	supervisors,
 } from "../db/schema/index.js";
+import { config } from "../config.js";
 import { claimNextControlAction, updateControlAction } from "./control-actions.js";
 import { reserveOpenCodeInstance } from "./opencode-control-provenance.js";
 import { queueOpenCodeAction } from "./opencode-managed.js";
@@ -192,4 +193,45 @@ test("the RESULT fence refuses stale successes and only a current STOP success m
 	});
 	expect(accepted?.status).toBe("succeeded");
 	expect((await bindingOf(parentId))?.stopState).toBe("stopped");
+});
+
+test("resume: entry-gated, only from a trusted STOPPED state, bumps the epoch", async () => {
+	const { parentId, instance } = await seed();
+	const original = config.opencodeResumeEntry;
+	try {
+		(config as Record<string, unknown>).opencodeResumeEntry = false;
+		await expect(queueOpenCodeAction(parentId, "opencode_resume", {}, actor)).rejects.toThrow(
+			"opencode_resume_entry_closed",
+		);
+		(config as Record<string, unknown>).opencodeResumeEntry = true;
+		// While merely STOPPING the state is not trusted yet.
+		await queueOpenCodeAction(parentId, "stop", {}, actor);
+		await expect(queueOpenCodeAction(parentId, "opencode_resume", {}, actor)).rejects.toThrow(
+			"opencode_resume_not_stopped",
+		);
+		// A confirmed stop state allows resume: active + NEW epoch.
+		await getDb()
+			.update(sessionControlBindings)
+			.set({ stopState: "stopped", stopEpoch: 1 })
+			.where(eq(sessionControlBindings.sessionId, parentId));
+		const resume = await queueOpenCodeAction(parentId, "opencode_resume", {}, actor);
+		expect((resume.metadata as Record<string, unknown>).controlEpoch).toBe(2);
+		const binding = await bindingOf(parentId);
+		expect(binding?.stopState).toBe("active");
+		expect(binding?.stopEpoch).toBe(2);
+		// A killed instance cannot be resumed without a relaunch.
+		await getDb()
+			.update(sessionControlBindings)
+			.set({ stopState: "stopped", stopEpoch: 2 })
+			.where(eq(sessionControlBindings.sessionId, parentId));
+		await getDb()
+			.update(providerInstances)
+			.set({ state: "stopped" })
+			.where(eq(providerInstances.id, instance.id));
+		await expect(queueOpenCodeAction(parentId, "opencode_resume", {}, actor)).rejects.toThrow(
+			"provider_binding_invalid",
+		);
+	} finally {
+		(config as Record<string, unknown>).opencodeResumeEntry = original;
+	}
 });

@@ -178,6 +178,7 @@ export type ControlActionType =
 	| "interaction_response"
 	| "opencode_command"
 	| "opencode_fork"
+	| "opencode_resume"
 	| "opencode_health"
 	| "cleanup_workarea";
 export type ControlActionStatus = "queued" | "running" | "succeeded" | "failed";

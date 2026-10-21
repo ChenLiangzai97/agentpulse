@@ -16,6 +16,7 @@ const { reserveOpenCodeInstance } = await import("../services/opencode-control-p
 
 const app = new Hono().route("/api/v1", sessionsRouter);
 const originalDisableAuth = config.disableAuth;
+const originalResumeEntry = (config as Record<string, unknown>).opencodeResumeEntry;
 
 beforeAll(async () => {
 	await initializeDatabase();
@@ -23,6 +24,7 @@ beforeAll(async () => {
 });
 afterAll(() => {
 	(config as Record<string, unknown>).disableAuth = originalDisableAuth;
+	(config as Record<string, unknown>).opencodeResumeEntry = originalResumeEntry;
 });
 beforeEach(async () => {
 	for (const table of [
@@ -159,4 +161,15 @@ test("a non-OpenCode managed session keeps the generic path (no OpenCode refusal
 	expect(body.error).not.toBe("opencode_resume_not_supported");
 	expect(res.status).toBe(202);
 	expect(body.action?.actionType).toBe("resume");
+});
+
+test("the dedicated opencode-resume entry is CLOSED by default", async () => {
+	(config as Record<string, unknown>).opencodeResumeEntry = false;
+	const { parentId } = await seedOpencode();
+	const res = await app.request(`/api/v1/sessions/${parentId}/opencode-resume`, {
+		method: "POST",
+	});
+	expect(res.status).toBe(403);
+	expect(await res.json()).toEqual({ error: "opencode_resume_entry_closed" });
+	expect(await getDb().select().from(db.controlActions)).toHaveLength(0);
 });

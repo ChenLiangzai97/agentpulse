@@ -514,7 +514,8 @@ export async function queueOpenCodeAction(
 		| "prompt"
 		| "interaction_response"
 		| "opencode_command"
-		| "opencode_fork",
+		| "opencode_fork"
+		| "opencode_resume",
 	input: Json,
 	actor: Actor,
 ) {
@@ -554,7 +555,27 @@ export async function queueOpenCodeAction(
 			kind === "interaction_response" ||
 			kind === "interrupt";
 		let controlEpoch = controlBinding?.stopEpoch ?? 0;
-		if (kind === "stop") {
+		if (kind === "opencode_resume") {
+			// Resume exists ONLY from a TRUSTED stopped state (native stop
+			// confirmed) with the instance still alive; a killed instance needs a
+			// relaunch. Entry-gated; default closed.
+			if (!config.opencodeResumeEntry) throw new Error("opencode_resume_entry_closed");
+			if (!controlBinding) throw new SessionControlOriginError("provider_binding_invalid");
+			if (controlBinding.stopState !== "stopped")
+				throw new Error("opencode_resume_not_stopped");
+			const [instance] = await tx
+				.select()
+				.from(providerInstances)
+				.where(eq(providerInstances.id, controlBinding.instanceId ?? ""));
+			if (!instance || instance.state !== "running")
+				throw new Error("opencode_resume_requires_relaunch");
+			// A NEW epoch invalidates every action queued while stopped.
+			controlEpoch = controlBinding.stopEpoch + 1;
+			await tx
+				.update(sessionControlBindings)
+				.set({ stopState: "active", stopEpoch: controlEpoch })
+				.where(eq(sessionControlBindings.sessionId, sessionId));
+		} else if (kind === "stop") {
 			if (!controlBinding) throw new SessionControlOriginError("provider_binding_invalid");
 			if (controlBinding.stopState !== "active") throw new Error("opencode_session_already_stopping");
 			controlEpoch = controlBinding.stopEpoch + 1;

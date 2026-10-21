@@ -86,6 +86,7 @@ export interface OpenCodeRuntime {
 	registerManagedChild(nativeSessionId: string): void;
 	/** Durable claims whose outcome is still unknown (reconciliation surface). */
 	unsettledClaims(): { nativeSessionId: string; messageID: string; kind: "prompt" | "command" }[];
+	abortPending(target: string): boolean;
 	/** Claim-record cleanup failures (files left for reconciliation). */
 	cleanupIssues(): { claimId: string; path: string; error: string }[];
 	/** Evidence captured in the controlled window before executing a fork. */
@@ -610,6 +611,9 @@ export class OpenCodeRuntimePool {
 				},
 				cleanupIssues() {
 					return [...cleanupIssues];
+				},
+				abortPending(target: string) {
+					return abortAttempts.frozen(target);
 				},
 				unsettledClaims() {
 					return [...unsettled.entries()].map(([nativeSessionId, record]) => ({

@@ -344,6 +344,12 @@ export function createManagedOpenCodeProvider(
 				}
 				return;
 			}
+			if (action.actionType === "opencode_resume") {
+				// The server has already transitioned stopped -> active (new epoch)
+				// at acceptance; no native work is required.
+				runtime.touch();
+				return;
+			}
 			if (action.actionType === "opencode_fork") {
 				// PRECONDITIONS FIRST: no native fork when the result channel is
 				// missing or the source is outside this slice (bound ROOT session,
