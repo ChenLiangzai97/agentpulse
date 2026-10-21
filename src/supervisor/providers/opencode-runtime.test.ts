@@ -916,8 +916,9 @@ test.skipIf(process.env.AGENTPULSE_OPENCODE_RUNTIME_TEST !== "1")(
 				cwd,
 				title: "abort race",
 			});
-			// Turn 1: abort. Wait for settlement (file deleted).
-			await runtime.prompt("P0_ABORT");
+			// Turn 1: a COMPLETING turn that is aborted mid-flight (its own
+			// terminal step settles the claim) so a replacement claim can exist.
+			await runtime.prompt("P0_HELLO");
 			await runtime.abort();
 			for (let i = 0; i < 80; i++) {
 				if ((await readdir(claimsDir)).length === 0) break;

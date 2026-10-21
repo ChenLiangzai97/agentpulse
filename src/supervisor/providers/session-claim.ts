@@ -76,6 +76,11 @@ export function observeClaim(
 	// not matter: the turn's own last step (completed, finish "stop") is
 	// positive message-level evidence that does not depend on status at all.
 	if (observation.status === "missing") {
+		// A post-abort observation may release on the turn's own cancellation
+		// marker (message-level evidence); a plain prompt may release on its
+		// completed last step. Neither uses the missing status as proof.
+		if (state.abortRequested && state.abortSeq !== undefined && seq >= state.abortSeq)
+			return { state: next, release: observation.quiet && observation.abortTerminal };
 		const byTurn =
 			state.kind === "prompt" &&
 			!state.abortRequested &&
