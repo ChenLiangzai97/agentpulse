@@ -17,6 +17,7 @@ function fakeRuntime() {
 			nativeSessionId: "ses_daemon",
 			async prompt(text: string) {
 				calls.push(`prompt:${text}`);
+				return { messageID: "msg_daemon_turn" };
 			},
 			async snapshot() {
 				return { messages: [{ info: { id: "m" } }], status: { type: "idle" } };
@@ -53,11 +54,23 @@ test("daemon serves identity/messages/prompt/abort/shutdown behind Basic auth", 
 	>;
 	expect(identity.nativeSessionId).toBe("ses_daemon");
 	expect(identity.generation).toBe(2);
-	await fetch(`${url}/prompt`, {
-		method: "POST",
-		headers: { ...auth, "Content-Type": "application/json" },
-		body: JSON.stringify({ text: "hello" }),
-	});
+	const promptResponse = (await (
+		await fetch(`${url}/prompt`, {
+			method: "POST",
+			headers: { ...auth, "Content-Type": "application/json" },
+			body: JSON.stringify({ text: "hello" }),
+		})
+	).json()) as { messageID?: string };
+	expect(promptResponse.messageID).toBe("msg_daemon_turn");
+	// Invalid inputs are 400, never coerced into a prompt.
+	for (const body of [{ text: 1 }, { text: {} }, { text: "" }, { text: "x".repeat(12001) }]) {
+		const response = await fetch(`${url}/prompt`, {
+			method: "POST",
+			headers: { ...auth, "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		});
+		expect(response.status).toBe(400);
+	}
 	expect((await (await fetch(`${url}/messages`, { headers: auth })).json())).toMatchObject({
 		status: { type: "idle" },
 	});
@@ -96,4 +109,52 @@ test("the SAME resolver connects to the daemon (and refuses a wrong token)", asy
 		method: "POST",
 		headers: { Authorization: `Basic ${btoa("agentpulse:tok2")}` },
 	});
+});
+
+test("a failed shutdown stays observable; an init store failure reclaims the listener+runtime", async () => {
+	const fake = fakeRuntime();
+	const failing = { ...fake.runtime, async stop() { throw new Error("native_stop_failed"); } };
+	const { url } = await startRunServiceDaemon({
+		root,
+		instanceId: "shutdown-fail",
+		generation: 1,
+		runtime: failing,
+		token: "tok",
+		startTicks: await processStartTicks(process.pid),
+	});
+	const auth = { Authorization: `Basic ${btoa("agentpulse:tok")}` };
+	const response = await fetch(`${url}/shutdown`, { method: "POST", headers: auth });
+	expect(response.status).toBe(500);
+	expect(await response.json()).toMatchObject({ error: "stop_failed" });
+	// Still serving (not falsely stopped).
+	expect((await fetch(`${url}/identity`, { headers: auth })).status).toBe(200);
+
+	// INIT FAILURE: a store write that cannot succeed must close the listener and
+	// stop the runtime.
+	const stopped: string[] = [];
+	const runtime = { ...fake.runtime, async stop() { stopped.push("stop"); } };
+	const failingStore = {
+		ensure: async () => "/tmp/never",
+		write: async () => {
+			throw new Error("store_write_failed");
+		},
+		readManifest: async () => {
+			throw new Error("unused");
+		},
+		readToken: async () => {
+			throw new Error("unused");
+		},
+	} as never;
+	await expect(
+		startRunServiceDaemon({
+			root,
+			instanceId: "init-fail",
+			generation: 1,
+			runtime,
+			token: "tok",
+			startTicks: null,
+			store: failingStore,
+		}),
+	).rejects.toThrow("store_write_failed");
+	expect(stopped).toEqual(["stop"]);
 });

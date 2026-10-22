@@ -58,7 +58,7 @@ export interface OpenCodeRuntime {
 			/** Target native session (default: the bound one; a fork child must be known). */
 			nativeSessionId?: string;
 		},
-	): Promise<void>;
+	): Promise<{ messageID: string }>;
 	runCommand(
 		command: string,
 		args?: string,
@@ -1080,6 +1080,7 @@ export class OpenCodeRuntimePool {
 						if (status >= 400 && status < 500) await release(claim.id, claim.claim);
 						throw new Error("opencode_prompt_delivery_uncertain", { cause: error });
 					}
+					return { messageID: claim.claim.messageID };
 				},
 				runCommand: async (command, args, options) => {
 					// Native custom-command execution: the instance expands the command
