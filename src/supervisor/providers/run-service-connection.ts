@@ -7,8 +7,9 @@
  * - The adapter talks to loopback ONLY, never follows redirects (so credentials
  *   cannot be forwarded elsewhere) and always has a timeout.
  */
-import { chmod, lstat, mkdir, open, rename } from "node:fs/promises";
+
 import { constants as fsConstants } from "node:fs";
+import { chmod, lstat, mkdir, open, rename } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { join, resolve } from "node:path";
 import { processStartTicks } from "./opencode-recovery.js";
@@ -28,13 +29,16 @@ export const runServiceDirectory = (root: string, instanceId: string) => {
 	return directory;
 };
 
-const requirePrivate = (info: {
-	uid: number;
-	mode: number;
-	isSymbolicLink?: () => boolean;
-	isDirectory?: () => boolean;
-	isFile?: () => boolean;
-}, kind: "dir" | "file") => {
+const requirePrivate = (
+	info: {
+		uid: number;
+		mode: number;
+		isSymbolicLink?: () => boolean;
+		isDirectory?: () => boolean;
+		isFile?: () => boolean;
+	},
+	kind: "dir" | "file",
+) => {
 	if (info.isSymbolicLink?.()) throw new Error("run_service_symlink_refused");
 	if (kind === "dir" && info.isDirectory && !info.isDirectory())
 		throw new Error("run_service_not_directory");
@@ -106,7 +110,9 @@ export function createRunServiceStore(root: string) {
 		},
 		async readManifest(instanceId: string): Promise<RunServiceManifest> {
 			await assertChain(instanceId);
-			return JSON.parse(await readPrivateFile(join(dir(instanceId), "manifest.json"))) as RunServiceManifest;
+			return JSON.parse(
+				await readPrivateFile(join(dir(instanceId), "manifest.json")),
+			) as RunServiceManifest;
 		},
 		async readToken(instanceId: string): Promise<string> {
 			await assertChain(instanceId);
@@ -115,18 +121,38 @@ export function createRunServiceStore(root: string) {
 	};
 }
 
-/** Loopback, Basic auth, NO redirect following, bounded timeout. */
-export async function fetchRunServiceIdentity(
+export interface RunServiceRequestOptions {
+	/** Service-relative path; the origin ALWAYS comes from the validated manifest URL. */
+	path?: string;
+	method?: "GET" | "POST";
+	body?: unknown;
+	timeoutMs?: number;
+	maxBodyBytes?: number;
+}
+
+/**
+ * Loopback, Basic auth, NO redirect following, bounded timeout and body cap.
+ * Every control/read path goes through this ONE adapter so credentials can
+ * never be aimed at a caller-supplied origin and a drip cannot extend the
+ * absolute deadline.
+ */
+export async function requestRunService(
 	url: string,
 	token: string,
-	options: { timeoutMs?: number } = {},
+	options: RunServiceRequestOptions = {},
 ): Promise<{ status: number; body: unknown }> {
 	const target = new URL(url);
 	if (target.protocol !== "http:" || target.hostname !== "127.0.0.1")
 		throw new Error("run_service_not_loopback");
 	if (target.username || target.password) throw new Error("run_service_url_credentials");
+	// A path like "//host/x" or "http://host/x" would RE-TARGET the request and
+	// leak the Basic token: only same-origin relative paths are accepted.
+	const requested = new URL(options.path ?? "/identity", target);
+	if (requested.origin !== target.origin) throw new Error("run_service_invalid_path");
 	const timeoutMs = options.timeoutMs ?? 5000;
-	const MAX_BODY = 64 * 1024;
+	const MAX_BODY = options.maxBodyBytes ?? 64 * 1024;
+	const payload = options.body === undefined ? undefined : JSON.stringify(options.body);
+	const method = options.method ?? (payload === undefined ? "GET" : "POST");
 	return new Promise((resolvePromise, reject) => {
 		// req.setTimeout is an IDLE timeout; the absolute deadline is what a slow
 		// drip cannot extend.
@@ -142,10 +168,16 @@ export async function fetchRunServiceIdentity(
 			{
 				host: target.hostname,
 				port: target.port,
-				path: "/identity",
-				method: "GET",
+				path: `${requested.pathname}${requested.search}`,
+				method,
 				headers: {
 					Authorization: `Basic ${Buffer.from(`agentpulse:${token}`).toString("base64")}`,
+					...(payload === undefined
+						? {}
+						: {
+								"Content-Type": "application/json",
+								"Content-Length": String(Buffer.byteLength(payload)),
+							}),
 				},
 			},
 			(response) => {
@@ -192,7 +224,58 @@ export async function fetchRunServiceIdentity(
 			clearTimeout(deadline);
 			reject(error);
 		});
-		req.end();
+		req.end(payload);
+	});
+}
+
+/** Authenticated /identity through the shared adapter. */
+export function fetchRunServiceIdentity(
+	url: string,
+	token: string,
+	options: { timeoutMs?: number } = {},
+): Promise<{ status: number; body: unknown }> {
+	return requestRunService(url, token, { timeoutMs: options.timeoutMs, path: "/identity" });
+}
+
+/** Authenticated /messages through the shared adapter (bounded, larger cap). */
+export function fetchRunServiceMessages(
+	url: string,
+	token: string,
+	options: { timeoutMs?: number } = {},
+): Promise<{ status: number; body: unknown }> {
+	return requestRunService(url, token, {
+		timeoutMs: options.timeoutMs ?? 15_000,
+		maxBodyBytes: 8 * 1024 * 1024,
+		path: "/messages",
+	});
+}
+
+/** Authenticated /prompt through the shared adapter. */
+export function promptRunService(
+	url: string,
+	token: string,
+	text: string,
+	options: { timeoutMs?: number } = {},
+): Promise<{ status: number; body: unknown }> {
+	return requestRunService(url, token, {
+		timeoutMs: options.timeoutMs ?? 15_000,
+		path: "/prompt",
+		method: "POST",
+		body: { text },
+	});
+}
+
+/** Authenticated /shutdown through the shared adapter. */
+export function shutdownRunService(
+	url: string,
+	token: string,
+	options: { timeoutMs?: number } = {},
+): Promise<{ status: number; body: unknown }> {
+	return requestRunService(url, token, {
+		timeoutMs: options.timeoutMs ?? 10_000,
+		path: "/shutdown",
+		method: "POST",
+		body: {},
 	});
 }
 

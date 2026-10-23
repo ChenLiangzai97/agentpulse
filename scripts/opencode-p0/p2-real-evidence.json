@@ -1,0 +1,148 @@
+{
+ "instanceId": "p2-real-5684ef8f",
+ "generation": 7,
+ "mock": {
+  "pid": 1318221,
+  "startTicks": "60796353",
+  "base": "http://127.0.0.1:46499"
+ },
+ "launcher": {
+  "pid": 1318222,
+  "startTicks": "60796355",
+  "exitCode": 0,
+  "daemonPid": 1318228,
+  "daemonStartTicks": "60796356"
+ },
+ "daemon": {
+  "pid": 1318228,
+  "startTicks": "60796356",
+  "url": "http://127.0.0.1:36459",
+  "nativeSessionId": "ses_e9648e41dffeCbFW6NDFRaJQFB",
+  "nativePid": 1318237,
+  "nativeStartTicks": "60796358",
+  "instanceDirectory": "instance-uCjjiH",
+  "nativeFlags": [
+   "serve",
+   "--pure"
+  ]
+ },
+ "identity": {
+  "instanceId": "p2-real-5684ef8f",
+  "generation": 7,
+  "nativeSessionId": "ses_e9648e41dffeCbFW6NDFRaJQFB",
+  "pid": 1318228,
+  "startTicks": "60796356"
+ },
+ "supervisorA": {
+  "ok": true,
+  "role": "a",
+  "pid": 1318278,
+  "identity": {
+   "instanceId": "p2-real-5684ef8f",
+   "generation": 7,
+   "nativeSessionId": "ses_e9648e41dffeCbFW6NDFRaJQFB",
+   "pid": 1318228,
+   "startTicks": "60796356"
+  },
+  "nativeSessionId": "ses_e9648e41dffeCbFW6NDFRaJQFB",
+  "messageID": "msg_ap_3ec708a6f83049fd929a342f757a0385",
+  "inFlight": {
+   "status": "busy",
+   "userMessagePresent": true,
+   "turnTerminal": false,
+   "assistantCount": 1,
+   "observedAt": "2026-10-23T17:02:50.953Z"
+  },
+  "exitedWhileInFlight": true,
+  "exitCode": 0
+ },
+ "survivedSupervisorExit": {
+  "daemonAlive": true,
+  "nativeAlive": true,
+  "modelRequestStarted": true,
+  "status": "busy",
+  "turnTerminal": false,
+  "userMessagePresent": true
+ },
+ "supervisorB": {
+  "ok": true,
+  "role": "b",
+  "pid": 1318449,
+  "terminal": {
+   "identity": {
+    "instanceId": "p2-real-5684ef8f",
+    "generation": 7,
+    "nativeSessionId": "ses_e9648e41dffeCbFW6NDFRaJQFB",
+    "pid": 1318228,
+    "startTicks": "60796356"
+   },
+   "sameNativeSessionId": true,
+   "connectedWhileInFlight": true,
+   "messageID": "msg_ap_3ec708a6f83049fd929a342f757a0385",
+   "userMessagePresent": true,
+   "status": "idle",
+   "assistant": {
+    "id": "msg_169b71d97001FOqEaa4c11hNaz",
+    "parentID": "msg_ap_3ec708a6f83049fd929a342f757a0385",
+    "sessionID": "ses_e9648e41dffeCbFW6NDFRaJQFB",
+    "finish": "stop",
+    "error": null,
+    "modelID": "fixture-model",
+    "providerID": "p2",
+    "createdAt": "2026-10-23T17:02:50.775Z",
+    "completedAt": "2026-10-23T17:03:06.067Z"
+   },
+   "text": "P0_DONE",
+   "partCompletedAt": "2026-10-23T17:03:06.059Z",
+   "pollMs": 15149
+  },
+  "exitCode": 0
+ },
+ "sameTurn": {
+  "nativeSessionId": true,
+  "messageID": true,
+  "assistantParentID": true,
+  "terminalFromRuntime": true
+ },
+ "refusals": {
+  "wrongToken": {
+   "ok": false,
+   "reason": "authentication_failed"
+  },
+  "wrongTokenHttp": {
+   "status": 401,
+   "body": null
+  },
+  "forgedStartTicks": {
+   "ok": false,
+   "reason": "process_gone_or_reused"
+  },
+  "wrongGeneration": {
+   "ok": false,
+   "reason": "identity_mismatch"
+  },
+  "wrongNativeSession": {
+   "ok": false,
+   "reason": "identity_mismatch"
+  },
+  "nonLoopback": {
+   "ok": false,
+   "reason": "not_loopback"
+  },
+  "nonLoopbackAdapter": "run_service_not_loopback",
+  "retargetedPath": "run_service_invalid_path",
+  "serviceSelfReportDrift": {
+   "ok": false,
+   "reason": "identity_mismatch"
+  },
+  "redirect": "run_service_redirect_refused"
+ },
+ "ok": true,
+ "cleanup": [
+  "shutdown:200",
+  "daemon:gone_after_shutdown",
+  "native:gone",
+  "mock:sigterm",
+  "root_removed"
+ ]
+}

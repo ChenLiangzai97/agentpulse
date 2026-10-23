@@ -18,9 +18,10 @@
 4. **地址不接受客户端指定**：只接受 manifest 中的 `127.0.0.1` 回环地址。
 
 ## 未验证 / 开放（下一批）
-- **真实 OpenCode 由独立运行服务托管**；统一重连解析器（同一实现）核验进程启动身份、
-  instance/generation、原生身份与回环认证，并对错误 token/伪 start ticks/错代/错原生
-  身份一律拒绝；supervisor 退出/重启后原生轮次仍运行且可接续的证据。
+- ~~真实 OpenCode 由独立运行服务托管；统一重连解析器核验进程启动身份、instance/
+  generation、原生身份与回环认证；supervisor 退出后原生轮次仍运行且可接续~~
+  → 已由 [P2_REAL_DAEMON_PLAN.md](P2_REAL_DAEMON_PLAN.md) 的脚本级切片实测覆盖
+  （真实 OpenCode + mock 模型；未接主路径）。
 - `setsid`/systemd user service 方案；
 - 断线重连的补拉游标、审批恢复、动作对账；
 - 中央服务停止/重启与网络断开矩阵（任务书 P2 验收矩阵）；
