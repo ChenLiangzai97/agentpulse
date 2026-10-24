@@ -10,13 +10,13 @@ import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = "dist/web";
-const index = join(root, "index.html");
-try {
-	await stat(index);
-} catch {
-	throw new Error("dist/web/index.html missing — run this script to build, never stamp alone");
-}
+// Build FIRST (a clean checkout has no dist/web yet); then require the output.
 execSync("bunx vite build", { stdio: "inherit" });
+try {
+	await stat(join(root, "index.html"));
+} catch {
+	throw new Error("vite build produced no dist/web/index.html");
+}
 const files: string[] = [];
 const walk = async (dir: string) => {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {

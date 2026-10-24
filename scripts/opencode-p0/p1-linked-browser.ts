@@ -71,19 +71,34 @@ try {
 	const payload = (row: { raw_payload?: string }) => {
 		try { return JSON.parse(row.raw_payload ?? "{}") as { message_id?: string; source_data?: { finish?: string } }; } catch { return {}; }
 	};
-	const userMessageId = (marker: string) => {
-		for (const row of rows()) {
-			const p = payload(row);
-			if (String(row.content ?? "").includes(marker) && p.message_id) return p.message_id;
+	// The ASSISTANT message has its OWN id; the normalized payload carries no
+	// parentID. Correlation: the user prompt row's id anchors the turn, then the
+	// FIRST step-finish with reason "stop" AFTER that row is this turn's terminal
+	// (turns run sequentially per session).
+	const dbRows = () =>
+		db.query("SELECT id, event_type, content, raw_payload FROM events WHERE session_id = $sid ORDER BY id").all({ $sid: STATE.sessionId }) as { id: number; event_type?: string; content?: string; raw_payload?: string }[];
+	const payloadOf = (row: { raw_payload?: string }) => {
+		try { return JSON.parse(row.raw_payload ?? "{}") as { message_id?: string; source_data?: { type?: string; reason?: string } }; } catch { return {}; }
+	};
+	const userRow = (marker: string) => {
+		for (const row of dbRows()) if (String(row.content ?? "").includes(marker)) return row;
+		return null;
+	};
+	const terminalAfter = (userEventId: number) => {
+		for (const row of dbRows()) {
+			if (row.id <= userEventId) continue;
+			const p = payloadOf(row);
+			if (p.source_data?.type === "step-finish" && p.source_data.reason === "stop") return row;
 		}
 		return null;
 	};
-	const hasTerminal = (messageId: string) =>
-		rows().some((row) => {
-			const p = payload(row);
-			return p.message_id === messageId && p.source_data?.finish === "stop";
-		});
-	void events;
+	const turnIds = (marker: string) => {
+		const user = userRow(marker);
+		if (!user) return null;
+		const terminal = terminalAfter(user.id);
+		return { userEventId: user.id, userMessageId: payloadOf(user).message_id ?? null, terminalMessageId: terminal ? payloadOf(terminal).message_id ?? null : null, terminalEventId: terminal?.id ?? null };
+	};
+	void events; void rows; void payload;
 	const bUrl = page.url();
 	check(bUrl.endsWith(STATE.managedUrlB.split("/").pop() as string), "the URL is B's session", bUrl);
 	console.log("AFTER-B-TAB-URL:", bUrl);
@@ -159,47 +174,64 @@ try {
 	const tabMarker = `P1TAB-${tag}`;
 	await textarea().fill(`P0_ABORT ${tabMarker}`);
 	await textarea().press("Enter");
-	let tabMessageId: string | null = null;
-	for (let i = 0; i < 120 && !tabMessageId; i++) {
-		tabMessageId = userMessageId(tabMarker);
-		if (!tabMessageId) await page.waitForTimeout(250);
+	let tabTurn = turnIds(tabMarker);
+	for (let i = 0; i < 120 && !tabTurn; i++) {
+		tabTurn = turnIds(tabMarker);
+		if (!tabTurn) await page.waitForTimeout(250);
 	}
-	check(Boolean(tabMessageId), "the closed-tab turn has a native messageID", tabMessageId ?? "none");
-	check(Boolean(tabMessageId) && !hasTerminal(tabMessageId as string), "the turn is STILL IN FLIGHT at close (no terminal for that messageID)");
+	const tabBusy = (await (await fetch(`${STATE.url}/app-api/v1/sessions/${STATE.sessionId}`)).json()) as { session?: { isWorking?: boolean } };
+	check(
+		Boolean(tabTurn?.userMessageId) && !tabTurn?.terminalEventId && tabBusy.session?.isWorking === true,
+		"the turn STARTED (user messageID + isWorking) and is not yet terminal at close",
+		`user=${tabTurn?.userMessageId ?? "none"} isWorking=${tabBusy.session?.isWorking}`,
+	);
 	await page.close();
 	await new Promise((r) => setTimeout(r, 6000));
 	const reopened = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 	await reopened.goto(A, { waitUntil: "networkidle" });
 	await reopened.locator('textarea[aria-label="OpenCode 消息"]').waitFor({ timeout: 60_000 });
-	let terminal = false;
-	for (let i = 0; i < 120 && !terminal; i++) {
-		terminal = Boolean(tabMessageId) && hasTerminal(tabMessageId as string);
-		if (!terminal) await reopened.waitForTimeout(500);
+	let terminal: ReturnType<typeof turnIds> = null;
+	for (let i = 0; i < 120 && !terminal?.terminalEventId; i++) {
+		terminal = turnIds(tabMarker);
+		if (!terminal?.terminalEventId) await reopened.waitForTimeout(500);
 	}
-	check(terminal, "the SAME native messageID reached its terminal after reopening", tabMessageId ?? "none");
+	check(
+		Boolean(tabTurn?.userMessageId && terminal?.terminalEventId && terminal.terminalMessageId),
+		"the SAME turn reached step-finish=stop (user -> assistant messageID) after reopening",
+		`user=${tabTurn?.userMessageId ?? "none"} assistant=${terminal?.terminalMessageId ?? "none"}`,
+	);
 	await reopened.screenshot({ path: `${OUT}/13-linked-closed-browser-tab.png`, fullPage: true });
 
 	// ── Scenario 3: closing the APP session tab mid-turn (same messageID link).
 	const appMarker = `P1APPTAB-${tag}`;
 	await reopened.locator('textarea[aria-label="OpenCode 消息"]').fill(`P0_ABORT ${appMarker}`);
 	await reopened.locator('textarea[aria-label="OpenCode 消息"]').press("Enter");
-	let appMessageId: string | null = null;
-	for (let i = 0; i < 120 && !appMessageId; i++) {
-		appMessageId = userMessageId(appMarker);
-		if (!appMessageId) await reopened.waitForTimeout(250);
+	let appTurn = turnIds(appMarker);
+	for (let i = 0; i < 120 && !appTurn; i++) {
+		appTurn = turnIds(appMarker);
+		if (!appTurn) await reopened.waitForTimeout(250);
 	}
-	check(Boolean(appMessageId), "the app-tab-close turn has a native messageID", appMessageId ?? "none");
-	check(Boolean(appMessageId) && !hasTerminal(appMessageId as string), "the app-tab turn is IN FLIGHT at close");
+	const appBusy = (await (await fetch(`${STATE.url}/app-api/v1/sessions/${STATE.sessionId}`)).json()) as { session?: { isWorking?: boolean } };
+	check(
+		Boolean(appTurn?.userMessageId) && !appTurn?.terminalEventId && appBusy.session?.isWorking === true,
+		"the app-tab turn STARTED and is not yet terminal at close",
+		`user=${appTurn?.userMessageId ?? "none"} isWorking=${appBusy.session?.isWorking}`,
+	);
 	await reopened.getByRole("button", { name: /Close OpenCode managed acceptance/i }).click();
 	await reopened.waitForTimeout(1500);
 	await reopened.goto(A, { waitUntil: "networkidle" });
 	await reopened.locator('textarea[aria-label="OpenCode 消息"]').waitFor({ timeout: 60_000 });
-	terminal = false;
-	for (let i = 0; i < 120 && !terminal; i++) {
-		terminal = Boolean(appMessageId) && hasTerminal(appMessageId as string);
-		if (!terminal) await reopened.waitForTimeout(500);
+	let appTerminal: ReturnType<typeof turnIds> = null;
+	for (let i = 0; i < 120 && !appTerminal?.terminalEventId; i++) {
+		appTerminal = turnIds(appMarker);
+		if (!appTerminal?.terminalEventId) await reopened.waitForTimeout(500);
 	}
-	check(terminal, "the SAME native messageID reached its terminal after app-tab close", appMessageId ?? "none");
+	check(
+		Boolean(appTerminal?.terminalEventId && appTerminal?.terminalMessageId),
+		"the SAME turn reached step-finish=stop after APP-tab close",
+		`user=${appTurn?.userMessageId ?? "none"} assistant=${appTerminal?.terminalMessageId ?? "none"}`,
+	);
+	await Bun.write(`${OUT}/15-tab-correlation.json`, JSON.stringify({ tab: { before: tabTurn, after: terminal }, appTab: { before: appTurn, after: appTerminal } }, null, 1));
 	await reopened.screenshot({ path: `${OUT}/14-linked-closed-app-tab.png`, fullPage: true });
 	db.close();
 } finally {
