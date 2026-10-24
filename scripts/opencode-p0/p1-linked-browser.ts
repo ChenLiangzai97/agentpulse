@@ -2,6 +2,7 @@
 import { chromium } from "playwright";
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
+import { turnTerminal, userMessageId } from "/home/ch/project/work_station/agentpulse/scripts/opencode-p0/p1-turn-correlation.ts";
 
 const STATE = JSON.parse(await Bun.file(process.argv[2] ?? "/tmp/opencode/fixture-state.json").text());
 const OUT = "/home/ch/project/work_station/agentpulse/scripts/opencode-p0/worklog-ui-evidence";
@@ -77,27 +78,6 @@ try {
 	// (turns run sequentially per session).
 	const dbRows = () =>
 		db.query("SELECT id, event_type, content, raw_payload FROM events WHERE session_id = $sid ORDER BY id").all({ $sid: STATE.sessionId }) as { id: number; event_type?: string; content?: string; raw_payload?: string }[];
-	const payloadOf = (row: { raw_payload?: string }) => {
-		try { return JSON.parse(row.raw_payload ?? "{}") as { message_id?: string; source_data?: { type?: string; reason?: string } }; } catch { return {}; }
-	};
-	const userRow = (marker: string) => {
-		for (const row of dbRows()) if (String(row.content ?? "").includes(marker)) return row;
-		return null;
-	};
-	const terminalAfter = (userEventId: number) => {
-		for (const row of dbRows()) {
-			if (row.id <= userEventId) continue;
-			const p = payloadOf(row);
-			if (p.source_data?.type === "step-finish" && p.source_data.reason === "stop") return row;
-		}
-		return null;
-	};
-	const turnIds = (marker: string) => {
-		const user = userRow(marker);
-		if (!user) return null;
-		const terminal = terminalAfter(user.id);
-		return { userEventId: user.id, userMessageId: payloadOf(user).message_id ?? null, terminalMessageId: terminal ? payloadOf(terminal).message_id ?? null : null, terminalEventId: terminal?.id ?? null };
-	};
 	void events; void rows; void payload;
 	const bUrl = page.url();
 	check(bUrl.endsWith(STATE.managedUrlB.split("/").pop() as string), "the URL is B's session", bUrl);
@@ -174,31 +154,31 @@ try {
 	const tabMarker = `P1TAB-${tag}`;
 	await textarea().fill(`P0_ABORT ${tabMarker}`);
 	await textarea().press("Enter");
-	let tabTurn = turnIds(tabMarker);
-	for (let i = 0; i < 120 && !tabTurn; i++) {
-		tabTurn = turnIds(tabMarker);
-		if (!tabTurn) await page.waitForTimeout(250);
+	let tabUser = userMessageId(dbRows(), tabMarker);
+	for (let i = 0; i < 120 && !tabUser; i++) {
+		tabUser = userMessageId(dbRows(), tabMarker);
+		if (!tabUser) await page.waitForTimeout(250);
 	}
 	const tabBusy = (await (await fetch(`${STATE.url}/app-api/v1/sessions/${STATE.sessionId}`)).json()) as { session?: { isWorking?: boolean } };
 	check(
-		Boolean(tabTurn?.userMessageId) && !tabTurn?.terminalEventId && tabBusy.session?.isWorking === true,
-		"the turn STARTED (user messageID + isWorking) and is not yet terminal at close",
-		`user=${tabTurn?.userMessageId ?? "none"} isWorking=${tabBusy.session?.isWorking}`,
+		Boolean(tabUser) && !turnTerminal(dbRows(), tabMarker) && tabBusy.session?.isWorking === true,
+		"the turn STARTED causally (user id + isWorking) and has no CAUSAL terminal at close",
+		`user=${tabUser ?? "none"} isWorking=${tabBusy.session?.isWorking}`,
 	);
 	await page.close();
 	await new Promise((r) => setTimeout(r, 6000));
 	const reopened = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 	await reopened.goto(A, { waitUntil: "networkidle" });
 	await reopened.locator('textarea[aria-label="OpenCode 消息"]').waitFor({ timeout: 60_000 });
-	let terminal: ReturnType<typeof turnIds> = null;
-	for (let i = 0; i < 120 && !terminal?.terminalEventId; i++) {
-		terminal = turnIds(tabMarker);
-		if (!terminal?.terminalEventId) await reopened.waitForTimeout(500);
+	let tabTerminal = turnTerminal(dbRows(), tabMarker);
+	for (let i = 0; i < 120 && !tabTerminal; i++) {
+		tabTerminal = turnTerminal(dbRows(), tabMarker);
+		if (!tabTerminal) await reopened.waitForTimeout(500);
 	}
 	check(
-		Boolean(tabTurn?.userMessageId && terminal?.terminalEventId && terminal.terminalMessageId),
-		"the SAME turn reached step-finish=stop (user -> assistant messageID) after reopening",
-		`user=${tabTurn?.userMessageId ?? "none"} assistant=${terminal?.terminalMessageId ?? "none"}`,
+		Boolean(tabTerminal && tabTerminal.userMessageId === tabUser),
+		"the SAME CAUSAL turn (assistant.parentID=user id) reached step-finish=stop after reopening",
+		`user=${tabUser ?? "none"} assistant=${tabTerminal?.assistantMessageId ?? "none"}`,
 	);
 	await reopened.screenshot({ path: `${OUT}/13-linked-closed-browser-tab.png`, fullPage: true });
 
@@ -206,32 +186,43 @@ try {
 	const appMarker = `P1APPTAB-${tag}`;
 	await reopened.locator('textarea[aria-label="OpenCode 消息"]').fill(`P0_ABORT ${appMarker}`);
 	await reopened.locator('textarea[aria-label="OpenCode 消息"]').press("Enter");
-	let appTurn = turnIds(appMarker);
-	for (let i = 0; i < 120 && !appTurn; i++) {
-		appTurn = turnIds(appMarker);
-		if (!appTurn) await reopened.waitForTimeout(250);
+	let appUser = userMessageId(dbRows(), appMarker);
+	for (let i = 0; i < 120 && !appUser; i++) {
+		appUser = userMessageId(dbRows(), appMarker);
+		if (!appUser) await reopened.waitForTimeout(250);
 	}
 	const appBusy = (await (await fetch(`${STATE.url}/app-api/v1/sessions/${STATE.sessionId}`)).json()) as { session?: { isWorking?: boolean } };
 	check(
-		Boolean(appTurn?.userMessageId) && !appTurn?.terminalEventId && appBusy.session?.isWorking === true,
-		"the app-tab turn STARTED and is not yet terminal at close",
-		`user=${appTurn?.userMessageId ?? "none"} isWorking=${appBusy.session?.isWorking}`,
+		Boolean(appUser) && !turnTerminal(dbRows(), appMarker) && appBusy.session?.isWorking === true,
+		"the app-tab turn STARTED causally and has no CAUSAL terminal at close",
+		`user=${appUser ?? "none"} isWorking=${appBusy.session?.isWorking}`,
 	);
 	await reopened.getByRole("button", { name: /Close OpenCode managed acceptance/i }).click();
 	await reopened.waitForTimeout(1500);
 	await reopened.goto(A, { waitUntil: "networkidle" });
 	await reopened.locator('textarea[aria-label="OpenCode 消息"]').waitFor({ timeout: 60_000 });
-	let appTerminal: ReturnType<typeof turnIds> = null;
-	for (let i = 0; i < 120 && !appTerminal?.terminalEventId; i++) {
-		appTerminal = turnIds(appMarker);
-		if (!appTerminal?.terminalEventId) await reopened.waitForTimeout(500);
+	let appTerminal = turnTerminal(dbRows(), appMarker);
+	for (let i = 0; i < 120 && !appTerminal; i++) {
+		appTerminal = turnTerminal(dbRows(), appMarker);
+		if (!appTerminal) await reopened.waitForTimeout(500);
 	}
 	check(
-		Boolean(appTerminal?.terminalEventId && appTerminal?.terminalMessageId),
-		"the SAME turn reached step-finish=stop after APP-tab close",
-		`user=${appTurn?.userMessageId ?? "none"} assistant=${appTerminal?.terminalMessageId ?? "none"}`,
+		Boolean(appTerminal && appTerminal.userMessageId === appUser),
+		"the SAME CAUSAL turn reached step-finish=stop after APP-tab close",
+		`user=${appUser ?? "none"} assistant=${appTerminal?.assistantMessageId ?? "none"}`,
 	);
-	await Bun.write(`${OUT}/15-tab-correlation.json`, JSON.stringify({ tab: { before: tabTurn, after: terminal }, appTab: { before: appTurn, after: appTerminal } }, null, 1));
+	await Bun.write(
+		`${OUT}/15-tab-correlation.json`,
+		JSON.stringify(
+			{
+				actionId: acceptedActionId,
+				browserTab: { userMessageId: tabUser, terminal: tabTerminal },
+				appTab: { userMessageId: appUser, terminal: appTerminal },
+			},
+			null,
+			1,
+		),
+	);
 	await reopened.screenshot({ path: `${OUT}/14-linked-closed-app-tab.png`, fullPage: true });
 	db.close();
 } finally {

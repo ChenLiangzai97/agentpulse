@@ -96,6 +96,9 @@ export function normalizeOpenCodePart(
 		rawPayload: {
 			native_session_id: part.session_id,
 			message_id: message.id,
+			// Preserved so a turn can be correlated CAUSALLY (assistant.parentID
+			// === the user message id); normalized parts otherwise lose it.
+			parent_id: typeof info.parentID === "string" ? info.parentID : null,
 			part_id: part.id,
 			source_updated_at: Math.max(part.time_updated, message.time_updated),
 			tool_use_id: data.callID,

@@ -1,29 +1,18 @@
 {
- "tab": {
-  "before": {
-   "userEventId": 15,
-   "userMessageId": "msg_ap_b785b28c6fc94a0bbe817aacd3db9b4a",
-   "terminalMessageId": null,
-   "terminalEventId": null
-  },
-  "after": {
-   "userEventId": 15,
-   "userMessageId": "msg_ap_b785b28c6fc94a0bbe817aacd3db9b4a",
-   "terminalMessageId": "msg_16ca907e3001IDW4Gymeznihi6",
+ "actionId": "c617571e-be83-4cd8-8145-0841ec7d3841",
+ "browserTab": {
+  "userMessageId": "msg_ap_5de5855b738c4327937ceca17363791a",
+  "terminal": {
+   "userMessageId": "msg_ap_5de5855b738c4327937ceca17363791a",
+   "assistantMessageId": "msg_16cac6f9e001be5BD3ey3PTXH0",
    "terminalEventId": 17
   }
  },
  "appTab": {
-  "before": {
-   "userEventId": 18,
-   "userMessageId": "msg_ap_828ea41423684218b23dd4196cb54518",
-   "terminalMessageId": null,
-   "terminalEventId": null
-  },
-  "after": {
-   "userEventId": 18,
-   "userMessageId": "msg_ap_828ea41423684218b23dd4196cb54518",
-   "terminalMessageId": "msg_16ca9447f001m7m6K06yexhvul",
+  "userMessageId": "msg_ap_a97efc77d8f840949e616956893efff8",
+  "terminal": {
+   "userMessageId": "msg_ap_a97efc77d8f840949e616956893efff8",
+   "assistantMessageId": "msg_16cacac38001JMaHGbE70vm38o",
    "terminalEventId": 20
   }
  }
