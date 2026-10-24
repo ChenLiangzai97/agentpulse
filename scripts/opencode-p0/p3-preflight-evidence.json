@@ -1,6 +1,6 @@
 {
  "mode": "read_only",
- "generatedAt": "2026-10-24T05:46:15.697Z",
+ "generatedAt": "2026-10-24T05:46:27.484Z",
  "host": "ch-LEGION-REN9000K-34IRZ",
  "daemon": {
   "line": "supervisor 在线 (pid 1314, 自 2026-10-16T16:10:11.768Z)",
@@ -27,12 +27,12 @@
    "agent": "opencode",
    "cwd": "/home/ch/project/work_stati…",
    "pid": null,
-   "uptime": "12h49m",
+   "uptime": "12h50m",
    "driverState": "dormant",
    "target": "headless",
    "handoffAllowed": false,
    "compatibility": {
-    "cwdExists": false,
+    "cwdExists": null,
     "cwdIsDirectory": null,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,
@@ -58,7 +58,7 @@
    "target": "tmux: bmx-8af19dc1",
    "handoffAllowed": false,
    "compatibility": {
-    "cwdExists": false,
+    "cwdExists": null,
     "cwdIsDirectory": null,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,
@@ -84,7 +84,7 @@
    "target": "tmux: bmx-99852db7",
    "handoffAllowed": false,
    "compatibility": {
-    "cwdExists": false,
+    "cwdExists": null,
     "cwdIsDirectory": null,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,
@@ -110,7 +110,7 @@
    "target": "tmux: bmx-8ae31295",
    "handoffAllowed": false,
    "compatibility": {
-    "cwdExists": false,
+    "cwdExists": null,
     "cwdIsDirectory": null,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,
@@ -136,7 +136,7 @@
    "target": "tmux: bmx-e1171426",
    "handoffAllowed": false,
    "compatibility": {
-    "cwdExists": false,
+    "cwdExists": null,
     "cwdIsDirectory": null,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,
@@ -211,7 +211,7 @@
    "target": "tmux: bmx-cd1244eb (missi…",
    "handoffAllowed": false,
    "compatibility": {
-    "cwdExists": false,
+    "cwdExists": null,
     "cwdIsDirectory": null,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,

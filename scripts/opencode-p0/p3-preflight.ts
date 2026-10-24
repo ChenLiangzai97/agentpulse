@@ -39,6 +39,8 @@ const report = buildPreflightReport({
 // Real cwd facts (read-only) per source.
 for (const source of report.sources) {
 	if (!source.cwd) continue;
+	// Unknown (truncated) stays unknown: do not stat a non-fact.
+	if (source.compatibility.cwdExists === null) continue;
 	try {
 		const info = await stat(source.cwd);
 		source.compatibility.cwdExists = true;
