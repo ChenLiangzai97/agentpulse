@@ -16,6 +16,13 @@ const textarea = () => page.locator('textarea[aria-label="OpenCode 消息"]');
 const bodyText = () => page.locator("body").innerText();
 const tag = crypto.randomUUID().slice(0, 8);
 try {
+	// BUILD PROVENANCE: the fixture serves dist/web; refuse to trust evidence if
+	// the bundle was not built from the CURRENT commit.
+	const head = (await Bun.$`git -C /home/ch/project/work_station/agentpulse rev-parse HEAD`.text()).trim();
+	const info = STATE.buildInfo as { commit?: string; builtAt?: string } | null;
+	const fresh = Boolean(info && info.commit === head && STATE.buildStale === false);
+	check(fresh, "fixture serves a build of the CURRENT source", `build=${info?.commit ?? "none"} head=${head}`);
+	if (!fresh) throw new Error("stale_build");
 	await page.goto(A, { waitUntil: "networkidle" });
 	await textarea().waitFor({ timeout: 90_000 });
 	// Open B once so BOTH tabs exist in the workbench, then return to A via tab.

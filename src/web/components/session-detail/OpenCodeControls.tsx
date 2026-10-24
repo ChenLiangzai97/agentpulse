@@ -244,10 +244,10 @@ export function OpenCodeControls({
 		toast.error(t("opencodeCmd.unknown").replace("{name}", name));
 	}
 	/** Clears the input/draft for a COMPLETED send — only when the viewer
-	 * epoch, session identity AND draft version all still match the capture
-	 * taken when the send started. A rewritten draft keeps both the input
-	 * and the stored text; a stale cross-session/cross-viewer callback is a
-	 * no-op. */
+	 * taken when the send started. The PERSISTED draft of the SENT session is
+	 * cleared even after navigating away; the mounted input is cleared only when
+	 * it still shows that session. A rewritten draft and another session's draft
+	 * are never touched; a cross-viewer callback generation no longer matches. */
 	function clearSentDraft(sentSession: string, sentVersion: number, sentGeneration: number) {
 		const store = usePromptDraftStore.getState();
 		// Clear the PERSISTED draft of the sent session (viewer epoch + version

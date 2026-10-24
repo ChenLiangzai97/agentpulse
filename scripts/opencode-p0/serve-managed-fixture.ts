@@ -258,9 +258,23 @@ const timer = setInterval(
 		})().catch(() => {}),
 	250,
 );
+// Build provenance: the fixture serves dist/web in production; a stale bundle
+// must be visible in the evidence, never silently trusted as current source.
+const { execSync } = await import("node:child_process");
+const headCommit = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
+let buildInfo: { commit?: string; builtAt?: string } | null = null;
+try {
+	buildInfo = JSON.parse(await (await import("node:fs/promises")).readFile("dist/web/build.json", "utf8"));
+} catch {
+	buildInfo = null;
+}
+const buildStale = !buildInfo || buildInfo.commit !== headCommit;
 const state = {
 	root,
 	url: server.url.origin,
+	buildInfo,
+	buildStale,
+	headCommit,
 	managedUrl: `${server.url.origin}/sessions/${sessionId}`,
 	managedUrlB: `${server.url.origin}/sessions/${sessionIdB}`,
 	externalUrl: `${server.url.origin}/sessions/external-browser-fixture`,
