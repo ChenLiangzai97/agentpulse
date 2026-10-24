@@ -30,9 +30,16 @@ try {
 		release = resolve;
 	});
 	let captured = false;
+	let acceptedActionId: string | null = null;
+	let acceptedStatus = 0;
 	await page.route(`**/sessions/${AID}/opencode/actions`, async (route) => {
-		captured = true;
 		const response = await route.fetch(); // REAL request/response
+		captured = true;
+		acceptedStatus = response.status();
+		if (response.ok()) {
+			const body = (await response.json().catch(() => null)) as { action?: { id?: string } } | null;
+			acceptedActionId = body?.action?.id ?? null;
+		}
 		await gate; // only the RESPONSE is delayed
 		await route.fulfill({ response });
 	});
@@ -40,11 +47,17 @@ try {
 	await textarea().fill(lateMarker);
 	await textarea().press("Enter");
 	for (let i = 0; i < 50 && !captured; i++) await page.waitForTimeout(100);
-	check(captured, "the late-send request actually reached the server (route.fetch)");
+	check(
+		captured && acceptedStatus >= 200 && acceptedStatus < 300,
+		"the late send was ACCEPTED by the real server",
+		`status=${acceptedStatus} action=${acceptedActionId ?? "unknown"}`,
+	);
 	// Switch to B INSIDE the app (tab bar), keeping A mounted in the workbench.
 	await page.getByRole("tab", { name: /OpenCode managed B/i }).click();
 	await page.waitForTimeout(1200);
-	console.log("AFTER-B-TAB-URL:", page.url());
+	const bUrl = page.url();
+	check(bUrl.endsWith(STATE.managedUrlB.split("/").pop() as string), "the URL is B's session", bUrl);
+	console.log("AFTER-B-TAB-URL:", bUrl);
 	const bBefore = await textarea().inputValue();
 	release?.();
 	await page.waitForTimeout(2500);
@@ -55,7 +68,23 @@ try {
 		console.log("B-CONTEXT:", JSON.stringify(bText.slice(Math.max(0, at - 160), at + 160)));
 		await page.screenshot({ path: `${OUT}/debug-b-late.png`, fullPage: true });
 	}
-	check(!bText.includes(lateMarker), "B does NOT receive A's late response");
+	const visibleB = await page.locator("main").innerText();
+	const bEvents = (await page.evaluate(async (id) => {
+		const res = await fetch(`/app-api/v1/sessions/${id}`);
+		if (!res.ok) return [];
+		const data = (await res.json()) as { events?: { content?: string }[] };
+		return data.events ?? [];
+	}, STATE.managedUrlB.split("/").pop() as string)) as { content?: string }[];
+	if (visibleB.includes(lateMarker)) {
+		const at = visibleB.indexOf(lateMarker);
+		console.log("VISIBLE-B-CONTEXT:", JSON.stringify(visibleB.slice(Math.max(0, at - 200), at + 200)));
+		console.log("VISIBLE-B-LEN:", visibleB.length, "HAS-P0_HELLO:", /P0_HELLO/.test(visibleB));
+	}
+	check(
+		!visibleB.includes(lateMarker) && !bEvents.some((event) => String(event.content ?? "").includes(lateMarker)),
+		"B's visible timeline AND B's events API do NOT contain A's late turn",
+		`visible=${visibleB.includes(lateMarker)} api=${bEvents.some((e) => String(e.content ?? "").includes(lateMarker))}`,
+	);
 	// Back to A: the REAL accepted turn must be in A's transcript.
 	await page.getByRole("tab", { name: /OpenCode managed acceptance/i }).click();
 	await page.waitForTimeout(1500);
@@ -120,7 +149,11 @@ try {
 		if (afterDone > beforeDone && text.includes(tabMarker)) break;
 		await reopened.waitForTimeout(500);
 	}
-	check(afterDone > beforeDone, "a NEW terminal appeared after reopening (turn kept running)", `${beforeDone}->${afterDone}`);
+	check(
+		afterDone > beforeDone,
+		"a NEW terminal appeared after reopening (uncorrelated to messageID; kept OPEN)",
+		`${beforeDone}->${afterDone}`,
+	);
 	await reopened.screenshot({ path: `${OUT}/13-linked-closed-browser-tab.png`, fullPage: true });
 } finally {
 	await browser.close();
