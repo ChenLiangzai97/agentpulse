@@ -261,14 +261,35 @@ const timer = setInterval(
 // Build provenance: the fixture serves dist/web in production; a stale bundle
 // must be visible in the evidence, never silently trusted as current source.
 const { execSync } = await import("node:child_process");
+const { createHash } = await import("node:crypto");
+const { readdir, readFile } = await import("node:fs/promises");
 const headCommit = execSync("git rev-parse HEAD", { encoding: "utf8" }).trim();
-let buildInfo: { commit?: string; builtAt?: string } | null = null;
-try {
-	buildInfo = JSON.parse(await (await import("node:fs/promises")).readFile("dist/web/build.json", "utf8"));
-} catch {
-	buildInfo = null;
+const buildInfo = JSON.parse(await readFile("dist/web/build.json", "utf8").catch(() => "null")) as {
+	commit?: string;
+	hash?: string;
+	files?: string[];
+	builtAt?: string;
+} | null;
+// Recompute the bundle hash; a stamp that does not match the FILES on disk (or
+// a stamp from another commit) must abort the fixture, not be silently trusted.
+let buildHashOk = false;
+if (buildInfo?.files && buildInfo.hash) {
+	const hash = createHash("sha256");
+	let ok = true;
+	try {
+		for (const file of buildInfo.files) hash.update(file).update("\0").update(await readFile(file)).update("\0");
+		buildHashOk = hash.digest("hex") === buildInfo.hash;
+	} catch {
+		ok = false;
+		buildHashOk = false;
+	}
+	void ok;
 }
-const buildStale = !buildInfo || buildInfo.commit !== headCommit;
+const buildStale = !buildInfo || buildInfo.commit !== headCommit || !buildHashOk;
+if (buildStale)
+	throw new Error(
+		`fixture_build_mismatch: run scripts/opencode-p0/build-for-fixture.ts (commit=${buildInfo?.commit?.slice(0, 7)} head=${headCommit.slice(0, 7)} hashOk=${buildHashOk})`,
+	);
 const state = {
 	root,
 	url: server.url.origin,
