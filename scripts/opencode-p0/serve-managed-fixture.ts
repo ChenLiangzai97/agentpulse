@@ -12,6 +12,8 @@ process.env.DISABLE_AUTH = "true";
 process.env.NODE_ENV = "production";
 process.env.AGENTPULSE_AI_ENABLED = "false";
 process.env.AGENTPULSE_OPENCODE_OBSERVER = "off";
+// Fork REQUESTS may be queued in this isolated fixture (no production entry).
+process.env.AGENTPULSE_OPENCODE_FORK_ENTRY = "1";
 const { app } = await import("../../src/server/app.js");
 const { initializeDatabase, getDb } = await import("../../src/server/db/client.js");
 const { sessions, supervisors, launchRequests } = await import(
@@ -123,7 +125,16 @@ const provider = createManagedOpenCodeProvider(
 		},
 	},
 	root,
-	{ request, verdict: () => "send" },
+	{
+		request,
+		verdict: () => "send",
+		reportForkResult: async (actionId, body) => {
+			await request(`/supervisors/fixture-host/control-actions/${actionId}/fork-result`, {
+				method: "POST",
+				body: JSON.stringify(body),
+			});
+		},
+	},
 );
 await getDb()
 	.insert(supervisors)
