@@ -1,4 +1,5 @@
 import { ArrowDownToLine, ArrowUpToLine } from "lucide-react";
+import { useT } from "../../i18n/i18n.js";
 import { cn } from "../../lib/utils.js";
 
 export function ScrollJumpControls({
@@ -8,20 +9,21 @@ export function ScrollJumpControls({
 	onTop: () => void;
 	onBottom: () => void;
 }) {
+	const t = useT();
 	return (
 		<div className="flex items-center gap-1">
 			<button
 				onClick={onTop}
-				title="Jump to top"
-				aria-label="Jump to top"
+				title={t("overflow.jumpTop")}
+				aria-label={t("overflow.jumpTop")}
 				className="rounded border border-border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
 			>
 				<ArrowUpToLine className="h-3.5 w-3.5" />
 			</button>
 			<button
 				onClick={onBottom}
-				title="Jump to bottom"
-				aria-label="Jump to bottom"
+				title={t("overflow.jumpBottom")}
+				aria-label={t("overflow.jumpBottom")}
 				className="rounded border border-border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
 			>
 				<ArrowDownToLine className="h-3.5 w-3.5" />
@@ -39,6 +41,7 @@ export function ModeButton({
 	label: string;
 	onClick: () => void;
 }) {
+	const t = useT();
 	return (
 		<button
 			onClick={onClick}
@@ -65,6 +68,7 @@ export function FilterToggle({
 	onClick: () => void;
 	disabled?: boolean;
 }) {
+	const t = useT();
 	return (
 		<button
 			onClick={onClick}
@@ -99,6 +103,7 @@ export function WorkspaceTabButton({
 	id?: string;
 	onClick: () => void;
 }) {
+	const t = useT();
 	return (
 		<button
 			type="button"

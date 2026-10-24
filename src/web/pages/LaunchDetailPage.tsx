@@ -43,7 +43,8 @@ function KeyValue({
 const launchModeLabels: Record<LaunchMode, string> = {
 	headless: "Headless task",
 	interactive_terminal: "Interactive terminal",
-	managed_codex: "Managed Codex",
+	managed_opencode: "Managed OpenCode",
+ managed_codex: "Managed Codex",
 };
 
 const activeStatuses = new Set<LaunchRequestStatus>([

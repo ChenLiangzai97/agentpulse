@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useEnsuredSummaryAvailability } from "../hooks/useSummaryAvailable.js";
+import { useT } from "../i18n/i18n.js";
 import { summaryHref } from "../lib/session-summary-core.js";
 
 /**
@@ -10,20 +11,21 @@ export function SummaryLink({
 	sessionId,
 	variant,
 }: { sessionId: string; variant: "button" | "text" }) {
+	const t = useT();
 	if (useEnsuredSummaryAvailability() !== "available") return null;
 	return variant === "button" ? (
 		<Link
 			to={summaryHref(sessionId)}
 			className="whitespace-nowrap rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
 		>
-			Open Summary
+			{t("summary.openSummary")}
 		</Link>
 	) : (
 		<Link
 			to={summaryHref(sessionId)}
 			className="text-muted-foreground hover:text-foreground hover:underline"
 		>
-			Summary
+			{t("summary.tab")}
 		</Link>
 	);
 }

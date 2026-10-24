@@ -1,11 +1,23 @@
-import { and, asc, eq, isNotNull, isNull } from "drizzle-orm";
+import {
+	type AnyColumn,
+	type SQL,
+	type SQLWrapper,
+	and,
+	asc,
+	eq,
+	isNotNull,
+	isNull,
+	sql,
+} from "drizzle-orm";
 import type {
 	ControlAction,
 	ControlActionStatus,
 	ControlActionType,
 	LaunchRequest,
+	SupervisorCapabilities,
 } from "../../shared/types.js";
 import type { Actor } from "../auth/actor.js";
+import { config } from "../config.js";
 import { getDb } from "../db/client.js";
 import {
 	events,
@@ -13,11 +25,21 @@ import {
 	launchRequests,
 	managedSessions,
 	projects,
+	sessionControlBindings,
 	sessions,
+	supervisors,
 } from "../db/schema/index.js";
 import { jsonExtractText } from "../db/sql-helpers.js";
 import { withTransaction } from "../db/with-transaction.js";
+import {
+	releaseExecutionLease,
+	registerExecutionLease,
+	withControlMutex,
+} from "./control-lease.js";
 import { mapLaunchRequest } from "./launch-validator.js";
+import { inspectOpenCodeProvenance } from "./opencode-control-provenance.js";
+import { assertSessionControlOrigin } from "./opencode-control-provenance.js";
+import { queueOpenCodeAction } from "./opencode-managed.js";
 import { bumpVersionAndReload } from "./projects/cache.js";
 import { ownerLaunchJoin, resolveSessionOwner, sessionOwnedBy } from "./session-ownership.js";
 
@@ -147,6 +169,12 @@ function mapControlAction(row: typeof controlActions.$inferSelect): ControlActio
 	};
 }
 
+/** One action by id (fork-result reporting); finalize enforces supervisor scope. */
+export async function getControlAction(actionId: string) {
+	const [row] = await getDb().select().from(controlActions).where(eq(controlActions.id, actionId)).limit(1);
+	return row ? mapControlAction(row) : null;
+}
+
 export async function listControlActionsForSession(sessionId: string) {
 	const rows = await getDb()
 		.select()
@@ -157,6 +185,9 @@ export async function listControlActionsForSession(sessionId: string) {
 }
 
 export async function queueStopAction(sessionId: string, actor: Actor) {
+	if (await inspectOpenCodeProvenance(sessionId))
+		return mapControlAction(await queueOpenCodeAction(sessionId, "stop", {}, actor));
+	await assertSessionControlOrigin(sessionId, actor);
 	await expireStaleControlLock(sessionId);
 	const [managed] = await getDb()
 		.select()
@@ -202,6 +233,9 @@ export async function queueStopAction(sessionId: string, actor: Actor) {
 }
 
 export async function queuePromptAction(sessionId: string, prompt: string, actor: Actor) {
+	if (await inspectOpenCodeProvenance(sessionId))
+		return mapControlAction(await queueOpenCodeAction(sessionId, "prompt", { prompt }, actor));
+	await assertSessionControlOrigin(sessionId, actor);
 	const cleanPrompt = prompt.trim();
 	if (!cleanPrompt) throw new Error("Prompt is required.");
 	await expireStaleControlLock(sessionId);
@@ -258,6 +292,7 @@ export async function queuePromptAction(sessionId: string, prompt: string, actor
 				cwd: session.cwd,
 				model: session.model,
 				managedState: managed.managedState,
+				providerSessionId: managed.providerSessionId,
 				launchMode: launch.requestedLaunchMode,
 				env: launch.env ?? {},
 				terminalOwner:
@@ -291,6 +326,7 @@ export async function queuePromptAction(sessionId: string, prompt: string, actor
 }
 
 export async function retryLaunchForSession(sessionId: string, actor: Actor) {
+	await assertSessionControlOrigin(sessionId, actor);
 	const [managed] = await getDb()
 		.select()
 		.from(managedSessions)
@@ -434,6 +470,29 @@ async function finalizeCleanupWorkArea(projectId: string): Promise<void> {
 	await bumpVersionAndReload();
 }
 
+/** Dialect-safe single-key metadata write (PG metadata column is json). */
+function jsonKeySetSql(column: AnyColumn | SQLWrapper, key: string, value: string): SQL {
+	if (config.dialect === "postgres")
+		return sql`jsonb_set(coalesce(${column}::jsonb, '{}'::jsonb), ${`{${key}}`}, ${JSON.stringify(value)}::jsonb)::json`;
+	return sql`json_set(coalesce(${column}, '{}'), ${`$.${key}`}, json(${JSON.stringify(value)}))`;
+}
+
+/** FOR UPDATE on PG for the protected binding row; SQLite serializes writers. */
+async function selectBindingForUpdate(
+	tx: Parameters<Parameters<typeof withTransaction>[0]>[0],
+	sessionId: string,
+): Promise<(typeof sessionControlBindings.$inferSelect)[]> {
+	const query = tx
+		.select()
+		.from(sessionControlBindings)
+		.where(eq(sessionControlBindings.sessionId, sessionId))
+		.limit(1);
+	if (config.dialect !== "postgres") return query;
+	return (query as unknown as { for: (mode: "update") => Promise<unknown[]> }).for("update") as Promise<
+		(typeof sessionControlBindings.$inferSelect)[]
+	>;
+}
+
 export async function claimNextControlAction(supervisorId: string) {
 	await expireStaleControlLocksForSupervisor(supervisorId);
 
@@ -449,7 +508,10 @@ export async function claimNextControlAction(supervisorId: string) {
 		.innerJoin(managedSessions, eq(managedSessions.sessionId, controlActions.sessionId))
 		.leftJoin(launchRequests, ownerLaunchJoin)
 		.where(and(eq(controlActions.status, "queued"), sessionOwnedBy(supervisorId)))
-		.orderBy(asc(controlActions.createdAt))
+		.orderBy(
+			sql`CASE WHEN ${controlActions.actionType} IN ('stop', 'interrupt', 'interaction_response', 'approval') THEN 0 ELSE 1 END`,
+			asc(controlActions.createdAt),
+		)
 		.limit(1);
 
 	const sessionlessRow = await getDb()
@@ -477,17 +539,71 @@ export async function claimNextControlAction(supervisorId: string) {
 	}
 	if (!candidate) return null;
 
-	const timestamp = nowIso();
-	const [updated] = await getDb()
-		.update(controlActions)
-		.set({
-			status: "running",
-			claimedBySupervisorId: supervisorId,
-			updatedAt: timestamp,
-		})
-		.where(eq(controlActions.id, candidate.id))
-		.returning();
-	return updated ? mapControlAction(updated) : null;
+	// EXECUTION/CLAIM FENCE in ONE transaction with the claim itself: the binding
+	// is re-read under the transaction, the action is conditionally claimed, and
+	// an ineligible action is failed instead of handed out. This is atomic with
+	// respect to STOP's state change (single SQLite/PG transaction).
+	const claimedRow = await withTransaction(async (tx) => {
+		const [fresh] = await tx
+			.select()
+			.from(controlActions)
+			.where(and(eq(controlActions.id, candidate.id), eq(controlActions.status, "queued")))
+			.limit(1);
+		if (!fresh) return null;
+		const meta = (fresh.metadata ?? {}) as Record<string, unknown>;
+		const managed =
+			meta.agentType === "opencode" ||
+			typeof meta.controlEpoch === "number" ||
+			fresh.actionType.startsWith("opencode_");
+		if (fresh.sessionId && managed) {
+			const [binding] = await selectBindingForUpdate(tx, fresh.sessionId);
+			// A managed action WITHOUT an epoch cannot be proven current: isolate it.
+			const missingEpoch = typeof meta.controlEpoch !== "number";
+			const expectedEpoch =
+				fresh.actionType === "opencode_resume" && binding
+					? binding.stopEpoch + 1
+					: binding?.stopEpoch;
+			const staleEpoch = !binding || meta.controlEpoch !== expectedEpoch;
+			// STOP and RESUME are the control actions allowed while not active; a
+			// resume is only valid at its candidate epoch (epoch+1).
+			const controlAction =
+				fresh.actionType === "stop" || fresh.actionType === "opencode_resume";
+			const blocked = binding && binding.stopState !== "active" && !controlAction;
+			const resumeStale =
+				fresh.actionType === "opencode_resume" &&
+				binding &&
+				typeof meta.controlEpoch === "number" &&
+				meta.controlEpoch !== binding.stopEpoch + 1;
+			if (missingEpoch || staleEpoch || blocked || resumeStale) {
+				await tx
+					.update(controlActions)
+					.set({
+						status: "failed",
+						error: "opencode_session_stopped",
+						finishedAt: nowIso(),
+						updatedAt: nowIso(),
+					})
+					.where(eq(controlActions.id, fresh.id));
+				return null;
+			}
+		}
+		// CLAIM + token minting in the SAME transaction and conditional write: a
+		// STOP landing between the check and the claim makes the update lose (the
+		// row is no longer queued) instead of handing out a stale-epoch action.
+		const claimToken = crypto.randomUUID();
+		const [updated] = await tx
+			.update(controlActions)
+			.set({
+				status: "running",
+				claimedBySupervisorId: supervisorId,
+				updatedAt: nowIso(),
+				metadata: jsonKeySetSql(controlActions.metadata, "claimToken", claimToken),
+			})
+			.where(and(eq(controlActions.id, fresh.id), eq(controlActions.status, "queued")))
+			.returning();
+		return updated ?? null;
+	});
+	return claimedRow ? mapControlAction(claimedRow) : null;
 }
 
 export async function updateControlAction(input: {
@@ -496,27 +612,207 @@ export async function updateControlAction(input: {
 	status: Exclude<ControlActionStatus, "queued">;
 	error?: string | null;
 	metadata?: Record<string, unknown> | null;
+	/** The execution token; required to accept a managed terminal result. */
+	claimToken?: string | null;
 }) {
-	const [current] = await getDb()
-		.select()
-		.from(controlActions)
-		.where(eq(controlActions.id, input.actionId))
-		.limit(1);
-	if (!current || current.claimedBySupervisorId !== input.supervisorId) return null;
-
+	// RESULT FENCE inside ONE transaction: the binding is read under the same
+	// transaction as the action write, and the stopping->stopped transition is a
+	// CONDITIONAL update matching (session, state='stopping', epoch).
+	const outcome = await withTransaction(async (tx) => {
+		const [current] = await tx
+			.select()
+			.from(controlActions)
+			.where(eq(controlActions.id, input.actionId))
+			.limit(1);
+		if (
+			!current ||
+			current.claimedBySupervisorId !== input.supervisorId ||
+			// CAS on the claimed state as well: a re-claim with a new token moves the
+			// row back to running through the claim path, never through this update.
+			current.status !== "running"
+		)
+			return null;
+		const meta = (current.metadata ?? {}) as Record<string, unknown>;
+		const controlEpoch = typeof meta.controlEpoch === "number" ? meta.controlEpoch : null;
+		const managed =
+			meta.agentType === "opencode" ||
+			controlEpoch !== null ||
+			current.actionType.startsWith("opencode_");
+		// TOKEN BINDING for EVERY managed report (including running heartbeats): a
+		// report without the exact token issued with THIS claim is refused, so an
+		// old attempt can never touch a newer one.
+		if (
+			managed &&
+			(typeof meta.claimToken !== "string" ||
+				typeof input.claimToken !== "string" ||
+				input.claimToken !== meta.claimToken)
+		)
+			return null;
+		let status = input.status;
+		let error = input.error ?? null;
+		const [binding] = current.sessionId ? await selectBindingForUpdate(tx, current.sessionId) : [];
+		if (managed && status === "succeeded") {
+			const isStop = current.actionType === "stop";
+			const isResume = current.actionType === "opencode_resume";
+			// A managed action without a binding or epoch is unprovable: refuse.
+			const missingEpoch = controlEpoch === null;
+			const missingBinding = !binding;
+			const stale = isResume
+				? !binding || controlEpoch !== binding.stopEpoch + 1
+				: !binding || controlEpoch !== binding.stopEpoch;
+			const stopped =
+				Boolean(binding) && !isStop && !isResume && binding?.stopState !== "active";
+			if (missingEpoch || missingBinding || stale || stopped) {
+				status = "failed";
+				error = "opencode_session_stopped";
+			}
+		}
+		const timestamp = nowIso();
+		// Server-issued control fields can NEVER be replaced by a report's
+		// metadata; only non-protected keys are merged in.
+		const PROTECTED = new Set([
+			"claimToken",
+			"controlEpoch",
+			"agentType",
+			"instanceId",
+			"generation",
+			"nativeSessionId",
+			"forkRequestHash",
+			"resultChildSessionId",
+			"finalizedByClaimToken",
+		]);
+		const incoming: Record<string, unknown> = {};
+		for (const [key, value] of Object.entries(input.metadata ?? {}))
+			if (!PROTECTED.has(key)) incoming[key] = value;
+		const metadata = {
+			...((current.metadata ?? {}) as Record<string, unknown>),
+			...incoming,
+		};
+		const tokenCondition = managed
+			? sql`${jsonExtractText(controlActions.metadata, "$.claimToken")} = ${input.claimToken}`
+			: undefined;
+		const [updated] = await tx
+			.update(controlActions)
+			.set({
+				status,
+				error,
+				metadata,
+				finishedAt: status === "running" ? null : timestamp,
+				updatedAt: timestamp,
+			})
+			.where(
+				and(
+					eq(controlActions.id, input.actionId),
+					eq(controlActions.claimedBySupervisorId, input.supervisorId),
+					eq(controlActions.status, "running"),
+					...(tokenCondition ? [tokenCondition] : []),
+				),
+			)
+			.returning();
+		if (
+			binding &&
+			updated &&
+			status === "succeeded" &&
+			current.actionType === "stop" &&
+			controlEpoch !== null
+		) {
+			await tx
+				.update(sessionControlBindings)
+				.set({ stopState: "stopped" })
+				.where(
+					and(
+						eq(sessionControlBindings.sessionId, current.sessionId ?? ""),
+						eq(sessionControlBindings.stopState, "stopping"),
+						eq(sessionControlBindings.stopEpoch, controlEpoch),
+					),
+				);
+		}
+		// RESUME success is the SECOND phase: only a verified clear state moves
+		// stopped -> active at the candidate epoch. A stale/again-stopped binding
+		// makes the conditional update fail and the action is reported failed.
+		if (
+			binding &&
+			updated &&
+			status === "succeeded" &&
+			current.actionType === "opencode_resume" &&
+			controlEpoch !== null
+		) {
+			const flipped = await tx
+				.update(sessionControlBindings)
+				.set({ stopState: "active", stopEpoch: controlEpoch })
+				.where(
+					and(
+						eq(sessionControlBindings.sessionId, current.sessionId ?? ""),
+						eq(sessionControlBindings.stopState, "stopped"),
+						eq(sessionControlBindings.stopEpoch, controlEpoch - 1),
+					),
+				)
+				.returning({ sessionId: sessionControlBindings.sessionId });
+			if (flipped.length !== 1) {
+				// The flip did not apply: settle the action as failed and return the
+				// FAILED ROW so the outer code releases this action's lease (a
+				// permanent UNKNOWN lease would be worse than the failed resume).
+				const [failed] = await tx
+					.update(controlActions)
+					.set({
+						status: "failed",
+						error: "opencode_session_stopped",
+						finishedAt: nowIso(),
+						updatedAt: nowIso(),
+					})
+					.where(eq(controlActions.id, input.actionId))
+					.returning();
+				return { current, updated: failed, status: "failed" };
+			}
+		}
+		return { current, updated, status };
+	});
+	if (!outcome) return null;
+	const { current, updated, status } = outcome;
+	// Release ONLY after an ACCEPTED terminal result (never on a rejected or
+	// heartbeat report, and only for the matching action+token).
+	if (status !== "running" && updated) releaseExecutionLease(input.actionId);
 	const timestamp = nowIso();
-	const [updated] = await getDb()
-		.update(controlActions)
-		.set({
-			status: input.status,
-			error: input.error ?? null,
-			metadata: input.metadata ?? current.metadata,
-			finishedAt: input.status === "running" ? null : timestamp,
-			updatedAt: timestamp,
-		})
-		.where(eq(controlActions.id, input.actionId))
-		.returning();
-
+	if (
+		current.actionType === "opencode_health" &&
+		input.status === "succeeded" &&
+		[
+			"ready",
+			"not_configured",
+			"authentication_failed",
+			"model_unavailable",
+			"unavailable",
+		].includes(String(input.metadata?.health))
+	) {
+		const [host] = await getDb()
+			.select()
+			.from(supervisors)
+			.where(eq(supervisors.id, input.supervisorId));
+		if (host) {
+			const caps = host.capabilities as unknown as SupervisorCapabilities;
+			const previous = caps.executables?.opencodeProfile;
+			await getDb()
+				.update(supervisors)
+				.set({
+					capabilities: {
+						...caps,
+						executables: {
+							...caps.executables,
+							opencodeProfile: {
+								...previous,
+								configured: input.metadata?.health !== "not_configured",
+								health: input.metadata?.health,
+								maxInstances: previous?.maxInstances ?? 2,
+								maxQueuedLaunches: previous?.maxQueuedLaunches ?? 4,
+								idleTimeoutMs: previous?.idleTimeoutMs ?? 1800000,
+								stopGraceMs: previous?.stopGraceMs ?? 5000,
+							},
+						},
+					},
+				})
+				.where(eq(supervisors.id, input.supervisorId));
+		}
+	}
 	if (current.sessionId && input.status !== "running") {
 		await getDb()
 			.update(managedSessions)
@@ -525,7 +821,12 @@ export async function updateControlAction(input: {
 				controlLockExpiresAt: null,
 				updatedAt: timestamp,
 			})
-			.where(eq(managedSessions.sessionId, current.sessionId));
+			.where(
+				and(
+					eq(managedSessions.sessionId, current.sessionId),
+					eq(managedSessions.activeControlActionId, current.id),
+				),
+			);
 	}
 
 	if (current.actionType === "cleanup_workarea" && input.status === "succeeded") {
@@ -541,4 +842,62 @@ export async function updateControlAction(input: {
 	}
 
 	return updated ? mapControlAction(updated) : null;
+}
+
+/**
+ * EXECUTION PERMIT: called by the supervisor immediately before it starts native
+ * work. The claim fence alone is racy against a STOP that lands after the claim
+ * but before execution — this re-checks the protected epoch/state atomically and
+ * returns 409 when execution must not start.
+ */
+export async function assertExecutionPermit(input: {
+	actionId: string;
+	supervisorId: string;
+	claimToken: string;
+}) {
+	// SINGLE-PROCESS SERIALIZATION: permit (check + lease registration) and the
+	// STOP transition share this mutex, so a permit can never slip in between
+	// STOP's epoch write and its lease drain check.
+	return withControlMutex(async () => {
+		const outcome = await withTransaction(async (tx) => {
+			const [action] = await tx
+				.select()
+				.from(controlActions)
+				.where(eq(controlActions.id, input.actionId))
+				.limit(1);
+			if (
+				!action ||
+				action.claimedBySupervisorId !== input.supervisorId ||
+				action.status !== "running"
+			)
+				return { ok: false as const, error: "provider_binding_invalid" };
+			const meta = (action.metadata ?? {}) as Record<string, unknown>;
+			if (meta.claimToken !== input.claimToken)
+				return { ok: false as const, error: "provider_binding_invalid" };
+			const epoch = typeof meta.controlEpoch === "number" ? meta.controlEpoch : null;
+			if (!action.sessionId) return { ok: true as const, epoch: epoch ?? 0 };
+			const [binding] = await selectBindingForUpdate(tx, action.sessionId);
+			const managed =
+				meta.agentType === "opencode" ||
+				epoch !== null ||
+				action.actionType.startsWith("opencode_");
+			if (!managed) return { ok: true as const, epoch: epoch ?? 0 };
+			if (!binding || epoch === null)
+				return { ok: false as const, error: "opencode_session_stopped" };
+			const isStop = action.actionType === "stop";
+			const isResume = action.actionType === "opencode_resume";
+			const stale = isResume ? epoch !== binding.stopEpoch + 1 : epoch !== binding.stopEpoch;
+			const blocked = !isStop && !isResume && binding.stopState !== "active";
+			if (stale || blocked) return { ok: false as const, error: "opencode_session_stopped" };
+			return { ok: true as const, epoch, sessionId: action.sessionId };
+		});
+		if (!outcome.ok) throw new Error(outcome.error);
+		// Lease FIRST, before the permit response leaves the server.
+		registerExecutionLease({
+			actionId: input.actionId,
+			sessionId: outcome.sessionId ?? null,
+			epoch: outcome.epoch,
+		});
+		return outcome;
+	});
 }

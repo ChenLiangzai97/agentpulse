@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useOwnershipUi } from "../../hooks/useOwnershipUi.js";
+import { t } from "../../i18n/i18n.js";
 import {
 	SESSION_SUMMARY_FLAG,
 	labsPointer,
@@ -50,7 +51,7 @@ export function SummaryLabsPointer() {
 					onClick={() => void turnOn()}
 					className="min-h-[44px] rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 md:min-h-0"
 				>
-					Turn on
+					{t("labsPointer.turnOn")}
 				</button>
 			)}
 			{pointer.learnMoreHref && (
@@ -58,7 +59,7 @@ export function SummaryLabsPointer() {
 					to={pointer.learnMoreHref}
 					className="inline-flex min-h-[44px] items-center text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground md:min-h-0"
 				>
-					What it does
+					{t("labsPointer.whatItDoes")}
 				</Link>
 			)}
 		</div>

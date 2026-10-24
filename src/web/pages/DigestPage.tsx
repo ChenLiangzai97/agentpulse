@@ -4,6 +4,7 @@ import { DigestSessionRow } from "../components/DigestSessionRow.js";
 import { LabsBadge } from "../components/LabsBadge.js";
 import { SkeletonCard, SkeletonCardList } from "../components/SkeletonCard.js";
 import { StatCard } from "../components/StatCard.js";
+import { useT } from "../i18n/i18n.js";
 import { plainErrorMessage } from "../lib/api-errors.js";
 import { type Digest, type RepoDigest, api } from "../lib/api.js";
 import { formatTimeAgo } from "../lib/utils.js";
@@ -13,6 +14,7 @@ import { formatTimeAgo } from "../lib/utils.js";
  * grouped by working directory with health/activity rollups.
  */
 export function DigestPage() {
+	const t = useT();
 	const [digest, setDigest] = useState<Digest | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -39,12 +41,10 @@ export function DigestPage() {
 			<header className="flex items-center justify-between gap-2">
 				<div>
 					<div className="flex items-center gap-2">
-						<h1 className="text-xl font-semibold">Project digest</h1>
+						<h1 className="text-xl font-semibold">{t("digest.title")}</h1>
 						<LabsBadge />
 					</div>
-					<p className="text-xs text-muted-foreground">
-						Last 24 hours, grouped by repository. Auto-refreshed daily.
-					</p>
+					<p className="text-xs text-muted-foreground">{t("digest.subtitle")}</p>
 				</div>
 				<button
 					type="button"
@@ -70,7 +70,7 @@ export function DigestPage() {
 			)}
 
 			{loading ? (
-				<output aria-label="Loading digest">
+				<output aria-label={t("digest.loading")}>
 					{/* Stats row skeleton */}
 					<section className="grid grid-cols-2 md:grid-cols-5 gap-3">
 						{Array.from({ length: 5 }, (_, i) => (
@@ -83,16 +83,16 @@ export function DigestPage() {
 			) : digest ? (
 				<>
 					<section className="grid grid-cols-2 md:grid-cols-5 gap-3">
-						<StatCard label="Repos" value={digest.totals.repos} />
-						<StatCard label="Sessions" value={digest.totals.sessions} />
-						<StatCard label="Active" value={digest.totals.active} />
+						<StatCard label={t("digest.repos")} value={digest.totals.repos} />
+						<StatCard label={t("digest.sessions")} value={digest.totals.sessions} />
+						<StatCard label={t("digest.active")} value={digest.totals.active} />
 						<StatCard
-							label="Blocked"
+							label={t("digest.blocked")}
 							value={digest.totals.blocked}
 							tone={digest.totals.blocked > 0 ? "warn" : "default"}
 						/>
 						<StatCard
-							label="Stuck"
+							label={t("digest.stuck")}
 							value={digest.totals.stuck}
 							tone={digest.totals.stuck > 0 ? "danger" : "default"}
 						/>
@@ -100,7 +100,7 @@ export function DigestPage() {
 
 					{digest.repos.length === 0 ? (
 						<div className="rounded border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-							No recent activity in the last 24 hours.
+							{t("digest.empty")}
 						</div>
 					) : (
 						<div className="space-y-3">
@@ -121,6 +121,7 @@ export function DigestPage() {
 }
 
 function RepoCard({ repo }: { repo: RepoDigest }) {
+	const t = useT();
 	return (
 		<div className="rounded-lg border border-border bg-card p-4">
 			<div className="flex items-center justify-between gap-2 mb-2">
@@ -156,7 +157,7 @@ function RepoCard({ repo }: { repo: RepoDigest }) {
 			{repo.topPlanCompletions.length > 0 && (
 				<div className="mb-2">
 					<div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
-						Plan completions
+						{t("digest.planCompletions")}
 					</div>
 					<ul className="text-xs list-disc list-inside space-y-0.5">
 						{repo.topPlanCompletions.map((p) => (
@@ -171,7 +172,7 @@ function RepoCard({ repo }: { repo: RepoDigest }) {
 			{repo.notableFailures.length > 0 && (
 				<div className="mb-2">
 					<div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-1">
-						Notable failures
+						{t("digest.notableFailures")}
 					</div>
 					<ul className="text-[11px] space-y-0.5">
 						{repo.notableFailures.map((f) => (

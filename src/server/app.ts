@@ -51,6 +51,7 @@ import { setup as setupRoute } from "./routes/setup.js";
 import { supervisorsAdminRouter, supervisorsAgentRouter } from "./routes/supervisors.js";
 import { templatesRouter } from "./routes/templates.js";
 import { usersRouter } from "./routes/users.js";
+import { worklogRouter } from "./routes/worklog.js";
 
 export const app = new Hono();
 
@@ -77,6 +78,7 @@ api.route("/v1", ingest);
 // each router's own requireAuth finds it already resolved.
 api.use("/v1/*", requireRolePolicy());
 api.route("/v1", sessionsRouter);
+api.route("/v1", worklogRouter);
 api.route("/v1", settingsRouter);
 api.route("/v1", instanceRouter);
 api.route("/v1", usersRouter);

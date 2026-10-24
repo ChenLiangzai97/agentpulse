@@ -13,6 +13,10 @@ import {
 	assertCanRenameSession,
 } from "../authorization.js";
 import { findActiveChannelByChatId } from "../channels/channels-service.js";
+import {
+	SessionControlOriginError,
+	assertSessionControlOrigin,
+} from "../opencode-control-provenance.js";
 import { renameSession } from "../session-tracker.js";
 import type { ResolvedSession } from "./ask-resolver.js";
 import { resolveSession } from "./ask-resolver.js";
@@ -136,6 +140,16 @@ export async function handleSessionAction(
 	// ---- Destructive: action_request required ---------------------------
 
 	if (intent.action === "stop") {
+		try {
+			await assertSessionControlOrigin(session.sessionId);
+		} catch (error) {
+			if (error instanceof SessionControlOriginError)
+				return {
+					replyText: "OpenCode session is observe-only; control is unavailable.",
+					actionRequestId: null,
+				};
+			throw error;
+		}
 		// Pre-flight: verify the session has a managed_sessions row.
 		// queueStopAction would throw for hook-only sessions — we surface a
 		// clear message here so no action_request is ever created for them.

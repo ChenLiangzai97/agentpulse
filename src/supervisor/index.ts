@@ -16,8 +16,11 @@ import {
 import {
 	launchManagedCodexRequest,
 	reconcileManagedCodexTitles,
+	recoverManagedCodexSessions,
 	stopManagedCodexSession,
 } from "./providers/codex-managed.js";
+import { createManagedOpenCodeProvider } from "./providers/opencode-managed.js";
+import { checkOpenCodeProfileHealth } from "./providers/opencode-runtime.js";
 import { executeCleanupWorkArea } from "./services/cleanup-workarea.js";
 import { isCodexObserverEnabled, startCodexObserver } from "./services/codex-observer.js";
 import {
@@ -26,6 +29,7 @@ import {
 	warnIfHomeMismatch,
 } from "./services/exclude-rules-watch.js";
 import { parseErrorBodyField, sanitizeForLog } from "./services/log-sanitize.js";
+import { createManagedOutbox } from "./services/managed-outbox.js";
 import { executePrelaunchActions } from "./services/prelaunch-actions.js";
 import { retryWithBackoff } from "./services/registration-retry.js";
 import { createReportGate, heartbeatBody } from "./services/report-gate.js";
@@ -149,9 +153,8 @@ async function main() {
 			const staleMs = Date.now() - lastHeartbeatOkAt;
 			if (staleMs > watchdogStaleMs) {
 				console.error(
-					`[supervisor] watchdog: no successful heartbeat in ${Math.round(staleMs / 1000)}s — exiting for launchd/systemd restart`,
+					`[supervisor] watchdog: no successful heartbeat in ${Math.round(staleMs / 1000)}s — preserving active sessions while reconnecting`,
 				);
-				process.exit(1);
 			}
 		},
 		Math.max(10_000, Math.floor(registration.heartbeatIntervalMs / 2)),
@@ -167,21 +170,60 @@ async function main() {
 		version: config.version,
 		rules,
 	});
+	const outbox = createManagedOutbox(home, (id, events) => gate.reportEvents(id, events));
+	const reportingGate = {
+		...gate,
+		reportEvents: (id: string, events: Parameters<typeof gate.reportEvents>[1]) =>
+			gate.verdict(id) === "send" ? outbox.enqueue(id, events) : gate.reportEvents(id, events),
+	};
+	setInterval(() => {
+		void outbox.flush().catch((error) => {
+			console.error("[managed-outbox] retry failed", error);
+			if (error instanceof SupervisorRequestError && error.status === 401) process.exit(1);
+		});
+	}, 3_000).unref();
+	const openCode = createManagedOpenCodeProvider(
+		{ ...config, id: registration.supervisor.id },
+		home,
+		{
+			request,
+			verdict: (id) => gate.verdict(id),
+			checkExecutionPermit: async (actionId, claimToken) => {
+				await request(
+					`/supervisors/${registration.supervisor.id}/control-actions/${actionId}/permit`,
+					{ method: "POST", body: JSON.stringify({ claimToken }) },
+				);
+			},
+			// Fork results go to the AUTHENTICATED endpoint; the server mints all
+			// ids and commits the single transaction. Entry points stay CLOSED.
+			reportForkResult: async (actionId, body) => {
+				await request(
+					`/supervisors/${registration.supervisor.id}/control-actions/${actionId}/fork-result`,
+					{ method: "POST", body: JSON.stringify(body) },
+				);
+			},
+		},
+	);
+	for (const signal of ["SIGTERM", "SIGINT"] as const)
+		process.on(signal, () => void openCode.close().finally(() => process.exit(0)));
 	const dispatchLaunch = createLaunchDispatcher({
-		gate,
+		gate: reportingGate,
 		trustedRoots: config.trustedRoots,
 		providers: {
 			launchManagedCodex: launchManagedCodexRequest,
+			launchManagedOpenCode: openCode.launch,
 			launchClaudeHeadless: launchClaudeHeadlessRequest,
 			launchClaudeInteractive: launchClaudeInteractiveRequest,
 		},
 		executePrelaunchActions,
 	});
 	const handleControlAction = createControlActionHandler({
-		gate,
+		gate: reportingGate,
 		trustedRoots: config.trustedRoots,
 		providers: {
 			stopManagedCodexSession,
+			openCodeControl: openCode.control,
+			openCodeHealth: () => checkOpenCodeProfileHealth(config.opencodeProfilePath ?? ""),
 			promptClaudeHeadlessSession,
 			promptClaudeInteractiveSession,
 		},
@@ -224,8 +266,13 @@ async function main() {
 	setInterval(async () => {
 		try {
 			const result = (await request(
-				`/supervisors/${registration.supervisor.id}/provider-sync`,
+				`/supervisors/${registration.supervisor.id}/provider-sync?includeRecoverable=true`,
 			)) as { managedSessions: ManagedSession[] };
+			await recoverManagedCodexSessions(
+				result.managedSessions ?? [],
+				reportingGate,
+				config.trustedRoots,
+			);
 			await reconcileManagedCodexTitles(result.managedSessions ?? [], (body) =>
 				gate.reportState(body),
 			);

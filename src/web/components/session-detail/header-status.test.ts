@@ -28,7 +28,9 @@ describe("SessionHeader says the state once", () => {
 		expect(code).toMatch(/<WorkspaceTabBar[\s\S]*?isWorking=\{session\.isWorking\}/);
 		const tabBar = readFileSync(join(import.meta.dir, "WorkspaceTabBar.tsx"), "utf-8");
 		expect([...tabBar.matchAll(/props\.isWorking/g)].length).toBe(1);
-		expect(tabBar).toMatch(/tab\("activity", "Activity", props\.isWorking \? "Working" : null\)/);
+		expect(tabBar).toMatch(
+			/tab\("activity", t\("tabs\.activity"\), props\.isWorking \? t\("status\.working"\) : null\)/,
+		);
 		// the removed chip: a pulsing dot beside the word "working"
 		expect(code).not.toMatch(/animate-pulse-dot[\s\S]{0,80}working/);
 	});

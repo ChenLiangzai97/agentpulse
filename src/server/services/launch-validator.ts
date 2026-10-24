@@ -1,3 +1,4 @@
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import type {
 	LaunchRequest,
@@ -8,7 +9,9 @@ import type {
 } from "../../shared/types.js";
 import type { Actor } from "../auth/actor.js";
 import { getDb } from "../db/client.js";
+import { supervisors } from "../db/schema/index.js";
 import { launchRequests } from "../db/schema/index.js";
+import { withTransaction } from "../db/with-transaction.js";
 import { pickFirstCapableSupervisor, validateAgainstSupervisor } from "./launch-compatibility.js";
 import { getConnectedSupervisor, listSupervisors } from "./supervisor-registry.js";
 import { normalizeTemplateInput, validateTemplateInput } from "./template-preview.js";
@@ -142,6 +145,38 @@ async function resolveSupervisorForLaunch(
 }
 
 export async function createValidatedLaunchRequest(input: LaunchRequestInput, actor: Actor) {
+	// Actor-scoped idempotency: a retry or concurrent duplicate with the same
+	// key maps to the FIRST launch instead of starting a second one. The
+	// server still mints the correlation id — the key never influences it.
+	const idempotencyOwner = `${actor.label}:${actor.userId ?? "-"}`;
+	if (
+		input.idempotencyKey !== undefined &&
+		input.idempotencyKey !== null &&
+		(typeof input.idempotencyKey !== "string" ||
+			!/^[A-Za-z0-9_-]{1,120}$/.test(input.idempotencyKey))
+	)
+		throw new HTTPException(400, { message: "Invalid idempotency key." });
+	const idempotencyKey = input.idempotencyKey ?? null;
+	if (idempotencyKey) {
+		const [existing] = await getDb()
+			.select()
+			.from(launchRequests)
+			.where(
+				and(
+					eq(launchRequests.idempotencyOwner, idempotencyOwner),
+					eq(launchRequests.idempotencyKey, idempotencyKey),
+				),
+			)
+			.limit(1);
+		if (existing) {
+			const [supervisor] = await getDb()
+				.select()
+				.from(supervisors)
+				.where(eq(supervisors.id, existing.resolvedSupervisorId ?? ""))
+				.limit(1);
+			return { launchRequest: mapLaunchRequest(existing), supervisor };
+		}
+	}
 	const normalizedTemplate = normalizeTemplateInput(input.template);
 	const templateValidation = validateTemplateInput(normalizedTemplate);
 	if (templateValidation.errors.length > 0) {
@@ -149,7 +184,9 @@ export async function createValidatedLaunchRequest(input: LaunchRequestInput, ac
 	}
 
 	const requestedLaunchMode =
-		input.requestedLaunchMode ?? input.launchSpec.launchMode ?? "interactive_terminal";
+		input.requestedLaunchMode ??
+		input.launchSpec.launchMode ??
+		(normalizedTemplate.agentType === "opencode" ? "managed_opencode" : "interactive_terminal");
 	const routingPolicy =
 		input.routingPolicy ?? (input.requestedSupervisorId ? "manual_target" : null);
 	const resolved = await resolveSupervisorForLaunch(
@@ -158,6 +195,7 @@ export async function createValidatedLaunchRequest(input: LaunchRequestInput, ac
 		routingPolicy,
 		requestedLaunchMode,
 	);
+
 	const supervisor = resolved.supervisor;
 	const supervisorValidation = resolved.validation;
 
@@ -191,42 +229,97 @@ export async function createValidatedLaunchRequest(input: LaunchRequestInput, ac
 	};
 
 	const now = new Date().toISOString();
-	const [row] = await getDb()
-		.insert(launchRequests)
-		.values({
-			templateId: input.templateId ?? null,
-			launchCorrelationId,
-			agentType: normalizedTemplate.agentType,
-			cwd: normalizedTemplate.cwd,
-			baseInstructions: normalizedTemplate.baseInstructions ?? "",
-			taskPrompt: normalizedTemplate.taskPrompt ?? "",
-			model: normalizedTemplate.model ?? null,
-			approvalPolicy: normalizedTemplate.approvalPolicy ?? null,
-			sandboxMode: normalizedTemplate.sandboxMode ?? null,
-			requestedLaunchMode,
-			env: normalizedTemplate.env ?? {},
-			launchSpec: normalizedLaunchSpec as unknown as Record<string, unknown>,
-			requestedBy: actor.label,
-			requestedByUserId: actor.userId,
-			requestedSupervisorId: input.requestedSupervisorId ?? null,
-			routingPolicy,
-			resolvedSupervisorId: supervisor.id,
-			routingDecision: resolved.routingDecision,
-			status,
-			error: supervisorValidation.errors.join(" ") || null,
-			validationWarnings: warnings,
-			validationSummary: summary,
-			metadata: input.metadata ?? null,
-			desiredDisplayName: input.desiredDisplayName ?? null,
-			createdAt: now,
-			updatedAt: now,
-		})
-		.returning();
+	return withTransaction(async (tx) => {
+		await tx
+			.update(supervisors)
+			.set({ updatedAt: sql`${supervisors.updatedAt}` })
+			.where(eq(supervisors.id, supervisor.id));
 
-	return {
-		launchRequest: mapLaunchRequest(row),
-		supervisor,
-	};
+		if (normalizedTemplate.agentType === "opencode") {
+			const limit =
+				resolved.supervisor.capabilities.executables?.opencodeProfile?.maxQueuedLaunches ?? 4;
+			const [queued] = await tx
+				.select({ count: sql<number>`count(*)` })
+				.from(launchRequests)
+				.where(
+					and(
+						eq(launchRequests.agentType, "opencode"),
+						eq(launchRequests.requestedSupervisorId, resolved.supervisor.id),
+						inArray(launchRequests.status, ["validated", "queued", "launching"]),
+					),
+				);
+			if (Number(queued?.count ?? 0) >= limit)
+				throw new HTTPException(409, { message: "OpenCode launch queue is full on this host." });
+		}
+		const [row] = await tx
+			.insert(launchRequests)
+			.values({
+				templateId: input.templateId ?? null,
+				launchCorrelationId,
+				agentType: normalizedTemplate.agentType,
+				cwd: normalizedTemplate.cwd,
+				baseInstructions: normalizedTemplate.baseInstructions ?? "",
+				taskPrompt: normalizedTemplate.taskPrompt ?? "",
+				model: normalizedTemplate.model ?? null,
+				approvalPolicy: normalizedTemplate.approvalPolicy ?? null,
+				sandboxMode: normalizedTemplate.sandboxMode ?? null,
+				requestedLaunchMode,
+				env: normalizedTemplate.env ?? {},
+				launchSpec: normalizedLaunchSpec as unknown as Record<string, unknown>,
+				requestedBy: actor.label,
+				requestedByUserId: actor.userId,
+				requestedSupervisorId:
+					normalizedTemplate.agentType === "opencode"
+						? supervisor.id
+						: (input.requestedSupervisorId ?? null),
+				routingPolicy,
+				resolvedSupervisorId: supervisor.id,
+				routingDecision: resolved.routingDecision,
+				status,
+				error: supervisorValidation.errors.join(" ") || null,
+				validationWarnings: warnings,
+				validationSummary: summary,
+				metadata: input.metadata ?? null,
+				idempotencyKey,
+				idempotencyOwner,
+				desiredDisplayName: input.desiredDisplayName ?? null,
+				createdAt: now,
+				updatedAt: now,
+			})
+			.returning();
+
+		return {
+			launchRequest: mapLaunchRequest(row),
+			supervisor,
+		};
+	}).catch(async (error) => {
+		const message = error instanceof Error ? error.message : String(error);
+		const isUnique =
+			message.includes("uq_launch_idempotency") ||
+			message.includes("duplicate key") ||
+			message.includes("UNIQUE constraint failed");
+		if (idempotencyKey && isUnique) {
+			const [existing] = await getDb()
+				.select()
+				.from(launchRequests)
+				.where(
+					and(
+						eq(launchRequests.idempotencyOwner, idempotencyOwner),
+						eq(launchRequests.idempotencyKey, idempotencyKey),
+					),
+				)
+				.limit(1);
+			if (existing) {
+				const [supervisor] = await getDb()
+					.select()
+					.from(supervisors)
+					.where(eq(supervisors.id, existing.resolvedSupervisorId ?? ""))
+					.limit(1);
+				return { launchRequest: mapLaunchRequest(existing), supervisor };
+			}
+		}
+		throw error;
+	});
 }
 
 export { mapLaunchRequest };

@@ -23,7 +23,11 @@ export const useEventStore = create<EventStore>((set) => ({
 		set((state) => {
 			const map = new Map(state.liveEvents);
 			const existing = map.get(event.sessionId) || [];
-			map.set(event.sessionId, [...existing, event].slice(-MAX_LIVE_EVENTS_PER_SESSION));
+			const index = (event.id ?? 0) > 0 ? existing.findIndex((row) => row.id === event.id) : -1;
+			const updated = [...existing];
+			if (index >= 0) updated[index] = event;
+			else updated.push(event);
+			map.set(event.sessionId, updated.slice(-MAX_LIVE_EVENTS_PER_SESSION));
 			return { liveEvents: map };
 		}),
 

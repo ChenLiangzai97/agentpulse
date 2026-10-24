@@ -191,3 +191,18 @@ describe("mergeSessionEvents (P5.1-P5.7)", () => {
 		expect(merged[0]?.source).toBe("observed_transcript");
 	});
 });
+
+test("OpenCode newer part revisions win regardless of REST/WS delivery order", () => {
+	const old = toolEvent({
+		id: 77,
+		eventType: "PreToolUse",
+		rawPayload: { part_id: "prt_1", source_updated_at: 100 },
+	});
+	const latest = toolEvent({
+		id: 77,
+		toolResponse: "delivered",
+		rawPayload: { part_id: "prt_1", source_updated_at: 101 },
+	});
+	expect(mergeSessionEvents([old], [latest])).toEqual([latest]);
+	expect(mergeSessionEvents([latest], [old])).toEqual([latest]);
+});

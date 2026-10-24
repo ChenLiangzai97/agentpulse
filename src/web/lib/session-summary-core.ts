@@ -9,6 +9,7 @@ import type {
 	SummaryErrorCode,
 	SummaryRefusalCode,
 } from "../../shared/session-summary-view.js";
+import { t } from "../i18n/i18n.js";
 import type { AiStatusResponse, SummaryRefusal } from "./api.js";
 import { parseDate } from "./utils.js";
 
@@ -295,9 +296,7 @@ export interface SummaryViewer {
 	aiPanelAvailable: boolean;
 }
 
-export const GENERIC_FAILURE_COPY = "Something went wrong. Try again.";
-
-const ASK_ADMIN_TO_CHECK_PROVIDER = "Ask an admin to check the provider.";
+const GENERIC_FAILURE_KEY = "summaryFail.generic";
 
 type PlainFailureCode = Exclude<
 	SummaryErrorCode,
@@ -306,19 +305,16 @@ type PlainFailureCode = Exclude<
 
 /** Keyed by the contract's codes: a new error code without copy here fails the typecheck. */
 const FAILURE_COPY: Record<PlainFailureCode, string> = {
-	provider_rate_limit: "The provider is rate-limiting. Try again shortly.",
-	provider_timeout: "The provider took too long to answer. Try again.",
-	provider_error:
-		"The provider returned an error. Try again; if it keeps happening, check the provider's status.",
-	provider_refused:
-		"The model declined to summarize this session. A different model may do better.",
-	parse_failed: "The model's answer wasn't usable. Try again; a different model may do better.",
-	output_truncated:
-		"The model ran out of room before finishing its answer. Try again; a different default model may do better.",
-	ai_inactive: "AI was paused or turned off before this finished.",
-	busy: "Something went wrong on the server. Try again.",
-	internal_error: "Something went wrong on the server. Try again.",
-	interrupted: "The server restarted mid-way. Try again.",
+	provider_rate_limit: "summaryFail.rateLimit",
+	provider_timeout: "summaryFail.timeout",
+	provider_error: "summaryFail.providerError",
+	provider_refused: "summaryFail.refused",
+	parse_failed: "summaryFail.parseFailed",
+	output_truncated: "summaryFail.truncated",
+	ai_inactive: "summaryFail.aiInactive",
+	busy: "summaryFail.busy",
+	internal_error: "summaryFail.busy",
+	interrupted: "summaryFail.interrupted",
 };
 
 /**
@@ -333,26 +329,26 @@ export function failureCopy(
 ): string {
 	switch (code) {
 		case "provider_auth":
-			return `The provider rejected the API key. ${
-				viewer.adminSettingsLocked ? ASK_ADMIN_TO_CHECK_PROVIDER : "Check it in Settings."
+			return `${t("summaryFail.providerAuth")} ${
+				viewer.adminSettingsLocked
+					? t("summaryFail.askAdminProvider")
+					: t("summaryFail.checkSettings")
 			}`;
 		case "provider_key_unreadable":
-			return `The provider's API key can't be read. ${
+			return `${t("summaryFail.keyUnreadable")} ${
 				viewer.adminSettingsLocked
-					? "Ask an admin to enter it again in AI settings."
-					: "An admin needs to enter it again in AI settings."
+					? t("summaryFail.keyUnreadableAdmin")
+					: t("summaryFail.keyUnreadableSelf")
 			}`;
 		case "spend_cap": {
 			const reset = resetsAt ? atMoment(resetsAt, clock ?? {}) : "";
-			return `The first answer wasn't usable, and a retry would have gone over today's AI budget. Nothing was saved; the first call was still charged.${
-				reset ? ` The budget resets ${reset}.` : ""
-			}`;
+			return `${t("summaryFail.spendCapPrefix")}${reset ? ` ${t("summaryFail.spendCapReset", { when: reset })}` : ""}`;
 		}
 		default:
-			return (
+			return t(
 				(code !== null && Object.hasOwn(FAILURE_COPY, code)
 					? FAILURE_COPY[code as PlainFailureCode]
-					: null) ?? GENERIC_FAILURE_COPY
+					: null) ?? GENERIC_FAILURE_KEY,
 			);
 	}
 }
@@ -419,7 +415,7 @@ const REFUSAL_COPY: Record<
 	too_little_activity: () => REFETCH_ONLY,
 	spend_cap_reached: () => REFETCH_ONLY,
 	summary_cooldown: () => REFETCH_ONLY,
-	session_not_found: () => inline("This session no longer exists."),
+	session_not_found: () => inline(t("summaryFail.sessionGone")),
 };
 
 /** What a refused click says, and what to re-read afterwards. Keyed on the contract's code, not the status. */
@@ -430,8 +426,8 @@ export function refusalCopy(
 	if (refusal.code !== null && Object.hasOwn(REFUSAL_COPY, refusal.code)) {
 		return REFUSAL_COPY[refusal.code](refusal, viewer);
 	}
-	if (refusal.status === 404) return inline("This session no longer exists.");
-	return inline(GENERIC_FAILURE_COPY, "view");
+	if (refusal.status === 404) return inline(t("summaryFail.sessionGone"));
+	return inline(t(GENERIC_FAILURE_KEY), "view");
 }
 
 /** The one rule for when Update asks first: the model supplies the wording, the hook asks. */
@@ -453,13 +449,13 @@ export function tabBadge(state: {
 }
 
 const BADGE_ACCESSIBLE_NAMES = {
-	Summarizing: "summarizing now",
-	New: "new summary ready",
+	Summarizing: "badge.summarizingA11y",
+	New: "badge.newA11y",
 } as const;
 
 /** What a screen reader says for the badge's visible word. */
 export function tabBadgeAccessibleName(badge: "Summarizing" | "New" | null): string | null {
-	return badge === null ? null : BADGE_ACCESSIBLE_NAMES[badge];
+	return badge === null ? null : t(BADGE_ACCESSIBLE_NAMES[badge]);
 }
 
 /** After your own generation ends: move focus to the panel heading, but only if focus is still inside the panel. */

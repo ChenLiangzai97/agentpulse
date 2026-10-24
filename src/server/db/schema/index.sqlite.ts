@@ -58,3 +58,14 @@ export { projectAlertRuleFiresSqlite as projectAlertRuleFires } from "./ask-proj
 
 // Also export typed variants so drizzle-kit and tests can import them directly.
 export { settingsSqlite } from "./core/settings.js";
+
+export {
+	providerInstancesSqlite as providerInstances,
+	sessionControlBindingsSqlite as sessionControlBindings,
+} from "./core/provider-control.js";
+
+export { providerInteractionsSqlite as providerInteractions } from "./core/provider-interactions.js";
+export {
+	opencodeForksSqlite as opencodeForks,
+	opencodeForkRequestsSqlite as opencodeForkRequests,
+} from "./core/opencode-forks.js";

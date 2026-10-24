@@ -1,4 +1,5 @@
 import { AlertTriangle } from "lucide-react";
+import { useT } from "../i18n/i18n.js";
 import {
 	EXCLUDE_CARD,
 	EXCLUDE_CARD_ANCHOR,
@@ -23,6 +24,7 @@ export function ExcludeDirectoriesCard({
 	onCopy: (text: string, label: string) => void | Promise<void>;
 	showTeamCopy: boolean;
 }) {
+	const t = useT();
 	const [beforePath, afterPath] = EXCLUDE_CARD.intro.split(EXCLUDE_RULES_PATH);
 	return (
 		<section
@@ -65,10 +67,10 @@ export function ExcludeDirectoriesCard({
 				<thead className="sr-only sm:not-sr-only sm:table-header-group">
 					<tr className="text-muted-foreground">
 						<th scope="col" className="w-[7.5rem] sm:w-48 py-1 pr-2 font-medium align-bottom">
-							Who sends
+							{t("excludeCard.whoSends")}
 						</th>
 						<th scope="col" className="py-1 font-medium align-bottom">
-							What applies your rules
+							{t("excludeCard.whatApplies")}
 						</th>
 					</tr>
 				</thead>

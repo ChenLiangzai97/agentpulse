@@ -26,6 +26,11 @@ interface UiPrefs {
 	 * workspaces. The toggle lives on the dashboard and is per-browser.
 	 */
 	showScratch: boolean;
+	/**
+	 * AGEN-72: interface locale. Defaults to Simplified Chinese on this fork;
+	 * persisted per-browser like the other prefs.
+	 */
+	locale?: "zh-CN" | "en";
 
 	/**
 	 * Width (px) of the thread sidebar on the /ask page. Persisted so a
@@ -46,11 +51,17 @@ function clampAskSidebarWidth(width: unknown): number {
 const DEFAULTS: UiPrefs = {
 	projectColors: true,
 	showScratch: false,
+	locale: "zh-CN",
 	askSidebarWidth: ASK_SIDEBAR_DEFAULT_WIDTH,
 };
 
 function load(): UiPrefs {
-	if (typeof localStorage === "undefined") return DEFAULTS;
+	if (typeof localStorage === "undefined") {
+		// Non-browser contexts (bun test's renderer has no localStorage): keep
+		// English so the suite's copy assertions stay stable; browsers below
+		// get the zh-CN default from DEFAULTS.
+		return { ...DEFAULTS, locale: "en" };
+	}
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (!raw) return DEFAULTS;
@@ -76,6 +87,7 @@ function save(prefs: UiPrefs): void {
 interface UiPrefsStore extends UiPrefs {
 	setProjectColors: (enabled: boolean) => void;
 	setShowScratch: (enabled: boolean) => void;
+	setLocale: (locale: "zh-CN" | "en") => void;
 	setAskSidebarWidth: (width: number) => void;
 }
 
@@ -88,6 +100,10 @@ export const useUiPrefsStore = create<UiPrefsStore>((set, get) => ({
 	setShowScratch(enabled) {
 		set({ showScratch: enabled });
 		save({ ...get(), showScratch: enabled });
+	},
+	setLocale(locale) {
+		set({ locale });
+		save({ ...get(), locale });
 	},
 	setAskSidebarWidth(width) {
 		const clamped = clampAskSidebarWidth(width);

@@ -21,6 +21,7 @@ import { assertBootable, warnAboutRiskySubjectSourceAdmins } from "./services/in
 import { ensureBootstrapAdmin } from "./services/local-auth-bootstrap.js";
 import { reapExpiredSessions } from "./services/local-auth-service.js";
 import { sessionBus } from "./services/notifier.js";
+import { startOpenCodeObserver } from "./services/opencode-observer.js";
 import { loadEager as loadProjectsEager } from "./services/projects/cache.js";
 import {
 	listProjects,
@@ -36,6 +37,7 @@ import { updateStaleSessions } from "./services/session-tracker.js";
 import { startTelemetry } from "./services/telemetry.js";
 import { startTranscriptSync } from "./services/transcript-sync.js";
 import { validateForwardauthProviderConfig } from "./services/user-identity.js";
+import { startWorklogScheduler } from "./services/worklog-service.js";
 import {
 	handleWsClose,
 	handleWsMessage,
@@ -66,6 +68,8 @@ const MAX_DRAIN_MS = 30_000; // matches preStop curl budget
 
 async function gracefulExit(reason: string, code = 0): Promise<never> {
 	setShuttingDown(reason);
+	stopWorklogScheduler?.();
+	await stopOpenCodeObserver?.();
 	// A summary generation still running is marked interrupted and its spend settled now,
 	// rather than left "generating" until its lease lapses (bounded to 2 s inside).
 	await releaseOwnSummaryClaims().catch(() => {});
@@ -162,6 +166,7 @@ if (config.forwardauthTrustSecret && !config.allowSignup) {
 // the synchronous-assumption guarantee that previously held (codex C3).
 await initializeDatabase();
 await normalizeStoredMachineNamesSafely();
+const stopWorklogScheduler = startWorklogScheduler();
 
 // Refuse to start in a mode configuration that can't work (see
 // assertBootable). Before markDbReady so the readiness probe never goes green
@@ -231,6 +236,7 @@ initWsBroadcaster(sessionBus, { annotate: stampMachine });
 // Start anonymous telemetry (opt-out with AGENTPULSE_TELEMETRY=off)
 startTelemetry();
 startTranscriptSync();
+const stopOpenCodeObserver = startOpenCodeObserver();
 void maybeStartWatcherRunner();
 
 // Vector search: kick off any backfill that's pending and wire ingest

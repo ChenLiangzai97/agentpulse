@@ -88,6 +88,10 @@ export const INTENTIONALLY_MANAGE_ONLY: ReadonlySet<string> = new Set([
 	// method gate; listed for documentation/consistency with the rest of
 	// this set, not because the route-drift guard (GET/HEAD only) needs it.
 	"/sessions/:sessionId/acknowledge",
+	"/sessions/:sessionId/native-approvals",
+	"/sessions/:sessionId/worklog",
+	"/worklog/config",
+	"/worklog/runs",
 	"/templates",
 	"/templates/:id",
 	"/launches",

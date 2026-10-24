@@ -94,7 +94,7 @@ export const EDIT_TOOLS: readonly string[] = [
 export const SHELL_TOOLS: readonly string[] = ["bash", "shell", "exec_command"];
 
 /** Agents whose hooks include a failure event: for them a PostToolUse row is evidence of success. */
-export const FAILURE_EVENT_AGENTS: readonly string[] = ["claude_code", "copilot_cli"];
+export const FAILURE_EVENT_AGENTS: readonly string[] = ["claude_code", "copilot_cli", "opencode"];
 
 /**
  * Validations whose FAILURE may show an output excerpt (the first and last

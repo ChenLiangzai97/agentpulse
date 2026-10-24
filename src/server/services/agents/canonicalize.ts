@@ -178,6 +178,7 @@ export const HOOK_PAYLOAD_CANONICALIZERS: Record<AgentType, Canonicalizer> = {
 	claude_code: identity,
 	codex_cli: identity,
 	copilot_cli: copilotCanonicalizer,
+	opencode: identity,
 };
 
 /**

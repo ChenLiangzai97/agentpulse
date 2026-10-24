@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Session, SessionEvent } from "../../../shared/types.js";
 import { useCopyFeedback } from "../../hooks/useCopyFeedback.js";
+import { useT } from "../../i18n/i18n.js";
 import { buildExportMarkdown } from "./export-markdown.js";
 
 interface SessionOverflowMenuProps {
@@ -27,6 +28,7 @@ export function SessionOverflowMenu({
 	onJumpBottom,
 	onStop,
 }: SessionOverflowMenuProps) {
+	const t = useT();
 	const [open, setOpen] = useState(false);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const navigate = useNavigate();
@@ -60,7 +62,7 @@ export function SessionOverflowMenu({
 			<button
 				type="button"
 				onClick={() => setOpen((v) => !v)}
-				aria-label="More actions"
+				aria-label={t("overflow.moreActions")}
 				aria-haspopup="menu"
 				aria-expanded={open}
 				className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -86,23 +88,23 @@ export function SessionOverflowMenu({
 					className="absolute right-0 top-full mt-1 z-30 min-w-[10rem] rounded-md border border-border bg-card shadow-lg py-1 text-xs"
 				>
 					<MenuItem
-						label="Jump to top"
+						label={t("overflow.jumpTop")}
 						onClick={() => {
 							onJumpTop();
 							setOpen(false);
 						}}
 					/>
 					<MenuItem
-						label="Jump to bottom"
+						label={t("overflow.jumpBottom")}
 						onClick={() => {
 							onJumpBottom();
 							setOpen(false);
 						}}
 					/>
-					<MenuItem label="Copy as Markdown" onClick={handleExport} />
+					<MenuItem label={t("overflow.copyMarkdown")} onClick={handleExport} />
 					{session.managedSession?.launchRequestId && (
 						<MenuItem
-							label="View launch"
+							label={t("header.viewLaunch")}
 							onClick={() => {
 								navigate(`/launches/${session.managedSession?.launchRequestId}`);
 								setOpen(false);
@@ -111,7 +113,7 @@ export function SessionOverflowMenu({
 					)}
 					{canStop && (
 						<MenuItem
-							label="Stop session"
+							label={t("overflow.stopSession")}
 							tone="danger"
 							onClick={() => {
 								onStop();

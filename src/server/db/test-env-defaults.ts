@@ -27,6 +27,24 @@ import { join } from "node:path";
 process.env.AGENTPULSE_AI_ENABLED ??= "true";
 process.env.AGENTPULSE_SECRETS_KEY ??= "test-secrets-key-01234567890123456789";
 
+// ── Database-path sandbox (test-isolation incident, 2026-10-14) ───────────
+//
+// Bun runs every test file in one process and shares the module registry:
+// whichever file imports db/client.js FIRST freezes the resolved sqlite
+// path for the whole process. A test that touches the client without also
+// importing __test_db.js (which owns the canonical temp-path guard) used to
+// freeze the path onto ./data/agentpulse.db — the developer's real
+// database — and every later file's beforeEach deletes then landed there.
+// Defaulting SQLITE_PATH here, in the preload every test process runs
+// before any test file's own imports, removes the import-order dependency:
+// a file that sets its own SQLITE_PATH first keeps it (??=), and __test_db
+// still overrides with its per-process temp file for its importers.
+{
+	const dir = mkdtempSync(join(tmpdir(), "ap-preload-db-"));
+	process.env.SQLITE_PATH ??= join(dir, "test.db");
+	process.env.DATA_DIR ??= dir;
+}
+
 // ── Home-directory sandbox (test-isolation incident, 2026-09-30) ──────────
 //
 // A test suite that computes a path from the developer's real home

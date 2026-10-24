@@ -141,7 +141,7 @@ describe("system prompt", () => {
 	});
 
 	test("TC-4.1c the version constant is '3'", () => {
-		expect(PROMPT_VERSION).toBe("3");
+		expect(PROMPT_VERSION).toBe("4");
 	});
 
 	test("TC-4.1d the prompt tells the model the caps the normaliser enforces (R-L), so an answer is not cut mid-sentence by surprise", () => {
@@ -159,6 +159,7 @@ describe("system prompt", () => {
 			"1": "175a86a8351b3eb75995daa5028b106fac8dd14d4fc57c32dc42deb7a36aa663",
 			"2": "747e739216c16c4910376061eeb3f3dc3178e5991efd71bd77e975969cfaa53b",
 			"3": "90703a05ca20a6d39ccd6bf8c294d8dc3badfe8d49fbdef0b5018b7b5c3449e3",
+			"4": "51c85f504c2de1af0b22739a6acf65b4f9684d88ba40e48a8589051295ba3b87",
 		};
 		expect(Object.keys(PINNED)).toHaveLength(Number(PROMPT_VERSION));
 		expect(PINNED[PROMPT_VERSION]).toBe(sha256(SESSION_SUMMARY_SYSTEM_PROMPT));

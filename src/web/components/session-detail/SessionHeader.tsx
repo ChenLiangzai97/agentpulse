@@ -7,6 +7,7 @@ import type { AgentType, Session, SessionEvent } from "../../../shared/types.js"
 import { useCopyFeedback } from "../../hooks/useCopyFeedback.js";
 import { useOwnershipUi } from "../../hooks/useOwnershipUi.js";
 import { useSummaryAvailability } from "../../hooks/useSummaryAvailable.js";
+import { useT } from "../../i18n/i18n.js";
 import type { OwnerChipModel } from "../../lib/owner-chip.js";
 import { RENAME_BLOCKED_REASON, sessionActionAccess } from "../../lib/ownership-ui.js";
 import { sessionHostLabel } from "../../lib/session-host.js";
@@ -69,6 +70,7 @@ interface SessionHeaderProps {
  * continues to show everything inline.
  */
 export function SessionHeader(props: SessionHeaderProps) {
+	const t = useT();
 	const {
 		session,
 		displayName,
@@ -132,7 +134,7 @@ export function SessionHeader(props: SessionHeaderProps) {
 					type="button"
 					onClick={() => navigate("/")}
 					className="self-start mt-1.5 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-					aria-label="Back to dashboard"
+					aria-label={t("detail.backToDashboard")}
 				>
 					<svg
 						className="w-4 h-4"
@@ -199,10 +201,10 @@ export function SessionHeader(props: SessionHeaderProps) {
 						<Link
 							to={`/ask?thread=${encodeURIComponent(session.metadata.askThreadId)}`}
 							className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-							title="Open the Ask conversation that launched this session"
+							title={t("header.openAskConversation")}
 						>
 							<Wand2 className="w-3 h-3" aria-hidden="true" />
-							<span>from Ask</span>
+							<span>{t("header.fromAsk")}</span>
 						</Link>
 					)}
 				</div>
@@ -248,7 +250,7 @@ export function SessionHeader(props: SessionHeaderProps) {
 								onClick={() => navigate(`/launches/${session.managedSession?.launchRequestId}`)}
 								className="rounded-md border border-border px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-accent transition-colors"
 							>
-								View launch
+								{t("header.viewLaunch")}
 							</button>
 						)}
 						{canStop && (
@@ -257,7 +259,7 @@ export function SessionHeader(props: SessionHeaderProps) {
 								onClick={onStop}
 								className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-[11px] font-medium text-red-800 dark:text-red-300 hover:bg-red-500/20 transition-colors"
 							>
-								Stop
+								{t("header.stop")}
 							</button>
 						)}
 						<button
@@ -269,7 +271,7 @@ export function SessionHeader(props: SessionHeaderProps) {
 									"Session copied as Markdown",
 								);
 							}}
-							title="Export as Markdown"
+							title={t("header.exportMarkdown")}
 							className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
 						>
 							<svg
@@ -409,6 +411,7 @@ function FilterRow(props: {
 	showSystem: boolean;
 	onToggleSystem: () => void;
 }) {
+	const t = useT();
 	const {
 		mode,
 		onModeChange,
@@ -423,28 +426,32 @@ function FilterRow(props: {
 		<>
 			<ModeButton
 				active={mode === "prompts"}
-				label="Prompts"
+				label={t("header.prompts")}
 				onClick={() => onModeChange("prompts")}
 			/>
 			<ModeButton
 				active={mode === "conversation"}
-				label="Conversation"
+				label={t("header.conversation")}
 				onClick={() => onModeChange("conversation")}
 			/>
 			<ModeButton
 				active={mode === "progress"}
-				label="Progress"
+				label={t("header.progress")}
 				onClick={() => onModeChange("progress")}
 			/>
 			<ModeButton
 				active={mode === "terminal"}
-				label="Terminal"
+				label={t("header.terminal")}
 				onClick={() => onModeChange("terminal")}
 			/>
-			<ModeButton active={mode === "debug"} label="Debug" onClick={() => onModeChange("debug")} />
+			<ModeButton
+				active={mode === "debug"}
+				label={t("header.debug")}
+				onClick={() => onModeChange("debug")}
+			/>
 			<FilterToggle
 				active={showSystem}
-				label="System"
+				label={t("header.system")}
 				onClick={onToggleSystem}
 				disabled={mode === "prompts" || mode === "conversation"}
 			/>
@@ -455,7 +462,7 @@ function FilterRow(props: {
 			/>
 			<FilterToggle
 				active={showNoisyTools}
-				label="Noisy"
+				label={t("header.noisy")}
 				onClick={onToggleNoisyTools}
 				disabled={!(showTools || mode === "debug" || mode === "terminal")}
 			/>

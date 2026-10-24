@@ -1,5 +1,6 @@
 import type { Ref } from "react";
 import { useId } from "react";
+import { useT } from "../i18n/i18n.js";
 import type { HostParam } from "../lib/host-scope.js";
 import { cn } from "../lib/utils.js";
 import type { MachineOption } from "../pages/dashboard-machines.js";
@@ -24,11 +25,12 @@ export function MachineSelect({
 	selectRef?: Ref<HTMLSelectElement>;
 	className?: string;
 }) {
+	const t = useT();
 	const id = useId();
 	return (
 		<div className={cn("flex items-center gap-2", className)}>
 			<label htmlFor={id} className="text-xs text-hint">
-				Machine
+				{t("common.machine")}
 			</label>
 			<select
 				id={id}

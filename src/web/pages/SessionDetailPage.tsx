@@ -7,12 +7,14 @@ import type { AgentType, ControlAction, Session, SessionEvent } from "../../shar
 import { ActivityTimeline } from "../components/session-detail/ActivityTimeline.js";
 import { AiPanel } from "../components/session-detail/AiPanel.js";
 import { ControlHistory } from "../components/session-detail/ControlHistory.js";
+import { OpenCodeControls } from "../components/session-detail/OpenCodeControls.js";
 import {
 	ClaudeMdPanel,
 	EmbeddedLaunchPanel,
 	NotesPanel,
 	SummaryField,
 } from "../components/session-detail/Panels.js";
+import { SessionConnections } from "../components/session-detail/SessionConnections.js";
 import { SessionHeader } from "../components/session-detail/SessionHeader.js";
 import { SessionOwnerDialog } from "../components/session-detail/SessionOwnerDialog.js";
 import { SessionPromptComposer } from "../components/session-detail/SessionPromptComposer.js";
@@ -33,7 +35,9 @@ import { useDirectoryInitials } from "../hooks/useDirectoryInitials.js";
 import { useEventReveal } from "../hooks/useEventReveal.js";
 import { useOwnershipUi, useViewerIsAdmin } from "../hooks/useOwnershipUi.js";
 import { useSessionSummaryPage } from "../hooks/useSessionSummaryPage.js";
+import { t } from "../i18n/i18n.js";
 import { describeApiError } from "../lib/api-errors.js";
+import { ApiError } from "../lib/api.js";
 import { api } from "../lib/api.js";
 import { EVENT_LOAD_FAILED_COPY } from "../lib/event-deep-link.js";
 import { applyManualRename } from "../lib/name-source.js";
@@ -41,8 +45,10 @@ import { ownerChip } from "../lib/owner-chip.js";
 import { ownerLabel, sessionOwnerText } from "../lib/owner-label.js";
 import { NOTES_BLOCKED_REASON, sessionActionAccess } from "../lib/ownership-ui.js";
 import { assignablePeople, withCurrentOwner } from "../lib/people.js";
+import { createRequestEpoch } from "../lib/request-epoch.js";
 import { sessionHostLabel } from "../lib/session-host.js";
 import type { WorkspaceTabId } from "../lib/session-summary-core.js";
+import { shouldCloseTabOnLoadFailure } from "../lib/tab-visibility.js";
 import { canAcknowledgeSession, explicitAckAccess } from "../lib/utils.js";
 import { useEventStore } from "../stores/event-store.js";
 import { mergeSessionIntoDetail, useSessionStore } from "../stores/session-store.js";
@@ -92,6 +98,13 @@ function insertEvents(existing: SessionEvent[], incoming: SessionEvent[]): Sessi
 export function SessionDetailPage() {
 	const { sessionId } = useParams<{ sessionId: string }>();
 	const navigate = useNavigate();
+	// Request-epoch guard: a session-detail response that lands after the
+	// viewer switched to another tab must not touch state — not a late
+	// success overwriting B's detail, not a late 403/404 navigating B away,
+	// not a late finally clearing B's loading flag.
+	const loadEpoch = useRef(createRequestEpoch()).current;
+	const sessionIdRef = useRef(sessionId);
+	sessionIdRef.current = sessionId;
 	const [searchParams, setSearchParams] = useSearchParams();
 
 	const [session, setSession] = useState<Session | null>(null);
@@ -142,18 +155,44 @@ export function SessionDetailPage() {
 
 	const loadSessionWorkspace = useCallback(async () => {
 		if (!sessionId) return;
+		// A stale CLOSURE (an old component's onChanged firing late) must not
+		// start loading its old session onto the current page — and must not
+		// steal the epoch from the current session's requests.
+		if (sessionId !== sessionIdRef.current) return;
+		const isCurrent = loadEpoch.begin();
 		try {
 			const data = await api.getSession(sessionId);
+			if (!isCurrent() || sessionId !== sessionIdRef.current) return; // the viewer moved on — drop the late success
 			setSession(data.session as Session);
 			setEvents(data.events as SessionEvent[]);
 			setEventsLoaded(true);
 			setControlActions((data.controlActions as ControlAction[]) || []);
 		} catch (err) {
+			if (!isCurrent() || sessionId !== sessionIdRef.current) return; // a late failure must not navigate B away
+			// P1 tab-restore revalidation: a tab whose session is GONE (404)
+			// or not visible to this viewer (403) closes itself instead of
+			// parking on an error page. Transient failures keep the page.
+			if (err instanceof ApiError && shouldCloseTabOnLoadFailure(err.status)) {
+				toast.error(
+					err.status === 404
+						? "会话已不存在，页签已自动关闭"
+						: "该会话对此账号不可见，页签已自动关闭",
+				);
+				useTabsStore.getState().close(sessionId);
+				const remaining = useTabsStore.getState().tabs;
+				navigate(remaining.length ? `/sessions/${remaining[0].sessionId}` : "/", { replace: true });
+				return;
+			}
 			console.error("Failed to fetch session:", err);
 		} finally {
-			setLoading(false);
+			if (isCurrent() && sessionId === sessionIdRef.current) setLoading(false);
 		}
-	}, [sessionId]);
+	}, [sessionId, navigate, loadEpoch]);
+
+	// Leaving the session context (switch to a non-session page, unmount)
+	// invalidates every in-flight load immediately — no late response may
+	// touch state or navigate afterwards.
+	useEffect(() => () => loadEpoch.invalidate(), [loadEpoch]);
 
 	// Warm the header from the cached dashboard list so switching tabs feels instant.
 	useEffect(() => {
@@ -249,7 +288,7 @@ export function SessionDetailPage() {
 		try {
 			const result = await api.unacknowledgeSession(sessionId);
 			if (classifyAckResponse(result) !== "applied") {
-				toast.error("Couldn't undo");
+				toast.error(t("detail.couldntUndo"));
 				return;
 			}
 			const current = sessionRef.current;
@@ -260,7 +299,7 @@ export function SessionDetailPage() {
 			}
 			setLiveAnnouncement("Marked as unseen");
 		} catch {
-			toast.error("Couldn't undo");
+			toast.error(t("detail.couldntUndo"));
 		}
 	}
 
@@ -289,7 +328,7 @@ export function SessionDetailPage() {
 					setSession(stamped);
 					applySessionUpdate(stamped);
 					setLiveAnnouncement("Marked as seen");
-					toast.success("Marked as seen", {
+					toast.success(t("detail.markedAsSeen"), {
 						action: { label: "Undo", onClick: () => void undoAutoAck() },
 						duration: UNDO_WINDOW_MS,
 					});
@@ -439,10 +478,8 @@ export function SessionDetailPage() {
 						</svg>
 					</div>
 					<div>
-						<h2 className="text-base font-semibold text-foreground">Session not found</h2>
-						<p className="text-xs text-muted-foreground mt-1">
-							This session may have been deleted, or the link is incorrect.
-						</p>
+						<h2 className="text-base font-semibold text-foreground">{t("detail.notFound")}</h2>
+						<p className="text-xs text-muted-foreground mt-1">{t("detail.notFoundHint")}</p>
 					</div>
 					<div className="flex flex-col gap-2">
 						<button
@@ -450,14 +487,14 @@ export function SessionDetailPage() {
 							onClick={() => navigate("/")}
 							className="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
 						>
-							Back to dashboard
+							{t("detail.backToDashboard")}
 						</button>
 						<button
 							type="button"
 							onClick={() => navigate("/search")}
 							className="w-full rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
 						>
-							Search sessions
+							{t("detail.searchSessions")}
 						</button>
 					</div>
 				</div>
@@ -501,7 +538,7 @@ export function SessionDetailPage() {
 				onApplied?.();
 				return;
 			}
-			if (outcome === "not_owner") toast.error("Only the owner or an admin can do this");
+			if (outcome === "not_owner") toast.error(t("detail.onlyOwnerAdmin"));
 			else toast.error(failureMessage);
 		} catch {
 			toast.error(failureMessage);
@@ -654,7 +691,12 @@ export function SessionDetailPage() {
 				onStop={handleStop}
 				ackAction={ackAction}
 				headerRef={headerRef}
-				permissionWaitNote={ackDerivation.permissionWaitNote}
+				permissionWaitNote={
+					ackDerivation.permissionWaitNote &&
+					session.controlCapabilities?.origin === "agentpulse_launch"
+						? "审批或提问待回答 — 使用下方网页卡片"
+						: ackDerivation.permissionWaitNote
+				}
 				notOwnerNote={ackDerivation.notOwnerNote}
 				ownerChip={
 					showOwnerFields
@@ -677,10 +719,16 @@ export function SessionDetailPage() {
 					case "CodexStatusHint":
 						return <CodexStatusHint displayName={sel.displayName} />;
 					case "AgentObserveOnlyHint":
-						return <AgentObserveOnlyHint agentType={sel.agentType} />;
+						return session.controlCapabilities?.origin === "agentpulse_launch" ? null : (
+							<AgentObserveOnlyHint agentType={sel.agentType} />
+						);
 				}
 			})()}
 
+			<SessionConnections session={session} onChanged={loadSessionWorkspace} />
+			{session.agentType === "opencode" && (
+				<OpenCodeControls session={session} onChanged={loadSessionWorkspace} />
+			)}
 			<ControlHistory actions={controlActions} />
 
 			{workspaceTab === "activity" && reveal.notice ? (
@@ -712,16 +760,16 @@ export function SessionDetailPage() {
 					</div>
 				) : workspaceTab === "overview" ? (
 					<div className="grid gap-4 p-3 md:p-6 md:grid-cols-2 xl:grid-cols-4">
-						<SummaryField label="Project" value={session.cwd} mono />
+						<SummaryField label={t("field.project")} value={session.cwd} mono />
 						<SummaryField
-							label="Agent"
+							label={t("field.agent")}
 							value={AGENT_METADATA[session.agentType as AgentType]?.label ?? session.agentType}
 						/>
-						<SummaryField label="Started" value={session.startedAt} />
-						<SummaryField label="Status" value={session.status} />
+						<SummaryField label={t("field.started")} value={session.startedAt} />
+						<SummaryField label={t("field.status")} value={session.status} />
 						{showOwnerFields && (
 							<SummaryField
-								label="Owner"
+								label={t("field.owner")}
 								value={sessionOwnerText(session, (id) => directory[id], viewerUserId)}
 								action={
 									isAdmin ? (
@@ -731,7 +779,7 @@ export function SessionDetailPage() {
 											aria-label={`Change owner of ${displayName}`}
 											className="mt-1 min-h-[44px] rounded-md px-1 text-xs font-medium text-primary underline underline-offset-2 hover:text-foreground md:min-h-0"
 										>
-											Change owner
+											{t("detail.changeOwner")}
 										</button>
 									) : undefined
 								}
@@ -739,23 +787,23 @@ export function SessionDetailPage() {
 						)}
 						{showOwnerFields && launchedById && (
 							<SummaryField
-								label="Launched by"
+								label={t("field.launchedBy")}
 								value={ownerLabel(directory[launchedById], launchedById, {
 									selfId: viewerUserId,
 									style: "you",
 								})}
 							/>
 						)}
-						<SummaryField label="Model" value={session.model} />
-						<SummaryField label="Branch" value={session.gitBranch} mono />
-						<SummaryField label="Current task" value={session.currentTask} />
+						<SummaryField label={t("field.model")} value={session.model} />
+						<SummaryField label={t("field.branch")} value={session.gitBranch} mono />
+						<SummaryField label={t("field.currentTask")} value={session.currentTask} />
 						<SummaryField label="Tools" value={String(session.totalToolUses)} />
 						{hostLabel ? (
 							<SummaryField label={hostLabel.fieldLabel} value={hostLabel.name} mono />
 						) : null}
 						{session.managedSession?.launchRequestId ? (
 							<SummaryField
-								label="Launch request"
+								label={t("field.launchRequest")}
 								value={session.managedSession.launchRequestId}
 								mono
 							/>
@@ -765,7 +813,7 @@ export function SessionDetailPage() {
 					<Suspense
 						fallback={
 							<div aria-busy="true" className="p-6 text-sm text-muted-foreground">
-								Loading…
+								{t("detail.loading")}
 							</div>
 						}
 					>
@@ -808,9 +856,7 @@ export function SessionDetailPage() {
 				) : session.managedSession?.launchRequestId ? (
 					<EmbeddedLaunchPanel launchId={session.managedSession.launchRequestId} />
 				) : (
-					<div className="p-6 text-sm text-muted-foreground">
-						No linked launch for this session.
-					</div>
+					<div className="p-6 text-sm text-muted-foreground">{t("detail.noLinkedLaunch")}</div>
 				)}
 			</div>
 			{ownerDialogOpen && (

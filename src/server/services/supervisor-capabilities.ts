@@ -9,7 +9,7 @@ const MAX_LIST_ITEMS = 64;
 const MAX_TEXT = 256;
 const MAX_PATH = 4096;
 const MAX_TRUSTED_ROOTS = 64;
-const EXECUTABLE_TOOLS = ["claude", "codex"] as const;
+const EXECUTABLE_TOOLS = ["claude", "codex", "opencode"] as const;
 const EXECUTABLE_SOURCES = ["auto", "config"];
 
 const INVALID = Symbol("invalid");
@@ -81,6 +81,37 @@ function cleanExecutables(v: unknown, strict: boolean): Cleaned {
 			continue;
 		}
 		out[tool] = entry;
+	}
+	if (isPlainObject(v.opencodeProfile)) {
+		const p = v.opencodeProfile;
+		if (
+			typeof p.configured === "boolean" &&
+			typeof p.health === "string" &&
+			[
+				"ready",
+				"not_configured",
+				"authentication_failed",
+				"model_unavailable",
+				"unavailable",
+			].includes(p.health) &&
+			[p.maxInstances, p.idleTimeoutMs, p.stopGraceMs].every(
+				(n) => typeof n === "number" && Number.isFinite(n) && n > 0,
+			)
+		)
+			out.opencodeProfile = {
+				configured: p.configured,
+				health: p.health,
+				maxInstances: p.maxInstances,
+				maxQueuedLaunches:
+					typeof p.maxQueuedLaunches === "number" &&
+					Number.isInteger(p.maxQueuedLaunches) &&
+					p.maxQueuedLaunches >= 0 &&
+					p.maxQueuedLaunches <= 100
+						? p.maxQueuedLaunches
+						: 4,
+				idleTimeoutMs: p.idleTimeoutMs,
+				stopGraceMs: p.stopGraceMs,
+			};
 	}
 	return out;
 }

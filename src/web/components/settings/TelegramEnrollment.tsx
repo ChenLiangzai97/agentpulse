@@ -1,5 +1,6 @@
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
+import { useT } from "../../i18n/i18n.js";
 
 /**
  * Enrollment flow: QR code + deep link + manual /start command.
@@ -16,6 +17,7 @@ export function EnrollmentCard({
 	onCopy: (text: string, okText?: string) => Promise<void>;
 	onCancel: () => void;
 }) {
+	const t = useT();
 	const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 	const deepLink = `https://t.me/${botUsername}?start=${code}`;
 	const tgDeepLink = `tg://resolve?domain=${botUsername}&start=${code}`;
@@ -114,12 +116,13 @@ export function AddChannelCard({
 	onCreate: () => void;
 	botReady: boolean;
 }) {
+	const t = useT();
 	return (
 		<div className="rounded-md border border-border bg-background/40 p-3 space-y-2">
-			<div className="text-xs font-medium text-foreground">Add a channel</div>
+			<div className="text-xs font-medium text-foreground">{t("telegram.addChannel")}</div>
 			<div className="flex items-center gap-2">
 				<label htmlFor="channel-label" className="sr-only">
-					Channel label
+					{t("telegram.channelLabel")}
 				</label>
 				<input
 					id="channel-label"
@@ -162,6 +165,7 @@ export function BotCredentialsWizard({
 		deliveryMode?: "webhook" | "polling";
 	}) => Promise<{ ok: boolean; error?: string }>;
 }) {
+	const t = useT();
 	const [token, setToken] = useState("");
 	const [mode, setMode] = useState<"webhook" | "polling">("polling");
 	const [showAdvanced, setShowAdvanced] = useState(false);
@@ -199,7 +203,7 @@ export function BotCredentialsWizard({
 			className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-4"
 		>
 			<div>
-				<h3 className="text-sm font-semibold text-foreground">Connect your Telegram bot</h3>
+				<h3 className="text-sm font-semibold text-foreground">{t("telegram.connect")}</h3>
 				<p className="text-xs text-muted-foreground mt-1">
 					Two-minute setup, no command line. Your bot token is stored encrypted in the DB
 					(AES-256-GCM) — never logged, never shown back to the UI after save.
@@ -287,7 +291,7 @@ export function BotCredentialsWizard({
 
 			<div className="space-y-1.5">
 				<label htmlFor="telegram-token" className="text-xs font-medium text-foreground">
-					Bot token
+					{t("telegram.botToken")}
 				</label>
 				<input
 					id="telegram-token"

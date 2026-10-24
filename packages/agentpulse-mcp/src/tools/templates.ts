@@ -42,7 +42,7 @@ const TEMPLATE_FIELDS_SHAPE = {
 type TemplateFieldsArgs = {
 	name: string;
 	description?: string | null;
-	agent_type: "claude_code" | "codex_cli";
+	agent_type: "claude_code" | "codex_cli" | "opencode";
 	cwd: string;
 	base_instructions?: string;
 	task_prompt?: string;

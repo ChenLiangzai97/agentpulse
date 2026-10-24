@@ -4,6 +4,7 @@ import { useCopyFeedback } from "../../hooks/useCopyFeedback.js";
 import { useNoteUnknownOwners } from "../../hooks/useNoteUnknownOwners.js";
 import { useOwnershipUi, useViewerIsAdmin } from "../../hooks/useOwnershipUi.js";
 import { useSecretLifetime } from "../../hooks/useSecretLifetime.js";
+import { useT } from "../../i18n/i18n.js";
 import {
 	describeApiError,
 	keyCreationErrorMessage,
@@ -47,6 +48,7 @@ type PendingAction =
  * to people, keep a service key as an admin key, or mint a service key.
  */
 export function ApiKeysPanel({ apiKeys, status, setApiKeys, reloadKeys }: ApiKeysPanelProps) {
+	const t = useT();
 	const ui = useOwnershipUi();
 	const viewerUserId = useUserStore((s) => s.userId);
 	const isAdmin = useViewerIsAdmin();
@@ -195,7 +197,7 @@ export function ApiKeysPanel({ apiKeys, status, setApiKeys, reloadKeys }: ApiKey
 				tabIndex={-1}
 				className="text-sm font-semibold mb-1 focus:outline-none"
 			>
-				API Keys
+				{t("keys.title")}
 			</h2>
 			<p className="text-xs text-muted-foreground mb-4">
 				API keys authenticate hook events from Claude Code, Codex CLI, and Copilot CLI, and the
@@ -207,7 +209,7 @@ export function ApiKeysPanel({ apiKeys, status, setApiKeys, reloadKeys }: ApiKey
 			{newKeyValue && (
 				<div className="mb-4 rounded-md border border-emerald-500/30 bg-emerald-500/5 p-4">
 					<p className="text-sm font-medium text-emerald-700 dark:text-emerald-400 mb-1">
-						New API key created
+						{t("keys.newCreated")}
 					</p>
 					<p className="text-xs text-muted-foreground mb-2">
 						Copy this key now -- it will not be shown again. {SECRET_LIFETIME_NOTE}
@@ -244,8 +246,8 @@ export function ApiKeysPanel({ apiKeys, status, setApiKeys, reloadKeys }: ApiKey
 								setNewKeyName(e.target.value);
 								setCreateError(null);
 							}}
-							placeholder="Key name (e.g. macbook-hooks)"
-							aria-label="Key name"
+							placeholder={t("keys.keyNamePlaceholder")}
+							aria-label={t("keys.keyName")}
 							onKeyDown={(e) => e.key === "Enter" && handleCreateKey()}
 							className="flex-1 min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
 						/>
@@ -255,7 +257,7 @@ export function ApiKeysPanel({ apiKeys, status, setApiKeys, reloadKeys }: ApiKey
 							disabled={!newKeyName.trim()}
 							className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 						>
-							Create Key
+							{t("keys.createKey")}
 						</button>
 					</div>
 					<div className="flex items-center gap-4 text-xs text-muted-foreground">
@@ -267,7 +269,7 @@ export function ApiKeysPanel({ apiKeys, status, setApiKeys, reloadKeys }: ApiKey
 								onChange={(e) => setNewKeyScopeIngest(e.target.checked)}
 								className="rounded border-input"
 							/>
-							<span>Hook ingest</span>
+							<span>{t("keys.hookIngest")}</span>
 							<span className="text-muted-foreground/60">(hook events)</span>
 						</label>
 						<label className="flex items-center gap-1.5 cursor-pointer">
@@ -277,7 +279,7 @@ export function ApiKeysPanel({ apiKeys, status, setApiKeys, reloadKeys }: ApiKey
 								onChange={(e) => setNewKeyScopeManage(e.target.checked)}
 								className="rounded border-input"
 							/>
-							<span>Manage</span>
+							<span>{t("keys.manage")}</span>
 							<span className="text-muted-foreground/60">(supervisors, API keys)</span>
 						</label>
 						<label className="flex items-center gap-1.5 cursor-pointer">
@@ -335,9 +337,7 @@ export function ApiKeysPanel({ apiKeys, status, setApiKeys, reloadKeys }: ApiKey
 					</button>
 				</p>
 			) : apiKeys.length === 0 ? (
-				<p className="text-sm text-muted-foreground py-4 text-center">
-					No API keys yet. Create one above.
-				</p>
+				<p className="text-sm text-muted-foreground py-4 text-center">{t("keys.noneYet")}</p>
 			) : (
 				<div className="space-y-2">
 					{apiKeys.map((key) => {
@@ -426,7 +426,7 @@ export function ApiKeysPanel({ apiKeys, status, setApiKeys, reloadKeys }: ApiKey
 												onClick={() => void markService(key)}
 												className={ROW_BUTTON}
 											>
-												Keep as service key
+												{t("keys.keepAsService")}
 											</button>
 										)}
 										{model.canKeepAsAdmin && (
@@ -435,7 +435,7 @@ export function ApiKeysPanel({ apiKeys, status, setApiKeys, reloadKeys }: ApiKey
 												onClick={() => setPending({ kind: "keep", key })}
 												className={ROW_BUTTON}
 											>
-												Keep as admin key
+												{t("keys.keepAsAdmin")}
 											</button>
 										)}
 										{model.canRevoke && (

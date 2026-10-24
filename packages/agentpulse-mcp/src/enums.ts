@@ -14,8 +14,13 @@ import { z } from "zod";
 // agent type that can post hook events and appear on the dashboard;
 // LAUNCHABLE covers only what AgentPulse can actively start a process for.
 // Phase 6: "copilot_cli" is observe-only (D5/F23) — added to OBSERVED only.
-export const OBSERVED_AGENT_TYPE_ENUM = z.enum(["claude_code", "codex_cli", "copilot_cli"]);
-export const LAUNCHABLE_AGENT_TYPE_ENUM = z.enum(["claude_code", "codex_cli"]);
+export const OBSERVED_AGENT_TYPE_ENUM = z.enum([
+	"claude_code",
+	"codex_cli",
+	"copilot_cli",
+	"opencode",
+]);
+export const LAUNCHABLE_AGENT_TYPE_ENUM = z.enum(["claude_code", "codex_cli", "opencode"]);
 export const SESSION_STATUS_ENUM = z.enum(["active", "idle", "completed", "failed", "archived"]);
 
 // Mirrors src/shared/session-state.ts's ACTIVE_OPERATIONAL_STATUSES — the
@@ -26,7 +31,12 @@ export const OPERATIONAL_STATUS_ENUM = z.enum(["waiting", "error", "working", "i
 
 // Phase 4: mirrors src/shared/types.ts's LaunchMode/LaunchRoutingPolicy/
 // ApprovalPolicy/SandboxMode/HitlReplyKind/ActionRequestDecision unions.
-export const LAUNCH_MODE_ENUM = z.enum(["interactive_terminal", "headless", "managed_codex"]);
+export const LAUNCH_MODE_ENUM = z.enum([
+	"interactive_terminal",
+	"headless",
+	"managed_codex",
+	"managed_opencode",
+]);
 export const ROUTING_POLICY_ENUM = z.enum(["manual_target", "first_capable_host"]);
 export const APPROVAL_POLICY_ENUM = z.enum([
 	"default",

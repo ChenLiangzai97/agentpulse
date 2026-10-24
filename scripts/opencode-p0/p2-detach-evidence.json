@@ -1,0 +1,14 @@
+{
+ "serviceSurvivedLauncherExit": true,
+ "pid": 747647,
+ "startTicksMatch": true,
+ "identity": {
+  "instanceId": "p2-instance",
+  "generation": 1,
+  "nativeSessionId": "ses_p2_fixture",
+  "pid": 747647,
+  "startTicks": "40698866"
+ },
+ "wrongTokenStatus": 401,
+ "ok": true
+}

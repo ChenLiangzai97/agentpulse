@@ -466,8 +466,12 @@ describe("display only: the reported host decides nothing", () => {
 		}
 		// session-tracker answers the list and the counts; index.ts only hands the
 		// stamp to the socket broadcaster (a view of the same name). Neither is an
-		// access, ownership, routing or attribution decision.
-		expect(importers.sort()).toEqual(["index.ts", "services/session-tracker.ts"]);
+		// access, ownership, routing or attribution decision. Work logs include the name only as a display label.
+		expect(importers.sort()).toEqual([
+			"index.ts",
+			"services/session-tracker.ts",
+			"services/worklog-service.ts",
+		]);
 	});
 
 	describe("the machine, by every name an access check could reach it through", () => {
@@ -493,6 +497,7 @@ describe("display only: the reported host decides nothing", () => {
 		const ALLOWED = new Set([
 			"services/effective-machine.ts", // the definition
 			"services/session-tracker.ts", // the list rows, the filter and the counts
+			"services/worklog-service.ts", // display labels in an admin-only log; never access or routing
 			"index.ts", // hands the stamp to the socket broadcaster
 		]);
 		const readers = (files: Record<string, string>) =>

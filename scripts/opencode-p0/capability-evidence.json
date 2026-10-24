@@ -1,0 +1,4551 @@
+{
+ "cli_version": "1.18.35",
+ "captured_at": "2026-10-18",
+ "model_a_after_switch": {
+  "id": "SES_A",
+  "slug": "curious-planet",
+  "projectID": "global",
+  "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+  "path": "",
+  "summary": {
+   "additions": 0,
+   "deletions": 0,
+   "files": 0
+  },
+  "cost": 0,
+  "tokens": {
+   "input": 0,
+   "output": 0,
+   "reasoning": 0,
+   "cache": {
+    "read": 0,
+    "write": 0
+   }
+  },
+  "title": "capability probe A",
+  "agent": "build",
+  "model": {
+   "id": "missing-model",
+   "providerID": "p0"
+  },
+  "version": "1.18.35",
+  "time": {
+   "created": 1792321469136,
+   "updated": 1792321469682
+  }
+ },
+ "model_a_restored": {
+  "id": "SES_A",
+  "slug": "curious-planet",
+  "projectID": "global",
+  "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+  "path": "",
+  "summary": {
+   "additions": 0,
+   "deletions": 0,
+   "files": 0
+  },
+  "cost": 0,
+  "tokens": {
+   "input": 0,
+   "output": 0,
+   "reasoning": 0,
+   "cache": {
+    "read": 0,
+    "write": 0
+   }
+  },
+  "title": "capability probe A",
+  "agent": "build",
+  "model": {
+   "id": "fixture-model",
+   "providerID": "p0"
+  },
+  "version": "1.18.35",
+  "time": {
+   "created": 1792321469136,
+   "updated": 1792321469694
+  }
+ },
+ "model_b_default": {
+  "id": "SES_B",
+  "slug": "lucky-meadow",
+  "projectID": "global",
+  "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+  "path": "",
+  "cost": 0,
+  "tokens": {
+   "input": 0,
+   "output": 0,
+   "reasoning": 0,
+   "cache": {
+    "read": 0,
+    "write": 0
+   }
+  },
+  "title": "capability probe B",
+  "version": "1.18.35",
+  "time": {
+   "created": 1792321469691,
+   "updated": 1792321469691
+  }
+ },
+ "agent_a_after_switch": {
+  "id": "SES_A",
+  "slug": "curious-planet",
+  "projectID": "global",
+  "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+  "path": "",
+  "summary": {
+   "additions": 0,
+   "deletions": 0,
+   "files": 0
+  },
+  "cost": 0,
+  "tokens": {
+   "input": 0,
+   "output": 0,
+   "reasoning": 0,
+   "cache": {
+    "read": 0,
+    "write": 0
+   }
+  },
+  "title": "capability probe A",
+  "agent": "build",
+  "model": {
+   "id": "fixture-model",
+   "providerID": "p0"
+  },
+  "version": "1.18.35",
+  "time": {
+   "created": 1792321469136,
+   "updated": 1792321469696
+  }
+ },
+ "agent_a_after_bogus": {
+  "id": "SES_A",
+  "slug": "curious-planet",
+  "projectID": "global",
+  "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+  "path": "",
+  "summary": {
+   "additions": 0,
+   "deletions": 0,
+   "files": 0
+  },
+  "cost": 0,
+  "tokens": {
+   "input": 0,
+   "output": 0,
+   "reasoning": 0,
+   "cache": {
+    "read": 0,
+    "write": 0
+   }
+  },
+  "title": "capability probe A",
+  "agent": "no-such-agent",
+  "model": {
+   "id": "fixture-model",
+   "providerID": "p0"
+  },
+  "version": "1.18.35",
+  "time": {
+   "created": 1792321469136,
+   "updated": 1792321469700
+  }
+ },
+ "summarize_session_after": {
+  "id": "SES_A",
+  "slug": "curious-planet",
+  "projectID": "global",
+  "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+  "path": "",
+  "summary": {
+   "additions": 0,
+   "deletions": 0,
+   "files": 0
+  },
+  "cost": 0,
+  "tokens": {
+   "input": 0,
+   "output": 0,
+   "reasoning": 0,
+   "cache": {
+    "read": 0,
+    "write": 0
+   }
+  },
+  "title": "capability probe A",
+  "agent": "build",
+  "model": {
+   "id": "fixture-model",
+   "providerID": "p0"
+  },
+  "version": "1.18.35",
+  "time": {
+   "created": 1792321469136,
+   "updated": 1792321469762
+  }
+ },
+ "session_listing": [
+  {
+   "id": "SES_A",
+   "slug": "curious-planet",
+   "projectID": "global",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+   "path": "",
+   "summary": {
+    "additions": 0,
+    "deletions": 0,
+    "files": 0
+   },
+   "cost": 0,
+   "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+     "read": 0,
+     "write": 0
+    }
+   },
+   "title": "capability probe A",
+   "agent": "build",
+   "model": {
+    "id": "fixture-model",
+    "providerID": "p0"
+   },
+   "version": "1.18.35",
+   "time": {
+    "created": 1792321469136,
+    "updated": 1792321469707
+   }
+  },
+  {
+   "id": "SES_B",
+   "slug": "lucky-meadow",
+   "projectID": "global",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+   "path": "",
+   "cost": 0,
+   "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+     "read": 0,
+     "write": 0
+    }
+   },
+   "title": "capability probe B",
+   "version": "1.18.35",
+   "time": {
+    "created": 1792321469691,
+    "updated": 1792321469691
+   }
+  },
+  {
+   "id": "SES_R2B",
+   "slug": "shiny-circuit",
+   "projectID": "global",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+   "path": "",
+   "summary": {
+    "additions": 0,
+    "deletions": 0,
+    "files": 0
+   },
+   "cost": 0,
+   "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+     "read": 0,
+     "write": 0
+    }
+   },
+   "title": "capability SES_R2B",
+   "agent": "build",
+   "model": {
+    "id": "fixture-model",
+    "providerID": "p0",
+    "variant": "default"
+   },
+   "version": "1.18.35",
+   "time": {
+    "created": 1792321456645,
+    "updated": 1792321469040
+   }
+  },
+  {
+   "id": "SES_R4",
+   "slug": "curious-nebula",
+   "projectID": "global",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+   "path": "",
+   "summary": {
+    "additions": 0,
+    "deletions": 0,
+    "files": 0
+   },
+   "cost": 0,
+   "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+     "read": 0,
+     "write": 0
+    }
+   },
+   "title": "capability SES_R4",
+   "agent": "build",
+   "model": {
+    "id": "fixture-model",
+    "providerID": "p0",
+    "variant": "default"
+   },
+   "version": "1.18.35",
+   "time": {
+    "created": 1792321456141,
+    "updated": 1792321456556
+   }
+  },
+  {
+   "id": "SES_R3",
+   "slug": "misty-knight",
+   "projectID": "global",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+   "path": "",
+   "summary": {
+    "additions": 0,
+    "deletions": 0,
+    "files": 0
+   },
+   "cost": 0,
+   "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+     "read": 0,
+     "write": 0
+    }
+   },
+   "title": "capability SES_R3",
+   "agent": "build",
+   "model": {
+    "id": "fixture-model",
+    "providerID": "p0",
+    "variant": "default"
+   },
+   "version": "1.18.35",
+   "time": {
+    "created": 1792321455548,
+    "updated": 1792321456047
+   }
+  },
+  {
+   "id": "SES_R2",
+   "slug": "brave-cactus",
+   "projectID": "global",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+   "path": "",
+   "summary": {
+    "additions": 0,
+    "deletions": 0,
+    "files": 0
+   },
+   "cost": 0,
+   "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+     "read": 0,
+     "write": 0
+    }
+   },
+   "title": "capability SES_R2",
+   "agent": "build",
+   "model": {
+    "id": "fixture-model",
+    "providerID": "p0",
+    "variant": "default"
+   },
+   "version": "1.18.35",
+   "time": {
+    "created": 1792321454670,
+    "updated": 1792321455346
+   }
+  },
+  {
+   "id": "SES_R1",
+   "slug": "eager-pixel",
+   "projectID": "global",
+   "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+   "path": "",
+   "summary": {
+    "additions": 0,
+    "deletions": 0,
+    "files": 0
+   },
+   "cost": 0,
+   "tokens": {
+    "input": 0,
+    "output": 0,
+    "reasoning": 0,
+    "cache": {
+     "read": 0,
+     "write": 0
+    }
+   },
+   "title": "capability SES_R1",
+   "agent": "build",
+   "model": {
+    "id": "fixture-model",
+    "providerID": "p0",
+    "variant": "default"
+   },
+   "version": "1.18.35",
+   "time": {
+    "created": 1792321453205,
+    "updated": 1792321454583
+   }
+  }
+ ],
+ "active_sessions": {
+  "label": "/api session/active shape",
+  "path": "/api/session/active",
+  "method": "GET",
+  "request": null,
+  "response": {
+   "data": {}
+  },
+  "status": 200
+ },
+ "listing_before_tui": [
+  "SES_A",
+  "SES_B",
+  "SES_R2B",
+  "SES_R4",
+  "SES_R3",
+  "SES_R2",
+  "SES_R1"
+ ],
+ "after_tui_undo": [
+  {
+   "id": "msg_cap_23",
+   "role": "user"
+  },
+  {
+   "id": "MSG_ANON_1",
+   "role": "assistant"
+  },
+  {
+   "id": "msg_cap_24",
+   "role": "user"
+  },
+  {
+   "id": "MSG_ANON_2",
+   "role": "assistant"
+  },
+  {
+   "id": "msg_cap_25",
+   "role": "user"
+  },
+  {
+   "id": "MSG_ANON_3",
+   "role": "assistant"
+  }
+ ],
+ "listing_after_tui_new": [
+  "SES_A",
+  "SES_B",
+  "SES_R2B",
+  "SES_R4",
+  "SES_R3",
+  "SES_R2",
+  "SES_R1"
+ ],
+ "active_after_select": {
+  "label": "/api active after tui select-session",
+  "path": "/api/session/active",
+  "method": "GET",
+  "request": null,
+  "response": {
+   "data": {}
+  },
+  "status": 200
+ },
+ "failures": [],
+ "records": [
+  {
+   "label": "create SES_R1",
+   "path": "/session",
+   "method": "POST",
+   "request": {
+    "title": "capability SES_R1"
+   },
+   "response": {
+    "id": "SES_R1",
+    "slug": "eager-pixel",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability SES_R1",
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321453205,
+     "updated": 1792321453205
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "turn 1 prompt",
+   "path": "/session/SES_R1/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_1",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r1alpha"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 2 prompt",
+   "path": "/session/SES_R1/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_2",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r1bravo"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 3 prompt",
+   "path": "/session/SES_R1/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_3",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r1charlie"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "SES_R1 messages after seed turns",
+   "path": "/session/SES_R1/message",
+   "method": "GET",
+   "request": null,
+   "response": [
+    {
+     "info": {
+      "id": "msg_cap_1",
+      "sessionID": "SES_R1",
+      "role": "user",
+      "time": {
+       "created": 1792321453233
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_1",
+       "sessionID": "SES_R1",
+       "messageID": "msg_cap_1",
+       "type": "text",
+       "text": "history marker r1alpha"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_4",
+      "sessionID": "SES_R1",
+      "role": "assistant",
+      "time": {
+       "created": 1792321453552,
+       "completed": 1792321453985
+      },
+      "parentID": "msg_cap_1",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_2",
+       "sessionID": "SES_R1",
+       "messageID": "MSG_ANON_4",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_3",
+       "sessionID": "SES_R1",
+       "messageID": "MSG_ANON_4",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321453975,
+        "end": 1792321453978
+       }
+      },
+      {
+       "id": "PRT_ANON_4",
+       "sessionID": "SES_R1",
+       "messageID": "MSG_ANON_4",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "msg_cap_2",
+      "sessionID": "SES_R1",
+      "role": "user",
+      "time": {
+       "created": 1792321454044
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_5",
+       "sessionID": "SES_R1",
+       "messageID": "msg_cap_2",
+       "type": "text",
+       "text": "history marker r1bravo"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_5",
+      "sessionID": "SES_R1",
+      "role": "assistant",
+      "time": {
+       "created": 1792321454049,
+       "completed": 1792321454068
+      },
+      "parentID": "msg_cap_2",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_6",
+       "sessionID": "SES_R1",
+       "messageID": "MSG_ANON_5",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_7",
+       "sessionID": "SES_R1",
+       "messageID": "MSG_ANON_5",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321454064,
+        "end": 1792321454065
+       }
+      },
+      {
+       "id": "PRT_ANON_8",
+       "sessionID": "SES_R1",
+       "messageID": "MSG_ANON_5",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "msg_cap_3",
+      "sessionID": "SES_R1",
+      "role": "user",
+      "time": {
+       "created": 1792321454158
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_9",
+       "sessionID": "SES_R1",
+       "messageID": "msg_cap_3",
+       "type": "text",
+       "text": "history marker r1charlie"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_6",
+      "sessionID": "SES_R1",
+      "role": "assistant",
+      "time": {
+       "created": 1792321454162,
+       "completed": 1792321454181
+      },
+      "parentID": "msg_cap_3",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_10",
+       "sessionID": "SES_R1",
+       "messageID": "MSG_ANON_6",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_11",
+       "sessionID": "SES_R1",
+       "messageID": "MSG_ANON_6",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321454177,
+        "end": 1792321454178
+       }
+      },
+      {
+       "id": "PRT_ANON_12",
+       "sessionID": "SES_R1",
+       "messageID": "MSG_ANON_6",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    }
+   ],
+   "status": 200
+  },
+  {
+   "label": "turn 4 prompt",
+   "path": "/session/SES_R1/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_4",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker probe-R1 baseline"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "history-assert R1 baseline",
+   "probe_marker": "probe-R1 baseline",
+   "model_message_count": 8,
+   "received_user_markers": [
+    "probe-R1",
+    "r1alpha",
+    "r1bravo",
+    "r1charlie"
+   ]
+  },
+  {
+   "label": "R1 revert at turn-3 USER",
+   "path": "/session/SES_R1/revert",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_3"
+   },
+   "response": {
+    "id": "SES_R1",
+    "slug": "eager-pixel",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "summary": {
+     "additions": 0,
+     "deletions": 0,
+     "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability SES_R1",
+    "agent": "build",
+    "model": {
+     "id": "fixture-model",
+     "providerID": "p0",
+     "variant": "default"
+    },
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321453205,
+     "updated": 1792321454406
+    },
+    "revert": {
+     "messageID": "msg_cap_3"
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "resend same messageID (r1delta)",
+   "path": "/session/SES_R1/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_3",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r1delta"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 5 prompt",
+   "path": "/session/SES_R1/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_5",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker probe-R1 after revert@turn3-user + resend"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "history-assert R1 after revert@turn3-user + resend",
+   "probe_marker": "probe-R1 after revert@turn3-user + resend",
+   "model_message_count": 8,
+   "received_user_markers": [
+    "probe-R1",
+    "r1alpha",
+    "r1bravo",
+    "r1delta"
+   ]
+  },
+  {
+   "label": "create SES_R2",
+   "path": "/session",
+   "method": "POST",
+   "request": {
+    "title": "capability SES_R2"
+   },
+   "response": {
+    "id": "SES_R2",
+    "slug": "brave-cactus",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability SES_R2",
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321454670,
+     "updated": 1792321454670
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "turn 6 prompt",
+   "path": "/session/SES_R2/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_6",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r2alpha"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 7 prompt",
+   "path": "/session/SES_R2/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_7",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r2bravo"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 8 prompt",
+   "path": "/session/SES_R2/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_8",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r2charlie"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "SES_R2 messages after seed turns",
+   "path": "/session/SES_R2/message",
+   "method": "GET",
+   "request": null,
+   "response": [
+    {
+     "info": {
+      "id": "msg_cap_6",
+      "sessionID": "SES_R2",
+      "role": "user",
+      "time": {
+       "created": 1792321454675
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_13",
+       "sessionID": "SES_R2",
+       "messageID": "msg_cap_6",
+       "type": "text",
+       "text": "history marker r2alpha"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_7",
+      "sessionID": "SES_R2",
+      "role": "assistant",
+      "time": {
+       "created": 1792321454681,
+       "completed": 1792321454854
+      },
+      "parentID": "msg_cap_6",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_14",
+       "sessionID": "SES_R2",
+       "messageID": "MSG_ANON_7",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_15",
+       "sessionID": "SES_R2",
+       "messageID": "MSG_ANON_7",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321454850,
+        "end": 1792321454851
+       }
+      },
+      {
+       "id": "PRT_ANON_16",
+       "sessionID": "SES_R2",
+       "messageID": "MSG_ANON_7",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "msg_cap_7",
+      "sessionID": "SES_R2",
+      "role": "user",
+      "time": {
+       "created": 1792321454952
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_17",
+       "sessionID": "SES_R2",
+       "messageID": "msg_cap_7",
+       "type": "text",
+       "text": "history marker r2bravo"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_8",
+      "sessionID": "SES_R2",
+      "role": "assistant",
+      "time": {
+       "created": 1792321454956,
+       "completed": 1792321454974
+      },
+      "parentID": "msg_cap_7",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_18",
+       "sessionID": "SES_R2",
+       "messageID": "MSG_ANON_8",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_19",
+       "sessionID": "SES_R2",
+       "messageID": "MSG_ANON_8",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321454970,
+        "end": 1792321454971
+       }
+      },
+      {
+       "id": "PRT_ANON_20",
+       "sessionID": "SES_R2",
+       "messageID": "MSG_ANON_8",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "msg_cap_8",
+      "sessionID": "SES_R2",
+      "role": "user",
+      "time": {
+       "created": 1792321455072
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_21",
+       "sessionID": "SES_R2",
+       "messageID": "msg_cap_8",
+       "type": "text",
+       "text": "history marker r2charlie"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_9",
+      "sessionID": "SES_R2",
+      "role": "assistant",
+      "time": {
+       "created": 1792321455078,
+       "completed": 1792321455148
+      },
+      "parentID": "msg_cap_8",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_22",
+       "sessionID": "SES_R2",
+       "messageID": "MSG_ANON_9",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_23",
+       "sessionID": "SES_R2",
+       "messageID": "MSG_ANON_9",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321455094,
+        "end": 1792321455095
+       }
+      },
+      {
+       "id": "PRT_ANON_24",
+       "sessionID": "SES_R2",
+       "messageID": "MSG_ANON_9",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    }
+   ],
+   "status": 200
+  },
+  {
+   "label": "R2 revert at turn-3 ASSISTANT",
+   "path": "/session/SES_R2/revert",
+   "method": "POST",
+   "request": {
+    "messageID": "MSG_ANON_9"
+   },
+   "response": {
+    "id": "SES_R2",
+    "slug": "brave-cactus",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "summary": {
+     "additions": 0,
+     "deletions": 0,
+     "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability SES_R2",
+    "agent": "build",
+    "model": {
+     "id": "fixture-model",
+     "providerID": "p0",
+     "variant": "default"
+    },
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321454670,
+     "updated": 1792321455192
+    },
+    "revert": {
+     "messageID": "msg_cap_8"
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "resend same messageID (r2delta)",
+   "path": "/session/SES_R2/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_8",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r2delta"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 9 prompt",
+   "path": "/session/SES_R2/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_9",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker probe-R2 after revert@turn3-assistant + resend"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "history-assert R2 after revert@turn3-assistant + resend",
+   "probe_marker": "probe-R2 after revert@turn3-assistant + resend",
+   "model_message_count": 8,
+   "received_user_markers": [
+    "probe-R2",
+    "r2alpha",
+    "r2bravo",
+    "r2delta"
+   ]
+  },
+  {
+   "label": "create SES_R3",
+   "path": "/session",
+   "method": "POST",
+   "request": {
+    "title": "capability SES_R3"
+   },
+   "response": {
+    "id": "SES_R3",
+    "slug": "misty-knight",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability SES_R3",
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321455548,
+     "updated": 1792321455548
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "turn 10 prompt",
+   "path": "/session/SES_R3/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_10",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r3alpha"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 11 prompt",
+   "path": "/session/SES_R3/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_11",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r3bravo"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 12 prompt",
+   "path": "/session/SES_R3/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_12",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r3charlie"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "SES_R3 messages after seed turns",
+   "path": "/session/SES_R3/message",
+   "method": "GET",
+   "request": null,
+   "response": [
+    {
+     "info": {
+      "id": "msg_cap_10",
+      "sessionID": "SES_R3",
+      "role": "user",
+      "time": {
+       "created": 1792321455558
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_25",
+       "sessionID": "SES_R3",
+       "messageID": "msg_cap_10",
+       "type": "text",
+       "text": "history marker r3alpha"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_10",
+      "sessionID": "SES_R3",
+      "role": "assistant",
+      "time": {
+       "created": 1792321455564,
+       "completed": 1792321455582
+      },
+      "parentID": "msg_cap_10",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_26",
+       "sessionID": "SES_R3",
+       "messageID": "MSG_ANON_10",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_27",
+       "sessionID": "SES_R3",
+       "messageID": "MSG_ANON_10",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321455579,
+        "end": 1792321455579
+       }
+      },
+      {
+       "id": "PRT_ANON_28",
+       "sessionID": "SES_R3",
+       "messageID": "MSG_ANON_10",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "msg_cap_11",
+      "sessionID": "SES_R3",
+      "role": "user",
+      "time": {
+       "created": 1792321455674
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_29",
+       "sessionID": "SES_R3",
+       "messageID": "msg_cap_11",
+       "type": "text",
+       "text": "history marker r3bravo"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_11",
+      "sessionID": "SES_R3",
+      "role": "assistant",
+      "time": {
+       "created": 1792321455677,
+       "completed": 1792321455694
+      },
+      "parentID": "msg_cap_11",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_30",
+       "sessionID": "SES_R3",
+       "messageID": "MSG_ANON_11",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_31",
+       "sessionID": "SES_R3",
+       "messageID": "MSG_ANON_11",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321455690,
+        "end": 1792321455691
+       }
+      },
+      {
+       "id": "PRT_ANON_32",
+       "sessionID": "SES_R3",
+       "messageID": "MSG_ANON_11",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "msg_cap_12",
+      "sessionID": "SES_R3",
+      "role": "user",
+      "time": {
+       "created": 1792321455788
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_33",
+       "sessionID": "SES_R3",
+       "messageID": "msg_cap_12",
+       "type": "text",
+       "text": "history marker r3charlie"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_12",
+      "sessionID": "SES_R3",
+      "role": "assistant",
+      "time": {
+       "created": 1792321455791,
+       "completed": 1792321455807
+      },
+      "parentID": "msg_cap_12",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_34",
+       "sessionID": "SES_R3",
+       "messageID": "MSG_ANON_12",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_35",
+       "sessionID": "SES_R3",
+       "messageID": "MSG_ANON_12",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321455803,
+        "end": 1792321455804
+       }
+      },
+      {
+       "id": "PRT_ANON_36",
+       "sessionID": "SES_R3",
+       "messageID": "MSG_ANON_12",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    }
+   ],
+   "status": 200
+  },
+  {
+   "label": "R3 revert at turn-2 ASSISTANT",
+   "path": "/session/SES_R3/revert",
+   "method": "POST",
+   "request": {
+    "messageID": "MSG_ANON_11"
+   },
+   "response": {
+    "id": "SES_R3",
+    "slug": "misty-knight",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "summary": {
+     "additions": 0,
+     "deletions": 0,
+     "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability SES_R3",
+    "agent": "build",
+    "model": {
+     "id": "fixture-model",
+     "providerID": "p0",
+     "variant": "default"
+    },
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321455548,
+     "updated": 1792321455904
+    },
+    "revert": {
+     "messageID": "msg_cap_11"
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "resend same messageID (r3delta)",
+   "path": "/session/SES_R3/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_12",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r3delta"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 13 prompt",
+   "path": "/session/SES_R3/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_13",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker probe-R3 after revert@turn2-assistant + resend"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "history-assert R3 after revert@turn2-assistant + resend",
+   "probe_marker": "probe-R3 after revert@turn2-assistant + resend",
+   "model_message_count": 6,
+   "received_user_markers": [
+    "probe-R3",
+    "r3alpha",
+    "r3delta"
+   ]
+  },
+  {
+   "label": "create SES_R4",
+   "path": "/session",
+   "method": "POST",
+   "request": {
+    "title": "capability SES_R4"
+   },
+   "response": {
+    "id": "SES_R4",
+    "slug": "curious-nebula",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability SES_R4",
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321456141,
+     "updated": 1792321456141
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "turn 14 prompt",
+   "path": "/session/SES_R4/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_14",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r4alpha"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 15 prompt",
+   "path": "/session/SES_R4/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_15",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r4bravo"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 16 prompt",
+   "path": "/session/SES_R4/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_16",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r4charlie"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "SES_R4 messages after seed turns",
+   "path": "/session/SES_R4/message",
+   "method": "GET",
+   "request": null,
+   "response": [
+    {
+     "info": {
+      "id": "msg_cap_14",
+      "sessionID": "SES_R4",
+      "role": "user",
+      "time": {
+       "created": 1792321456148
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_37",
+       "sessionID": "SES_R4",
+       "messageID": "msg_cap_14",
+       "type": "text",
+       "text": "history marker r4alpha"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_13",
+      "sessionID": "SES_R4",
+      "role": "assistant",
+      "time": {
+       "created": 1792321456179,
+       "completed": 1792321456209
+      },
+      "parentID": "msg_cap_14",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_38",
+       "sessionID": "SES_R4",
+       "messageID": "MSG_ANON_13",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_39",
+       "sessionID": "SES_R4",
+       "messageID": "MSG_ANON_13",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321456206,
+        "end": 1792321456207
+       }
+      },
+      {
+       "id": "PRT_ANON_40",
+       "sessionID": "SES_R4",
+       "messageID": "MSG_ANON_13",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "msg_cap_15",
+      "sessionID": "SES_R4",
+      "role": "user",
+      "time": {
+       "created": 1792321456297
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_41",
+       "sessionID": "SES_R4",
+       "messageID": "msg_cap_15",
+       "type": "text",
+       "text": "history marker r4bravo"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_14",
+      "sessionID": "SES_R4",
+      "role": "assistant",
+      "time": {
+       "created": 1792321456301,
+       "completed": 1792321456318
+      },
+      "parentID": "msg_cap_15",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_42",
+       "sessionID": "SES_R4",
+       "messageID": "MSG_ANON_14",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_43",
+       "sessionID": "SES_R4",
+       "messageID": "MSG_ANON_14",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321456314,
+        "end": 1792321456315
+       }
+      },
+      {
+       "id": "PRT_ANON_44",
+       "sessionID": "SES_R4",
+       "messageID": "MSG_ANON_14",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "msg_cap_16",
+      "sessionID": "SES_R4",
+      "role": "user",
+      "time": {
+       "created": 1792321456414
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_45",
+       "sessionID": "SES_R4",
+       "messageID": "msg_cap_16",
+       "type": "text",
+       "text": "history marker r4charlie"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_15",
+      "sessionID": "SES_R4",
+      "role": "assistant",
+      "time": {
+       "created": 1792321456418,
+       "completed": 1792321456434
+      },
+      "parentID": "msg_cap_16",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_46",
+       "sessionID": "SES_R4",
+       "messageID": "MSG_ANON_15",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_47",
+       "sessionID": "SES_R4",
+       "messageID": "MSG_ANON_15",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321456430,
+        "end": 1792321456431
+       }
+      },
+      {
+       "id": "PRT_ANON_48",
+       "sessionID": "SES_R4",
+       "messageID": "MSG_ANON_15",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    }
+   ],
+   "status": 200
+  },
+  {
+   "label": "R4 revert at turn-3 USER",
+   "path": "/session/SES_R4/revert",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_16"
+   },
+   "response": {
+    "id": "SES_R4",
+    "slug": "curious-nebula",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "summary": {
+     "additions": 0,
+     "deletions": 0,
+     "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability SES_R4",
+    "agent": "build",
+    "model": {
+     "id": "fixture-model",
+     "providerID": "p0",
+     "variant": "default"
+    },
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321456141,
+     "updated": 1792321456527
+    },
+    "revert": {
+     "messageID": "msg_cap_16"
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "R4 immediate unrevert",
+   "path": "/session/SES_R4/unrevert",
+   "method": "POST",
+   "request": null,
+   "response": {
+    "id": "SES_R4",
+    "slug": "curious-nebula",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "summary": {
+     "additions": 0,
+     "deletions": 0,
+     "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability SES_R4",
+    "agent": "build",
+    "model": {
+     "id": "fixture-model",
+     "providerID": "p0",
+     "variant": "default"
+    },
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321456141,
+     "updated": 1792321456530
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "turn 17 prompt",
+   "path": "/session/SES_R4/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_17",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker probe-R4 after immediate unrevert"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "history-assert R4 after immediate unrevert",
+   "probe_marker": "probe-R4 after immediate unrevert",
+   "model_message_count": 8,
+   "received_user_markers": [
+    "probe-R4",
+    "r4alpha",
+    "r4bravo",
+    "r4charlie"
+   ]
+  },
+  {
+   "label": "create SES_R2B",
+   "path": "/session",
+   "method": "POST",
+   "request": {
+    "title": "capability SES_R2B"
+   },
+   "response": {
+    "id": "SES_R2B",
+    "slug": "shiny-circuit",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability SES_R2B",
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321456645,
+     "updated": 1792321456645
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "turn 18 prompt",
+   "path": "/session/SES_R2B/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_18",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r2balpha"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 19 prompt",
+   "path": "/session/SES_R2B/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_19",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r2bbravo"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 20 prompt",
+   "path": "/session/SES_R2B/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_20",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r2bcharlie"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "SES_R2B messages after seed turns",
+   "path": "/session/SES_R2B/message",
+   "method": "GET",
+   "request": null,
+   "response": [
+    {
+     "info": {
+      "id": "msg_cap_18",
+      "sessionID": "SES_R2B",
+      "role": "user",
+      "time": {
+       "created": 1792321456650
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_49",
+       "sessionID": "SES_R2B",
+       "messageID": "msg_cap_18",
+       "type": "text",
+       "text": "history marker r2balpha"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_16",
+      "sessionID": "SES_R2B",
+      "role": "assistant",
+      "time": {
+       "created": 1792321456655,
+       "completed": 1792321456673
+      },
+      "parentID": "msg_cap_18",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_50",
+       "sessionID": "SES_R2B",
+       "messageID": "MSG_ANON_16",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_51",
+       "sessionID": "SES_R2B",
+       "messageID": "MSG_ANON_16",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321456669,
+        "end": 1792321456670
+       }
+      },
+      {
+       "id": "PRT_ANON_52",
+       "sessionID": "SES_R2B",
+       "messageID": "MSG_ANON_16",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "msg_cap_19",
+      "sessionID": "SES_R2B",
+      "role": "user",
+      "time": {
+       "created": 1792321456769
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_53",
+       "sessionID": "SES_R2B",
+       "messageID": "msg_cap_19",
+       "type": "text",
+       "text": "history marker r2bbravo"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_17",
+      "sessionID": "SES_R2B",
+      "role": "assistant",
+      "time": {
+       "created": 1792321456774,
+       "completed": 1792321456793
+      },
+      "parentID": "msg_cap_19",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_54",
+       "sessionID": "SES_R2B",
+       "messageID": "MSG_ANON_17",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_55",
+       "sessionID": "SES_R2B",
+       "messageID": "MSG_ANON_17",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321456789,
+        "end": 1792321456790
+       }
+      },
+      {
+       "id": "PRT_ANON_56",
+       "sessionID": "SES_R2B",
+       "messageID": "MSG_ANON_17",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "msg_cap_20",
+      "sessionID": "SES_R2B",
+      "role": "user",
+      "time": {
+       "created": 1792321456887
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_57",
+       "sessionID": "SES_R2B",
+       "messageID": "msg_cap_20",
+       "type": "text",
+       "text": "history marker r2bcharlie"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_18",
+      "sessionID": "SES_R2B",
+      "role": "assistant",
+      "time": {
+       "created": 1792321456893,
+       "completed": 1792321456914
+      },
+      "parentID": "msg_cap_20",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_58",
+       "sessionID": "SES_R2B",
+       "messageID": "MSG_ANON_18",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_59",
+       "sessionID": "SES_R2B",
+       "messageID": "MSG_ANON_18",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321456910,
+        "end": 1792321456911
+       }
+      },
+      {
+       "id": "PRT_ANON_60",
+       "sessionID": "SES_R2B",
+       "messageID": "MSG_ANON_18",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    }
+   ],
+   "status": 200
+  },
+  {
+   "label": "R2B revert at turn-3 USER",
+   "path": "/session/SES_R2B/revert",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_20"
+   },
+   "response": {
+    "id": "SES_R2B",
+    "slug": "shiny-circuit",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "summary": {
+     "additions": 0,
+     "deletions": 0,
+     "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability SES_R2B",
+    "agent": "build",
+    "model": {
+     "id": "fixture-model",
+     "providerID": "p0",
+     "variant": "default"
+    },
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321456645,
+     "updated": 1792321457005
+    },
+    "revert": {
+     "messageID": "msg_cap_20"
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "turn 21 prompt (boundary)",
+   "path": "/session/SES_R2B/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_21",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker r2bnew"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "R2B new-messageID prompt after revert",
+   "completed_within_12s": false,
+   "diagnostics": {
+    "prompt_status": 200,
+    "prompt_response": null,
+    "message_count": 6,
+    "session_status": null,
+    "server_log_tail": "opencode server listening on http://127.0.0.1:45945 | "
+   }
+  },
+  {
+   "label": "R2B unrevert after stalled prompt",
+   "path": "/session/SES_R2B/unrevert",
+   "method": "POST",
+   "request": null,
+   "response": {
+    "id": "SES_R2B",
+    "slug": "shiny-circuit",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "summary": {
+     "additions": 0,
+     "deletions": 0,
+     "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability SES_R2B",
+    "agent": "build",
+    "model": {
+     "id": "fixture-model",
+     "providerID": "p0",
+     "variant": "default"
+    },
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321456645,
+     "updated": 1792321457063
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "turn 22 prompt",
+   "path": "/session/SES_R2B/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_22",
+    "parts": [
+     {
+      "type": "text",
+      "text": "history marker probe-R2B after stall + unrevert"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "history-assert R2B after stall + unrevert",
+   "probe_marker": "probe-R2B after stall + unrevert",
+   "model_message_count": 8,
+   "received_user_markers": [
+    "probe-R2B",
+    "r2balpha",
+    "r2bbravo",
+    "r2bnew"
+   ]
+  },
+  {
+   "label": "revert bogus messageID (error shape)",
+   "path": "/session/SES_R3/revert",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_nonexistent_cap"
+   },
+   "response": {
+    "id": "SES_R3",
+    "slug": "misty-knight",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "summary": {
+     "additions": 0,
+     "deletions": 0,
+     "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability SES_R3",
+    "agent": "build",
+    "model": {
+     "id": "fixture-model",
+     "providerID": "p0",
+     "variant": "default"
+    },
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321455548,
+     "updated": 1792321456047
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "create SES_A",
+   "path": "/session",
+   "method": "POST",
+   "request": {
+    "title": "capability probe A"
+   },
+   "response": {
+    "id": "SES_A",
+    "slug": "curious-planet",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability probe A",
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321469136,
+     "updated": 1792321469136
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "turn 23 prompt",
+   "path": "/session/SES_A/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_23",
+    "parts": [
+     {
+      "type": "text",
+      "text": "cap one"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 24 prompt",
+   "path": "/session/SES_A/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_24",
+    "parts": [
+     {
+      "type": "text",
+      "text": "cap two"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "turn 25 prompt",
+   "path": "/session/SES_A/prompt_async",
+   "method": "POST",
+   "request": {
+    "messageID": "msg_cap_25",
+    "parts": [
+     {
+      "type": "text",
+      "text": "cap three"
+     }
+    ]
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "/api switch model to missing-model (full ModelRef)",
+   "path": "/api/session/SES_A/model",
+   "method": "POST",
+   "request": {
+    "model": {
+     "id": "missing-model",
+     "providerID": "p0"
+    }
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "session A after model switch",
+   "path": "/session/SES_A",
+   "method": "GET",
+   "request": null,
+   "response": {
+    "id": "SES_A",
+    "slug": "curious-planet",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "summary": {
+     "additions": 0,
+     "deletions": 0,
+     "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability probe A",
+    "agent": "build",
+    "model": {
+     "id": "missing-model",
+     "providerID": "p0"
+    },
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321469136,
+     "updated": 1792321469682
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "create SES_B",
+   "path": "/session",
+   "method": "POST",
+   "request": {
+    "title": "capability probe B"
+   },
+   "response": {
+    "id": "SES_B",
+    "slug": "lucky-meadow",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability probe B",
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321469691,
+     "updated": 1792321469691
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "session B default model",
+   "path": "/session/SES_B",
+   "method": "GET",
+   "request": null,
+   "response": {
+    "id": "SES_B",
+    "slug": "lucky-meadow",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability probe B",
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321469691,
+     "updated": 1792321469691
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "/api switch model back to fixture (full ModelRef)",
+   "path": "/api/session/SES_A/model",
+   "method": "POST",
+   "request": {
+    "model": {
+     "id": "fixture-model",
+     "providerID": "p0"
+    }
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "session A after model restore",
+   "path": "/session/SES_A",
+   "method": "GET",
+   "request": null,
+   "response": {
+    "id": "SES_A",
+    "slug": "curious-planet",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "summary": {
+     "additions": 0,
+     "deletions": 0,
+     "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability probe A",
+    "agent": "build",
+    "model": {
+     "id": "fixture-model",
+     "providerID": "p0"
+    },
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321469136,
+     "updated": 1792321469694
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "/api switch agent to build",
+   "path": "/api/session/SES_A/agent",
+   "method": "POST",
+   "request": {
+    "agent": "build"
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "session A after agent switch",
+   "path": "/session/SES_A",
+   "method": "GET",
+   "request": null,
+   "response": {
+    "id": "SES_A",
+    "slug": "curious-planet",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "summary": {
+     "additions": 0,
+     "deletions": 0,
+     "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability probe A",
+    "agent": "build",
+    "model": {
+     "id": "fixture-model",
+     "providerID": "p0"
+    },
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321469136,
+     "updated": 1792321469696
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "/api switch agent to nonexistent (error shape)",
+   "path": "/api/session/SES_A/agent",
+   "method": "POST",
+   "request": {
+    "agent": "no-such-agent"
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "session A after bogus agent switch",
+   "path": "/session/SES_A",
+   "method": "GET",
+   "request": null,
+   "response": {
+    "id": "SES_A",
+    "slug": "curious-planet",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "summary": {
+     "additions": 0,
+     "deletions": 0,
+     "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability probe A",
+    "agent": "no-such-agent",
+    "model": {
+     "id": "fixture-model",
+     "providerID": "p0"
+    },
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321469136,
+     "updated": 1792321469700
+    }
+   },
+   "status": 200
+  },
+  {
+   "label": "/api restore agent to build",
+   "path": "/api/session/SES_A/agent",
+   "method": "POST",
+   "request": {
+    "agent": "build"
+   },
+   "response": null,
+   "status": 200
+  },
+  {
+   "label": "/api switch model (providerID/modelID form, error shape)",
+   "path": "/api/session/SES_A/model",
+   "method": "POST",
+   "request": {
+    "model": {
+     "providerID": "p0",
+     "modelID": "missing-model"
+    }
+   },
+   "response": {
+    "_tag": "InvalidRequestError",
+    "message": "Missing key\n  at [\"model\"][\"id\"]",
+    "kind": "Payload"
+   },
+   "status": 400
+  },
+  {
+   "label": "/api compact",
+   "path": "/api/session/SES_A/compact",
+   "method": "POST",
+   "request": null,
+   "response": {
+    "_tag": "ServiceUnavailableError",
+    "message": "Session compact is not available yet",
+    "service": "session.compact"
+   },
+   "status": 503
+  },
+  {
+   "label": "session list before tui commands",
+   "path": "/session",
+   "method": "GET",
+   "request": null,
+   "response": [
+    {
+     "id": "SES_A",
+     "slug": "curious-planet",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability probe A",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321469136,
+      "updated": 1792321469707
+     }
+    },
+    {
+     "id": "SES_B",
+     "slug": "lucky-meadow",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability probe B",
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321469691,
+      "updated": 1792321469691
+     }
+    },
+    {
+     "id": "SES_R2B",
+     "slug": "shiny-circuit",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R2B",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321456645,
+      "updated": 1792321469040
+     }
+    },
+    {
+     "id": "SES_R4",
+     "slug": "curious-nebula",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R4",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321456141,
+      "updated": 1792321456556
+     }
+    },
+    {
+     "id": "SES_R3",
+     "slug": "misty-knight",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R3",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321455548,
+      "updated": 1792321456047
+     }
+    },
+    {
+     "id": "SES_R2",
+     "slug": "brave-cactus",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R2",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321454670,
+      "updated": 1792321455346
+     }
+    },
+    {
+     "id": "SES_R1",
+     "slug": "eager-pixel",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R1",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321453205,
+      "updated": 1792321454583
+     }
+    }
+   ],
+   "status": 200
+  },
+  {
+   "label": "tui execute-command undo (headless)",
+   "path": "/tui/execute-command",
+   "method": "POST",
+   "request": {
+    "command": "undo"
+   },
+   "response": true,
+   "status": 200
+  },
+  {
+   "label": "messages after tui undo",
+   "path": "/session/SES_A/message",
+   "method": "GET",
+   "request": null,
+   "response": [
+    {
+     "info": {
+      "id": "msg_cap_23",
+      "sessionID": "SES_A",
+      "role": "user",
+      "time": {
+       "created": 1792321469139
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_61",
+       "sessionID": "SES_A",
+       "messageID": "msg_cap_23",
+       "type": "text",
+       "text": "cap one"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_1",
+      "sessionID": "SES_A",
+      "role": "assistant",
+      "time": {
+       "created": 1792321469144,
+       "completed": 1792321469161
+      },
+      "parentID": "msg_cap_23",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_62",
+       "sessionID": "SES_A",
+       "messageID": "MSG_ANON_1",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_63",
+       "sessionID": "SES_A",
+       "messageID": "MSG_ANON_1",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321469158,
+        "end": 1792321469159
+       }
+      },
+      {
+       "id": "PRT_ANON_64",
+       "sessionID": "SES_A",
+       "messageID": "MSG_ANON_1",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "msg_cap_24",
+      "sessionID": "SES_A",
+      "role": "user",
+      "time": {
+       "created": 1792321469252
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_65",
+       "sessionID": "SES_A",
+       "messageID": "msg_cap_24",
+       "type": "text",
+       "text": "cap two"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_2",
+      "sessionID": "SES_A",
+      "role": "assistant",
+      "time": {
+       "created": 1792321469256,
+       "completed": 1792321469267
+      },
+      "parentID": "msg_cap_24",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_66",
+       "sessionID": "SES_A",
+       "messageID": "MSG_ANON_2",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_67",
+       "sessionID": "SES_A",
+       "messageID": "MSG_ANON_2",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321469264,
+        "end": 1792321469265
+       }
+      },
+      {
+       "id": "PRT_ANON_68",
+       "sessionID": "SES_A",
+       "messageID": "MSG_ANON_2",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "msg_cap_25",
+      "sessionID": "SES_A",
+      "role": "user",
+      "time": {
+       "created": 1792321469365
+      },
+      "agent": "build",
+      "model": {
+       "providerID": "p0",
+       "modelID": "fixture-model"
+      }
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_69",
+       "sessionID": "SES_A",
+       "messageID": "msg_cap_25",
+       "type": "text",
+       "text": "cap three"
+      }
+     ]
+    },
+    {
+     "info": {
+      "id": "MSG_ANON_3",
+      "sessionID": "SES_A",
+      "role": "assistant",
+      "time": {
+       "created": 1792321469369,
+       "completed": 1792321469381
+      },
+      "parentID": "msg_cap_25",
+      "modelID": "fixture-model",
+      "providerID": "p0",
+      "mode": "build",
+      "agent": "build",
+      "path": {
+       "cwd": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+       "root": "/tmp/ap-opencode-p0-w6lyaj7d/project"
+      },
+      "cost": 0,
+      "tokens": {
+       "input": 0,
+       "output": 0,
+       "reasoning": 0,
+       "cache": {
+        "read": 0,
+        "write": 0
+       }
+      },
+      "finish": "stop"
+     },
+     "parts": [
+      {
+       "id": "PRT_ANON_70",
+       "sessionID": "SES_A",
+       "messageID": "MSG_ANON_3",
+       "type": "step-start"
+      },
+      {
+       "id": "PRT_ANON_71",
+       "sessionID": "SES_A",
+       "messageID": "MSG_ANON_3",
+       "type": "text",
+       "text": "P0_DONE",
+       "time": {
+        "start": 1792321469377,
+        "end": 1792321469378
+       }
+      },
+      {
+       "id": "PRT_ANON_72",
+       "sessionID": "SES_A",
+       "messageID": "MSG_ANON_3",
+       "type": "step-finish",
+       "reason": "stop",
+       "cost": 0,
+       "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+         "read": 0,
+         "write": 0
+        }
+       }
+      }
+     ]
+    }
+   ],
+   "status": 200
+  },
+  {
+   "label": "tui execute-command new (headless)",
+   "path": "/tui/execute-command",
+   "method": "POST",
+   "request": {
+    "command": "new"
+   },
+   "response": true,
+   "status": 200
+  },
+  {
+   "label": "session list after tui new",
+   "path": "/session",
+   "method": "GET",
+   "request": null,
+   "response": [
+    {
+     "id": "SES_A",
+     "slug": "curious-planet",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability probe A",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321469136,
+      "updated": 1792321469707
+     }
+    },
+    {
+     "id": "SES_B",
+     "slug": "lucky-meadow",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability probe B",
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321469691,
+      "updated": 1792321469691
+     }
+    },
+    {
+     "id": "SES_R2B",
+     "slug": "shiny-circuit",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R2B",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321456645,
+      "updated": 1792321469040
+     }
+    },
+    {
+     "id": "SES_R4",
+     "slug": "curious-nebula",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R4",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321456141,
+      "updated": 1792321456556
+     }
+    },
+    {
+     "id": "SES_R3",
+     "slug": "misty-knight",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R3",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321455548,
+      "updated": 1792321456047
+     }
+    },
+    {
+     "id": "SES_R2",
+     "slug": "brave-cactus",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R2",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321454670,
+      "updated": 1792321455346
+     }
+    },
+    {
+     "id": "SES_R1",
+     "slug": "eager-pixel",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R1",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321453205,
+      "updated": 1792321454583
+     }
+    }
+   ],
+   "status": 200
+  },
+  {
+   "label": "tui select-session B (headless)",
+   "path": "/tui/select-session",
+   "method": "POST",
+   "request": {
+    "sessionID": "SES_B"
+   },
+   "response": true,
+   "status": 200
+  },
+  {
+   "label": "/api active after tui select-session",
+   "path": "/api/session/active",
+   "method": "GET",
+   "request": null,
+   "response": {
+    "data": {}
+   },
+   "status": 200
+  },
+  {
+   "label": "tui open-sessions (headless)",
+   "path": "/tui/open-sessions",
+   "method": "POST",
+   "request": null,
+   "response": true,
+   "status": 200
+  },
+  {
+   "label": "tui execute-command model (headless)",
+   "path": "/tui/execute-command",
+   "method": "POST",
+   "request": {
+    "command": "model"
+   },
+   "response": true,
+   "status": 200
+  },
+  {
+   "label": "/command builtin 'undo'",
+   "path": "/session/SES_A/command",
+   "method": "POST",
+   "request": {
+    "command": "undo",
+    "arguments": ""
+   },
+   "response": {
+    "name": "UnknownError",
+    "data": {
+     "message": "Unexpected server error. Check server logs for details.",
+     "ref": "err_376ddb19"
+    }
+   },
+   "status": 500
+  },
+  {
+   "label": "/command builtin 'compact'",
+   "path": "/session/SES_A/command",
+   "method": "POST",
+   "request": {
+    "command": "compact",
+    "arguments": ""
+   },
+   "response": {
+    "name": "UnknownError",
+    "data": {
+     "message": "Unexpected server error. Check server logs for details.",
+     "ref": "err_95c755ae"
+    }
+   },
+   "status": 500
+  },
+  {
+   "label": "/command builtin 'export'",
+   "path": "/session/SES_A/command",
+   "method": "POST",
+   "request": {
+    "command": "export",
+    "arguments": ""
+   },
+   "response": {
+    "name": "UnknownError",
+    "data": {
+     "message": "Unexpected server error. Check server logs for details.",
+     "ref": "err_306c1895"
+    }
+   },
+   "status": 500
+  },
+  {
+   "label": "/command builtin 'new'",
+   "path": "/session/SES_A/command",
+   "method": "POST",
+   "request": {
+    "command": "new",
+    "arguments": ""
+   },
+   "response": {
+    "name": "UnknownError",
+    "data": {
+     "message": "Unexpected server error. Check server logs for details.",
+     "ref": "err_0d4eb8d1"
+    }
+   },
+   "status": 500
+  },
+  {
+   "label": "/command builtin 'session'",
+   "path": "/session/SES_A/command",
+   "method": "POST",
+   "request": {
+    "command": "session",
+    "arguments": ""
+   },
+   "response": {
+    "name": "UnknownError",
+    "data": {
+     "message": "Unexpected server error. Check server logs for details.",
+     "ref": "err_f4ee596f"
+    }
+   },
+   "status": 500
+  },
+  {
+   "label": "/command builtin 'help'",
+   "path": "/session/SES_A/command",
+   "method": "POST",
+   "request": {
+    "command": "help",
+    "arguments": ""
+   },
+   "response": {
+    "name": "UnknownError",
+    "data": {
+     "message": "Unexpected server error. Check server logs for details.",
+     "ref": "err_4573acea"
+    }
+   },
+   "status": 500
+  },
+  {
+   "label": "/command builtin 'model'",
+   "path": "/session/SES_A/command",
+   "method": "POST",
+   "request": {
+    "command": "model",
+    "arguments": ""
+   },
+   "response": {
+    "name": "UnknownError",
+    "data": {
+     "message": "Unexpected server error. Check server logs for details.",
+     "ref": "err_a8dd4e98"
+    }
+   },
+   "status": 500
+  },
+  {
+   "label": "/command builtin 'agent'",
+   "path": "/session/SES_A/command",
+   "method": "POST",
+   "request": {
+    "command": "agent",
+    "arguments": ""
+   },
+   "response": {
+    "name": "UnknownError",
+    "data": {
+     "message": "Unexpected server error. Check server logs for details.",
+     "ref": "err_8e25cfa3"
+    }
+   },
+   "status": 500
+  },
+  {
+   "label": "/command builtin 'share'",
+   "path": "/session/SES_A/command",
+   "method": "POST",
+   "request": {
+    "command": "share",
+    "arguments": ""
+   },
+   "response": {
+    "name": "UnknownError",
+    "data": {
+     "message": "Unexpected server error. Check server logs for details.",
+     "ref": "err_760bce2d"
+    }
+   },
+   "status": 500
+  },
+  {
+   "label": "/command builtin 'theme'",
+   "path": "/session/SES_A/command",
+   "method": "POST",
+   "request": {
+    "command": "theme",
+    "arguments": ""
+   },
+   "response": {
+    "name": "UnknownError",
+    "data": {
+     "message": "Unexpected server error. Check server logs for details.",
+     "ref": "err_5caa2aa9"
+    }
+   },
+   "status": 500
+  },
+  {
+   "label": "session list with per-session model",
+   "path": "/session",
+   "method": "GET",
+   "request": null,
+   "response": [
+    {
+     "id": "SES_A",
+     "slug": "curious-planet",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability probe A",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321469136,
+      "updated": 1792321469707
+     }
+    },
+    {
+     "id": "SES_B",
+     "slug": "lucky-meadow",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability probe B",
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321469691,
+      "updated": 1792321469691
+     }
+    },
+    {
+     "id": "SES_R2B",
+     "slug": "shiny-circuit",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R2B",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321456645,
+      "updated": 1792321469040
+     }
+    },
+    {
+     "id": "SES_R4",
+     "slug": "curious-nebula",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R4",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321456141,
+      "updated": 1792321456556
+     }
+    },
+    {
+     "id": "SES_R3",
+     "slug": "misty-knight",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R3",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321455548,
+      "updated": 1792321456047
+     }
+    },
+    {
+     "id": "SES_R2",
+     "slug": "brave-cactus",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R2",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321454670,
+      "updated": 1792321455346
+     }
+    },
+    {
+     "id": "SES_R1",
+     "slug": "eager-pixel",
+     "projectID": "global",
+     "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+     "path": "",
+     "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+     },
+     "cost": 0,
+     "tokens": {
+      "input": 0,
+      "output": 0,
+      "reasoning": 0,
+      "cache": {
+       "read": 0,
+       "write": 0
+      }
+     },
+     "title": "capability SES_R1",
+     "agent": "build",
+     "model": {
+      "id": "fixture-model",
+      "providerID": "p0",
+      "variant": "default"
+     },
+     "version": "1.18.35",
+     "time": {
+      "created": 1792321453205,
+      "updated": 1792321454583
+     }
+    }
+   ],
+   "status": 200
+  },
+  {
+   "label": "/api session/active shape",
+   "path": "/api/session/active",
+   "method": "GET",
+   "request": null,
+   "response": {
+    "data": {}
+   },
+   "status": 200
+  },
+  {
+   "label": "summarize",
+   "path": "/session/SES_A/summarize",
+   "method": "POST",
+   "request": {
+    "providerID": "p0",
+    "modelID": "fixture-model"
+   },
+   "response": true,
+   "status": 200
+  },
+  {
+   "label": "session A after summarize",
+   "path": "/session/SES_A",
+   "method": "GET",
+   "request": null,
+   "response": {
+    "id": "SES_A",
+    "slug": "curious-planet",
+    "projectID": "global",
+    "directory": "/tmp/ap-opencode-p0-w6lyaj7d/project",
+    "path": "",
+    "summary": {
+     "additions": 0,
+     "deletions": 0,
+     "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+     "input": 0,
+     "output": 0,
+     "reasoning": 0,
+     "cache": {
+      "read": 0,
+      "write": 0
+     }
+    },
+    "title": "capability probe A",
+    "agent": "build",
+    "model": {
+     "id": "fixture-model",
+     "providerID": "p0"
+    },
+    "version": "1.18.35",
+    "time": {
+     "created": 1792321469136,
+     "updated": 1792321469762
+    }
+   },
+   "status": 200
+  }
+ ]
+}

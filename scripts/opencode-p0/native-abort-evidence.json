@@ -1,0 +1,88 @@
+{
+ "cli_version": "1.18.35",
+ "captured_at": "2026-10-19",
+ "records": [
+  {
+   "session": "SES",
+   "label": "session created",
+   "t": 2.17
+  },
+  {
+   "status": "busy",
+   "label": "turn 1 running",
+   "t": 3.18
+  },
+  {
+   "http": 200,
+   "method": "POST",
+   "ct": "application/json",
+   "empty": false,
+   "body": "true",
+   "label": "abort returned",
+   "t": 3.19
+  },
+  {
+   "seconds": 0.0,
+   "final_status": "unknown",
+   "label": "termination observed via status",
+   "t": 3.2
+  },
+  {
+   "text": "slow turn one",
+   "reply_flagged_completed": true,
+   "model_reply_delivered": false,
+   "label": "turn 1 final text",
+   "t": 3.2
+  },
+  {
+   "status": "busy",
+   "label": "turn 2 running",
+   "t": 4.21
+  },
+  {
+   "status": 200,
+   "method": "POST",
+   "ct": "application/json",
+   "empty": false,
+   "body": "true",
+   "label": "late abort http",
+   "t": 4.22
+  },
+  {
+   "status": "unknown",
+   "turn2_present": true,
+   "turn2_reply_completed": true,
+   "model_reply_delivered": false,
+   "label": "turn 2 outcome",
+   "t": 4.22
+  },
+  {
+   "http": 200,
+   "ct": "text/html",
+   "body": "<!doctype html>\n<html lang=\"en\" style=\"background-color: var",
+   "label": "graceful http shutdown endpoint",
+   "t": 4.22
+  },
+  {
+   "pid": 19952,
+   "label": "isolateTarget=SIGTERM instance",
+   "t": 4.23
+  },
+  {
+   "pid": 19952,
+   "label": "instance terminated via SIGKILL (zombie reaped by parent — isolation confirmed)",
+   "t": 16.73
+  }
+ ],
+ "findings": [
+  "WITHDRAWN: the round-24 run used GET (no body/method) — all its abort conclusions are void.",
+  "POST /session/{id}/abort returns 200 application/json body 'true' (genuine acceptance).",
+  "Termination left the busy state within sampling precision (0.0s observed) — this is an observation at probe polling granularity, NOT a claim that all in-flight tool side effects had ceased.",
+  "Turn 1 after abort: model reply NEVER delivered (no P0_DONE), yet the assistant message is FLAGGED completed — 'completed' is not evidence of delivery.",
+  "SCOPE LIMIT (per review): the second, proactively-sent abort proves only that an UNBOUND abort can kill whichever turn is running at arrival — it is NOT a full fault injection of an old request delayed in-flight and landing later; that deeper window remains unproven.",
+  "The destructive-window evidence justifies conservative resume gating; it does not characterize every late-arrival pattern.",
+  "POST /shutdown returning HTML only proves THIS path has no such API — not a general statement about graceful stop.",
+  "This environment: SIGTERM ignored for 12s, only SIGKILL terminated the CLI (zombie reaped via /proc) — environment-specific, not generalizable.",
+  "Mock boundary: the mock cannot react to cancellations; delivery evidence comes from the real opencode server's own status/message records."
+ ]
+}

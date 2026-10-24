@@ -58,3 +58,14 @@ export { projectAlertRuleFiresPg as projectAlertRuleFires } from "./ask-projects
 
 // Also export typed variant so drizzle-kit and tests can import directly.
 export { settingsPg } from "./core/settings.js";
+
+export {
+	providerInstancesPg as providerInstances,
+	sessionControlBindingsPg as sessionControlBindings,
+} from "./core/provider-control.js";
+
+export { providerInteractionsPg as providerInteractions } from "./core/provider-interactions.js";
+export {
+	opencodeForksPg as opencodeForks,
+	opencodeForkRequestsPg as opencodeForkRequests,
+} from "./core/opencode-forks.js";

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { ApiKeyInfo } from "../../shared/types.js";
 import { useOwnSessionCount } from "../hooks/useOwnSessionCount.js";
 import { useOwnershipUi } from "../hooks/useOwnershipUi.js";
+import { useT } from "../i18n/i18n.js";
 import { api } from "../lib/api.js";
 import { addToIdSet, browserStorage, readIdSet } from "../lib/id-set-storage.js";
 import { connectCardDismissKey, shouldShowConnectCard } from "../pages/dashboard-view-state.js";
@@ -17,6 +18,7 @@ const DISMISSED_FLAG = "dismissed";
  * "Not now" is remembered for this person in this browser.
  */
 export function ConnectMachineCard({ suppress = false }: { suppress?: boolean }) {
+	const t = useT();
 	const ui = useOwnershipUi();
 	// Asked of the server, not counted from the newest page: on a busy team the
 	// newest hundred sessions may not include any of theirs. Until it answers,
@@ -61,18 +63,16 @@ export function ConnectMachineCard({ suppress = false }: { suppress?: boolean })
 		>
 			<div>
 				<h2 id="connect-machine-heading" className="text-sm font-semibold text-foreground">
-					Connect your machine
+					{t("connect.title")}
 				</h2>
-				<p className="mt-0.5 text-xs text-hint">
-					Sessions show up under your name once your agents report with your own key.
-				</p>
+				<p className="mt-0.5 text-xs text-hint">{t("connect.hint")}</p>
 			</div>
 			<div className="flex flex-wrap items-center gap-2">
 				<Link
 					to="/setup"
 					className="inline-flex min-h-[44px] items-center rounded-md bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 text-sm font-medium transition-colors md:min-h-0"
 				>
-					Set up my machine
+					{t("grid.setUpMachine")}
 				</Link>
 				<button
 					type="button"
@@ -82,7 +82,7 @@ export function ConnectMachineCard({ suppress = false }: { suppress?: boolean })
 					}}
 					className="min-h-[44px] rounded-md px-3 py-2 text-sm text-hint transition-colors hover:text-foreground md:min-h-0"
 				>
-					Not now
+					{t("connect.notNow")}
 				</button>
 			</div>
 		</section>

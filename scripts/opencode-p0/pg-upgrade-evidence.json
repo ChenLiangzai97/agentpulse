@@ -1,0 +1,60 @@
+{
+ "probe": "ap_upgrade_probe_c4707a5c_23a6_4943_8d89_c082f278df44",
+ "columnsBefore": [
+  "created_at",
+  "generation",
+  "instance_id",
+  "native_session_id",
+  "origin",
+  "session_id"
+ ],
+ "columnsAfter": [
+  "created_at",
+  "generation",
+  "instance_id",
+  "native_session_id",
+  "origin",
+  "session_id",
+  "stop_epoch",
+  "stop_state"
+ ],
+ "preservedRow": {
+  "session_id": "upgrade-1",
+  "stop_state": "active",
+  "stop_epoch": 0
+ },
+ "lineage": {
+  "child_session_id": "upgrade-child",
+  "parent_session_id": "upgrade-1"
+ },
+ "childNotes": "keep my notes",
+ "forksFks": [
+  {
+   "conname": "opencode_forks_child_session_id_sessions_session_id_fk",
+   "confdeltype": "c"
+  },
+  {
+   "conname": "opencode_forks_parent_session_id_sessions_session_id_fk",
+   "confdeltype": "n"
+  }
+ ],
+ "childBinding": {
+  "session_id": "upgrade-child",
+  "origin": "agentpulse_launch",
+  "instance_id": "ea530ec3-22aa-40e9-95a7-125537163467",
+  "native_session_id": "ses_upgrade_child",
+  "generation": 1
+ },
+ "ledger": {
+  "action_id": "upgrade-action"
+ },
+ "idemIndex": {
+  "indexname": "uq_fork_action_idem"
+ },
+ "forUpdate": true,
+ "parentAfterDelete": {
+  "parent_session_id": null
+ },
+ "childForkAfterDelete": null,
+ "ok": true
+}

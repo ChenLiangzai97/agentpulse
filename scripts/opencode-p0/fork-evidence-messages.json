@@ -1,0 +1,73 @@
+{
+ "omit_messageID": [
+  {
+   "id": "msg_14cd8bd35001uGKvUvuaSk6O55",
+   "role": "user",
+   "text": "请只记住并回复两个字：苹果"
+  },
+  {
+   "id": "msg_14cd8bd370011l0PPTWTNHUQNh",
+   "role": "assistant",
+   "text": "苹果"
+  },
+  {
+   "id": "msg_14cd8bd3b001Q1rn6Pg6D3K7V5",
+   "role": "user",
+   "text": "请只记住并回复两个字：香蕉"
+  },
+  {
+   "id": "msg_14cd8bd3c001Uaj8ClJbkzttAX",
+   "role": "assistant",
+   "text": "香蕉"
+  },
+  {
+   "id": "msg_probe_q_omit_messageID",
+   "role": "user",
+   "text": "我的两句话暗号分别是什么？只回答两个词"
+  },
+  {
+   "id": "msg_14cd8bd4b001cngrvxRiS8tbAd",
+   "role": "assistant",
+   "text": "苹果、香蕉"
+  }
+ ],
+ "at_last_assistant": [
+  {
+   "id": "msg_14cda1dde001odZlUHKH2OBpwU",
+   "role": "user",
+   "text": "请只记住并回复两个字：苹果"
+  },
+  {
+   "id": "msg_14cda1de0002PJMDUp4yU66ROH",
+   "role": "assistant",
+   "text": "苹果"
+  },
+  {
+   "id": "msg_14cda1de4001FjTyDZtlYbhiHA",
+   "role": "user",
+   "text": "请只记住并回复两个字：香蕉"
+  },
+  {
+   "id": "msg_probe_q_at_last_assistant",
+   "role": "user",
+   "text": "我的两句话暗号分别是什么？只回答两个词"
+  },
+  {
+   "id": "msg_14cda1dee001i69Vc8RtI0b4lw",
+   "role": "assistant",
+   "text": "苹果 香蕉"
+  }
+ ],
+ "at_middle_user": [
+  {
+   "id": "msg_probe_q_at_middle_user",
+   "role": "user",
+   "text": "我到目前为止说过的暗号是什么？只回答暗号词"
+  },
+  {
+   "id": "msg_14cdb7e7d0015HUzlFTXMblz9x",
+   "role": "assistant",
+   "text": "（你还没有说过任何暗号）"
+  }
+ ]
+}

@@ -47,7 +47,8 @@ export async function recommendLaunch(input: RecommenderInput): Promise<Recommen
 	// Default the template's own choices.
 	const agentType = input.template.agentType;
 	const model: string | null = input.template.model ?? null;
-	const launchMode: LaunchMode = "interactive_terminal";
+	const launchMode: LaunchMode =
+		agentType === "opencode" ? "managed_opencode" : "interactive_terminal";
 
 	// 1. Learn from prior sessions at the same cwd. Which agent + model
 	// completed recently? That is the strongest signal we have.

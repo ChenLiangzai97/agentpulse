@@ -21,6 +21,11 @@ export const config = {
 	logLevel: (process.env.LOG_LEVEL || "info") as "debug" | "info" | "warn" | "error",
 	initialApiKey: process.env.AGENTPULSE_INITIAL_API_KEY || "",
 	disableAuth: process.env.DISABLE_AUTH === "true",
+	// Fork REQUEST acceptance is closed by default: the route/service refuse
+	// until the operator explicitly opens the entry after acceptance testing.
+	opencodeForkEntry: process.env.AGENTPULSE_OPENCODE_FORK_ENTRY === "1",
+	// Resume acceptance is closed by default as well.
+	opencodeResumeEntry: process.env.AGENTPULSE_OPENCODE_RESUME_ENTRY === "1",
 	isProduction: process.env.NODE_ENV === "production",
 	dataDir: process.env.DATA_DIR || "./data",
 	sqlitePathOverride: process.env.SQLITE_PATH || "",

@@ -3,6 +3,7 @@ import { NavLink } from "react-router-dom";
 import { useDropdownClose } from "../hooks/useDropdownClose.js";
 import { useOwnershipUi } from "../hooks/useOwnershipUi.js";
 import { useSignOut } from "../hooks/useSignOut.js";
+import { useT } from "../i18n/i18n.js";
 import { formatProviderLabel } from "../lib/formatProviderLabel.js";
 import { machinesMenuItems, userMenuItems } from "../lib/nav-items.js";
 import { useUserStore } from "../stores/user-store.js";
@@ -16,6 +17,7 @@ import { WsStatusChip } from "./WsStatusChip.js";
  * still reach Setup / Settings / Sign out without opening the drawer.
  */
 export function TopBar() {
+	const t = useT();
 	const user = useUserStore((s) => s.user);
 	const signOutUrl = useUserStore((s) => s.signOutUrl);
 	const disableAuth = useUserStore((s) => s.disableAuth);
@@ -38,6 +40,7 @@ function AdminMenu() {
 	const [open, setOpen] = useState(false);
 	const ref = useDropdownClose(() => setOpen(false));
 	const ui = useOwnershipUi();
+	const t = useT();
 	return (
 		<div className="relative" ref={ref}>
 			<button
@@ -77,7 +80,7 @@ function AdminMenu() {
 						<MenuLink
 							key={item.to}
 							to={item.to}
-							label={item.label}
+							label={t(item.label)}
 							onClick={() => setOpen(false)}
 						/>
 					))}
@@ -102,10 +105,11 @@ function UserMenu({
 	signOutUrl: string | null;
 	disableAuth: boolean;
 }) {
+	const t = useT();
 	const [open, setOpen] = useState(false);
 	const ref = useDropdownClose(() => setOpen(false));
 	const { handleSignOut: signOut, signOutUrl } = useSignOut();
-	const label = user?.name ?? (disableAuth ? "anonymous" : "signed out");
+	const label = user?.name ?? (disableAuth ? t("nav.anonymous") : "signed out");
 	const initial = label.charAt(0).toUpperCase();
 	// Prefer provider (Phase 1+) for the display label; fall back to "Authentik"
 	// for cached responses that still carry source === "authentik" (no provider field).
@@ -153,14 +157,14 @@ function UserMenu({
 				<MenuPanel onClose={() => setOpen(false)} align="right">
 					{user && (
 						<div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-							Signed in · {sourceLabel}
+							{t("nav.signedIn").replace("{source}", sourceLabel)}
 						</div>
 					)}
 					{userMenuItems(ui, { isLocal }).map((item) => (
 						<MenuLink
 							key={item.to}
 							to={item.to}
-							label={item.label}
+							label={t(item.label)}
 							onClick={() => setOpen(false)}
 						/>
 					))}
@@ -170,12 +174,12 @@ function UserMenu({
 							onClick={handleSignOut}
 							className="block w-full text-left px-3 py-2 text-xs text-red-300 hover:bg-red-500/10"
 						>
-							Sign out
+							{t("layout.signOut")}
 						</button>
 					)}
 					{disableAuth && (
 						<div className="px-3 py-2 text-[10px] text-muted-foreground">
-							DISABLE_AUTH is on — no sign-out applies.
+							{t("topbar.noSignOut")}
 						</div>
 					)}
 				</MenuPanel>

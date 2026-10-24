@@ -1,6 +1,7 @@
 import { AGENT_METADATA } from "../../../shared/constants.js";
 import type { AgentType, Session } from "../../../shared/types.js";
 import { useCopyFeedback } from "../../hooks/useCopyFeedback.js";
+import { t, useT } from "../../i18n/i18n.js";
 
 /**
  * F24 (D35): the caveat text for an observe-only agent (Copilot CLI), or
@@ -66,10 +67,11 @@ export function CodexStatusHint({ displayName }: { displayName: string }) {
 		<div className="mx-3 md:mx-6 mt-2 md:mt-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5">
 			<div className="flex items-start justify-between gap-3">
 				<div className="min-w-0">
-					<p className="text-xs font-medium text-foreground">Show this name inside Codex</p>
+					<p className="text-xs font-medium text-foreground">{t("hints.showNameInCodex")}</p>
 					<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-						Run <span className="font-mono text-foreground">{renameCommand}</span> in Codex, then
-						enable <span className="font-mono text-foreground">thread-title</span> in{" "}
+						Run <span className="font-mono text-foreground">{renameCommand}</span>{" "}
+						{t("hints.statuslineSuffix")}{" "}
+						<span className="font-mono text-foreground">thread-title</span> in{" "}
 						<span className="font-mono text-foreground">/statusline</span>. This uses Codex&apos;s
 						built-in status line instead of terminal-specific hacks.
 					</p>
@@ -91,6 +93,7 @@ export function ManagedCodexStatus({
 }: {
 	managedSession: NonNullable<Session["managedSession"]>;
 }) {
+	const t = useT();
 	const syncTone =
 		managedSession.providerSyncState === "synced"
 			? "text-emerald-400 border-emerald-500/20 bg-emerald-500/10"
@@ -145,6 +148,7 @@ export function ManagedClaudeStatus({
 }: {
 	managedSession: NonNullable<Session["managedSession"]>;
 }) {
+	const t = useT();
 	const tone =
 		managedSession.managedState === "completed"
 			? "text-emerald-400 border-emerald-500/20 bg-emerald-500/10"
