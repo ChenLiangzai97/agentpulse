@@ -249,11 +249,14 @@ export function OpenCodeControls({
 	 * and the stored text; a stale cross-session/cross-viewer callback is a
 	 * no-op. */
 	function clearSentDraft(sentSession: string, sentVersion: number, sentGeneration: number) {
-		if (sessionIdRef.current !== sentSession) return;
 		const store = usePromptDraftStore.getState();
+		// Clear the PERSISTED draft of the sent session (viewer epoch + version
+		// guarded). Only the mounted input is touched when it still shows that
+		// session: navigating to B must not leave A's delivered text behind and
+		// must never clear B's draft.
 		if (!store.canClearSent(sentSession, sentVersion, sentGeneration)) return;
 		store.clearDraft(sentSession);
-		setPrompt("");
+		if (sessionIdRef.current === sentSession) setPrompt("");
 	}
 	async function send(body: Record<string, unknown>) {
 		const sentSession = sessionIdRef.current;
