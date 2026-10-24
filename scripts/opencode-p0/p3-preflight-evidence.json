@@ -1,13 +1,22 @@
 {
  "mode": "read_only",
- "generatedAt": "2026-10-24T05:40:58.646Z",
+ "generatedAt": "2026-10-24T05:46:15.697Z",
  "host": "ch-LEGION-REN9000K-34IRZ",
  "daemon": {
   "line": "supervisor 在线 (pid 1314, 自 2026-10-16T16:10:11.768Z)",
-  "pluginServices": [
-   "botmux-dashboard (online)",
-   "botmux-StationAgent-opencode (online)",
-   "botmux-StationAgent-codex (online)"
+  "services": [
+   {
+    "name": "botmux-dashboard",
+    "status": "online"
+   },
+   {
+    "name": "botmux-StationAgent-opencode",
+    "status": "online"
+   },
+   {
+    "name": "botmux-StationAgent-codex",
+    "status": "online"
+   }
   ]
  },
  "sources": [
@@ -18,25 +27,22 @@
    "agent": "opencode",
    "cwd": "/home/ch/project/work_stati…",
    "pid": null,
-   "uptime": "12h44m",
+   "uptime": "12h49m",
    "driverState": "dormant",
    "target": "headless",
    "handoffAllowed": false,
    "compatibility": {
     "cwdExists": false,
-    "cwdIsDirectory": false,
+    "cwdIsDirectory": null,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,
-    "pluginServices": [
-     "botmux-dashboard (online)",
-     "botmux-StationAgent-opencode (online)",
-     "botmux-StationAgent-codex (online)"
-    ],
+    "pluginCompatibility": "unknown",
     "unknown": [
      "native_identity_not_exposed_by_list",
+     "trusted_identity_requires_observe_json",
+     "cwd_truncated_by_list",
      "driver_idle_state_not_proven",
-     "botmux_version_unknown",
-     "cwd_truncated_by_list"
+     "botmux_version_unknown"
     ]
    }
   },
@@ -53,19 +59,16 @@
    "handoffAllowed": false,
    "compatibility": {
     "cwdExists": false,
-    "cwdIsDirectory": false,
+    "cwdIsDirectory": null,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,
-    "pluginServices": [
-     "botmux-dashboard (online)",
-     "botmux-StationAgent-opencode (online)",
-     "botmux-StationAgent-codex (online)"
-    ],
+    "pluginCompatibility": "unknown",
     "unknown": [
      "native_identity_not_exposed_by_list",
+     "trusted_identity_requires_observe_json",
+     "cwd_truncated_by_list",
      "driver_idle_state_not_proven",
-     "botmux_version_unknown",
-     "cwd_truncated_by_list"
+     "botmux_version_unknown"
     ]
    }
   },
@@ -82,19 +85,16 @@
    "handoffAllowed": false,
    "compatibility": {
     "cwdExists": false,
-    "cwdIsDirectory": false,
+    "cwdIsDirectory": null,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,
-    "pluginServices": [
-     "botmux-dashboard (online)",
-     "botmux-StationAgent-opencode (online)",
-     "botmux-StationAgent-codex (online)"
-    ],
+    "pluginCompatibility": "unknown",
     "unknown": [
      "native_identity_not_exposed_by_list",
+     "trusted_identity_requires_observe_json",
+     "cwd_truncated_by_list",
      "driver_idle_state_not_proven",
-     "botmux_version_unknown",
-     "cwd_truncated_by_list"
+     "botmux_version_unknown"
     ]
    }
   },
@@ -111,19 +111,16 @@
    "handoffAllowed": false,
    "compatibility": {
     "cwdExists": false,
-    "cwdIsDirectory": false,
+    "cwdIsDirectory": null,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,
-    "pluginServices": [
-     "botmux-dashboard (online)",
-     "botmux-StationAgent-opencode (online)",
-     "botmux-StationAgent-codex (online)"
-    ],
+    "pluginCompatibility": "unknown",
     "unknown": [
      "native_identity_not_exposed_by_list",
+     "trusted_identity_requires_observe_json",
+     "cwd_truncated_by_list",
      "driver_idle_state_not_proven",
-     "botmux_version_unknown",
-     "cwd_truncated_by_list"
+     "botmux_version_unknown"
     ]
    }
   },
@@ -140,19 +137,16 @@
    "handoffAllowed": false,
    "compatibility": {
     "cwdExists": false,
-    "cwdIsDirectory": false,
+    "cwdIsDirectory": null,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,
-    "pluginServices": [
-     "botmux-dashboard (online)",
-     "botmux-StationAgent-opencode (online)",
-     "botmux-StationAgent-codex (online)"
-    ],
+    "pluginCompatibility": "unknown",
     "unknown": [
      "native_identity_not_exposed_by_list",
+     "trusted_identity_requires_observe_json",
+     "cwd_truncated_by_list",
      "driver_idle_state_not_proven",
-     "botmux_version_unknown",
-     "cwd_truncated_by_list"
+     "botmux_version_unknown"
     ]
    }
   },
@@ -172,13 +166,10 @@
     "cwdIsDirectory": true,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,
-    "pluginServices": [
-     "botmux-dashboard (online)",
-     "botmux-StationAgent-opencode (online)",
-     "botmux-StationAgent-codex (online)"
-    ],
+    "pluginCompatibility": "unknown",
     "unknown": [
      "native_identity_not_exposed_by_list",
+     "trusted_identity_requires_observe_json",
      "driver_idle_state_not_proven",
      "botmux_version_unknown"
     ]
@@ -200,13 +191,10 @@
     "cwdIsDirectory": true,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,
-    "pluginServices": [
-     "botmux-dashboard (online)",
-     "botmux-StationAgent-opencode (online)",
-     "botmux-StationAgent-codex (online)"
-    ],
+    "pluginCompatibility": "unknown",
     "unknown": [
      "native_identity_not_exposed_by_list",
+     "trusted_identity_requires_observe_json",
      "botmux_version_unknown"
     ]
    }
@@ -224,18 +212,15 @@
    "handoffAllowed": false,
    "compatibility": {
     "cwdExists": false,
-    "cwdIsDirectory": false,
+    "cwdIsDirectory": null,
     "host": "ch-LEGION-REN9000K-34IRZ",
     "botmuxVersion": null,
-    "pluginServices": [
-     "botmux-dashboard (online)",
-     "botmux-StationAgent-opencode (online)",
-     "botmux-StationAgent-codex (online)"
-    ],
+    "pluginCompatibility": "unknown",
     "unknown": [
      "native_identity_not_exposed_by_list",
-     "botmux_version_unknown",
-     "cwd_truncated_by_list"
+     "trusted_identity_requires_observe_json",
+     "cwd_truncated_by_list",
+     "botmux_version_unknown"
     ]
    }
   }
@@ -243,7 +228,9 @@
  "unknown": [
   "source_release_not_verified",
   "native_export_import_not_tested",
+  "plugin_service_health_not_proven",
   "plugin_runtime_compatibility_not_tested",
+  "terminal_sources_not_discovered",
   "opencode_config_files=opencode.json,package-lock.json,opencode.jsonc,package.json"
  ]
 }

@@ -24,7 +24,12 @@ describe("read-only preflight", () => {
 		expect(rows).toHaveLength(2);
 		expect(rows[0]).toMatchObject({ sessionId: "99dad266", cwd: "/tmp/a", status: "dormant" });
 		const status = parseBotmuxStatus(STATUS);
-		expect(status.pluginServices).toContain("botmux-StationAgent-opencode (online)");
+		expect(status.services).toEqual(
+			expect.arrayContaining([
+				{ name: "botmux-StationAgent-opencode", status: "online" },
+				{ name: "botmux-dashboard", status: "online" },
+			]),
+		);
 		const report = buildPreflightReport({
 			host: "host-1",
 			now: "2026-10-24T00:00:00.000Z",
@@ -50,6 +55,16 @@ describe("read-only preflight", () => {
 			statCwd: () => ({ exists: false, isDirectory: false }),
 		});
 		expect(report.sources[0]?.compatibility.cwdExists).toBe(false);
+		// A truncated cwd is UNKNOWN (null), never "missing".
+		const truncatedReport = buildPreflightReport({
+			host: "h",
+			now: "t",
+			listText: LIST.replace("/tmp/a", "/home/ch/project/work_stati…"),
+			statusText: STATUS,
+			statCwd: () => ({ exists: false, isDirectory: false }),
+		});
+		expect(truncatedReport.sources[0]?.compatibility.cwdExists).toBeNull();
+		expect(truncatedReport.sources[0]?.compatibility.unknown).toContain("cwd_truncated_by_list");
 		expect(report.sources[0]?.compatibility.botmuxVersion).toBeNull();
 		expect(report.sources[0]?.compatibility.unknown).toContain("botmux_version_unknown");
 	});

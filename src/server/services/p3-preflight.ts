@@ -19,11 +19,13 @@ export interface PreflightSource {
 	/** Preflight never grants handoff: the source must be released first. */
 	handoffAllowed: false;
 	compatibility: {
-		cwdExists: boolean;
-		cwdIsDirectory: boolean;
+		/** null = not provable from this read-only view (e.g. truncated list). */
+		cwdExists: boolean | null;
+		cwdIsDirectory: boolean | null;
 		host: string;
 		botmuxVersion: string | null;
-		pluginServices: string[];
+		/** Plugin compatibility is NOT proven by the CLI status output. */
+		pluginCompatibility: "unknown";
 		/** Facts this read-only view cannot prove. */
 		unknown: string[];
 	};
@@ -33,7 +35,11 @@ export interface PreflightReport {
 	mode: "read_only";
 	generatedAt: string;
 	host: string;
-	daemon: { line: string | null; pluginServices: string[] };
+	daemon: {
+		line: string | null;
+		/** Processes the CLI reports (bots/daemon). NOT proof of plugin health. */
+		services: { name: string; status: string }[];
+	};
 	sources: PreflightSource[];
 	unknown: string[];
 }
@@ -82,17 +88,21 @@ const agentOf = (bot: string): "opencode" | "codex" | "unknown" => {
 const expandHome = (cwd: string) =>
 	cwd.startsWith("~") ? cwd.replace(/^~/, process.env.HOME ?? "~") : cwd;
 
-/** `botmux status` output: daemon line + plugin service rows. */
-export function parseBotmuxStatus(text: string): { line: string | null; pluginServices: string[] } {
-	const pluginServices: string[] = [];
+/** `botmux status`: the supervisor line plus the bot/daemon rows it lists. */
+export function parseBotmuxStatus(text: string): {
+	line: string | null;
+	services: { name: string; status: string }[];
+} {
+	const services: { name: string; status: string }[] = [];
 	let line: string | null = null;
 	for (const raw of text.split("\n")) {
 		const value = clean(raw);
 		if (/^supervisor/.test(value)) line = value;
 		const match = value.match(/^(botmux-[\w-]+)\s+(\d+)\s+(\w+)/);
-		if (match?.[1]) pluginServices.push(`${match[1]} (${match[3]})`);
+		if (match?.[1] && match[3]) services.push({ name: match[1], status: match[3] });
 	}
-	return { line, pluginServices: [...new Set(pluginServices)] };
+	const unique = [...new Map(services.map((s) => [s.name, s])).values()];
+	return { line, services: unique };
 }
 
 /** Strip anything that looks like a credential before it can reach a report. */
@@ -107,14 +117,19 @@ export function buildPreflightReport(input: {
 	now: string;
 	listText: string;
 	statusText: string;
-	statCwd: (cwd: string) => { exists: boolean; isDirectory: boolean };
+	statCwd: (cwd: string) => { exists: boolean | null; isDirectory: boolean | null };
 }): PreflightReport {
 	const status = parseBotmuxStatus(input.statusText);
 	const botmuxVersion = input.statusText.match(/botmux\s+v?(\d+\.\d+\.\d+)/)?.[1] ?? null;
 	const sources: PreflightSource[] = parseBotmuxListPlain(input.listText).map((row) => {
 		const cwd = row.cwd ? expandHome(row.cwd) : null;
-		const stat = cwd ? input.statCwd(cwd) : { exists: false, isDirectory: false };
-		const unknown = ["native_identity_not_exposed_by_list"];
+		const truncated = Boolean(cwd && (cwd.includes("…") || cwd.includes("...")));
+		const stat = cwd && !truncated ? input.statCwd(cwd) : { exists: null, isDirectory: null };
+		const unknown = [
+			"native_identity_not_exposed_by_list",
+			"trusted_identity_requires_observe_json",
+		];
+		if (truncated) unknown.push("cwd_truncated_by_list");
 		if (row.status !== "stopped") unknown.push("driver_idle_state_not_proven");
 		if (!botmuxVersion) unknown.push("botmux_version_unknown");
 		return {
@@ -133,7 +148,7 @@ export function buildPreflightReport(input: {
 				cwdIsDirectory: stat.isDirectory,
 				host: input.host,
 				botmuxVersion,
-				pluginServices: status.pluginServices,
+				pluginCompatibility: "unknown" as const,
 				unknown,
 			},
 		};
@@ -147,7 +162,9 @@ export function buildPreflightReport(input: {
 		unknown: [
 			"source_release_not_verified",
 			"native_export_import_not_tested",
+			"plugin_service_health_not_proven",
 			"plugin_runtime_compatibility_not_tested",
+			"terminal_sources_not_discovered",
 		],
 	};
 }

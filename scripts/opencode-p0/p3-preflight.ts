@@ -19,6 +19,16 @@ const run = async (args: string[]) => {
 const list = await run(["botmux", "list", "--plain"]);
 const status = await run(["botmux", "status"]);
 const version = await run(["botmux", "--version"]).catch(() => ({ out: "", err: "" }));
+// A failed probe must NOT look like "no sessions": report it and exit non-zero.
+const probeErrors: string[] = [];
+if (list.err.trim() || !list.out.trim()) probeErrors.push(`list_failed:${list.err.trim()}`);
+if (status.err.trim() || !status.out.trim()) probeErrors.push(`status_failed:${status.err.trim()}`);
+if (probeErrors.length > 0) {
+	const failedPath = join(import.meta.dir, "p3-preflight-evidence.json");
+	await Bun.write(failedPath, `${JSON.stringify({ mode: "read_only", ok: false, probeErrors }, null, 1)}\n`);
+	console.error(JSON.stringify({ ok: false, probeErrors }, null, 1));
+	process.exit(2);
+}
 const report = buildPreflightReport({
 	host: hostname(),
 	now: new Date().toISOString(),
@@ -29,12 +39,6 @@ const report = buildPreflightReport({
 // Real cwd facts (read-only) per source.
 for (const source of report.sources) {
 	if (!source.cwd) continue;
-	// `botmux list --plain` TRUNCATES the cwd column (…): such a path is not a
-	// fact and must stay unknown, never "missing".
-	if (source.cwd.includes("…") || source.cwd.includes("...")) {
-		source.compatibility.unknown.push("cwd_truncated_by_list");
-		continue;
-	}
 	try {
 		const info = await stat(source.cwd);
 		source.compatibility.cwdExists = true;
@@ -63,9 +67,10 @@ console.log(
 				acc[s.agent] = (acc[s.agent] ?? 0) + 1;
 				return acc;
 			}, {}),
-			cwdMissing: report.sources.filter((s) => !s.compatibility.cwdExists).length,
+			cwdMissing: report.sources.filter((s) => s.compatibility.cwdExists === false).length,
+			cwdUnknown: report.sources.filter((s) => s.compatibility.cwdExists === null).length,
 			daemon: report.daemon.line,
-			pluginServices: report.daemon.pluginServices,
+			services: report.daemon.services,
 			unknown: report.unknown,
 		},
 		null,
