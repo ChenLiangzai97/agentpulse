@@ -244,6 +244,7 @@ const timer = setInterval(
 					actionId: action.id,
 					supervisorId: "fixture-host",
 					status: "succeeded",
+					claimToken: String((action.metadata as Record<string, unknown>)?.claimToken ?? ""),
 				});
 			} catch (error) {
 				await updateControlAction({
@@ -251,6 +252,7 @@ const timer = setInterval(
 					supervisorId: "fixture-host",
 					status: "failed",
 					error: error instanceof Error ? error.message : "fixture_action_failed",
+					claimToken: String((action.metadata as Record<string, unknown>)?.claimToken ?? ""),
 				});
 			}
 		})().catch(() => {}),
