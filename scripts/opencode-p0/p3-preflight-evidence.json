@@ -1,0 +1,249 @@
+{
+ "mode": "read_only",
+ "generatedAt": "2026-10-24T05:40:58.646Z",
+ "host": "ch-LEGION-REN9000K-34IRZ",
+ "daemon": {
+  "line": "supervisor 在线 (pid 1314, 自 2026-10-16T16:10:11.768Z)",
+  "pluginServices": [
+   "botmux-dashboard (online)",
+   "botmux-StationAgent-opencode (online)",
+   "botmux-StationAgent-codex (online)"
+  ]
+ },
+ "sources": [
+  {
+   "source": "botmux",
+   "sessionId": "99dad266",
+   "bot": "bot1 (opencode)",
+   "agent": "opencode",
+   "cwd": "/home/ch/project/work_stati…",
+   "pid": null,
+   "uptime": "12h44m",
+   "driverState": "dormant",
+   "target": "headless",
+   "handoffAllowed": false,
+   "compatibility": {
+    "cwdExists": false,
+    "cwdIsDirectory": false,
+    "host": "ch-LEGION-REN9000K-34IRZ",
+    "botmuxVersion": null,
+    "pluginServices": [
+     "botmux-dashboard (online)",
+     "botmux-StationAgent-opencode (online)",
+     "botmux-StationAgent-codex (online)"
+    ],
+    "unknown": [
+     "native_identity_not_exposed_by_list",
+     "driver_idle_state_not_proven",
+     "botmux_version_unknown",
+     "cwd_truncated_by_list"
+    ]
+   }
+  },
+  {
+   "source": "botmux",
+   "sessionId": "8af19dc1",
+   "bot": "bot1 (opencode)",
+   "agent": "opencode",
+   "cwd": "/home/ch/project/work_stati…",
+   "pid": 3142999,
+   "uptime": "6d0h",
+   "driverState": "online",
+   "target": "tmux: bmx-8af19dc1",
+   "handoffAllowed": false,
+   "compatibility": {
+    "cwdExists": false,
+    "cwdIsDirectory": false,
+    "host": "ch-LEGION-REN9000K-34IRZ",
+    "botmuxVersion": null,
+    "pluginServices": [
+     "botmux-dashboard (online)",
+     "botmux-StationAgent-opencode (online)",
+     "botmux-StationAgent-codex (online)"
+    ],
+    "unknown": [
+     "native_identity_not_exposed_by_list",
+     "driver_idle_state_not_proven",
+     "botmux_version_unknown",
+     "cwd_truncated_by_list"
+    ]
+   }
+  },
+  {
+   "source": "botmux",
+   "sessionId": "99852db7",
+   "bot": "bot2 (codex)",
+   "agent": "codex",
+   "cwd": "/home/ch/project/work_stati…",
+   "pid": 3636003,
+   "uptime": "6d0h",
+   "driverState": "online",
+   "target": "tmux: bmx-99852db7",
+   "handoffAllowed": false,
+   "compatibility": {
+    "cwdExists": false,
+    "cwdIsDirectory": false,
+    "host": "ch-LEGION-REN9000K-34IRZ",
+    "botmuxVersion": null,
+    "pluginServices": [
+     "botmux-dashboard (online)",
+     "botmux-StationAgent-opencode (online)",
+     "botmux-StationAgent-codex (online)"
+    ],
+    "unknown": [
+     "native_identity_not_exposed_by_list",
+     "driver_idle_state_not_proven",
+     "botmux_version_unknown",
+     "cwd_truncated_by_list"
+    ]
+   }
+  },
+  {
+   "source": "botmux",
+   "sessionId": "8ae31295",
+   "bot": "bot1 (opencode)",
+   "agent": "opencode",
+   "cwd": "/home/ch/project/work_stati…",
+   "pid": 80184,
+   "uptime": "7d10h",
+   "driverState": "online",
+   "target": "tmux: bmx-8ae31295",
+   "handoffAllowed": false,
+   "compatibility": {
+    "cwdExists": false,
+    "cwdIsDirectory": false,
+    "host": "ch-LEGION-REN9000K-34IRZ",
+    "botmuxVersion": null,
+    "pluginServices": [
+     "botmux-dashboard (online)",
+     "botmux-StationAgent-opencode (online)",
+     "botmux-StationAgent-codex (online)"
+    ],
+    "unknown": [
+     "native_identity_not_exposed_by_list",
+     "driver_idle_state_not_proven",
+     "botmux_version_unknown",
+     "cwd_truncated_by_list"
+    ]
+   }
+  },
+  {
+   "source": "botmux",
+   "sessionId": "e1171426",
+   "bot": "bot2 (codex)",
+   "agent": "codex",
+   "cwd": "/home/ch/project/work_stati…",
+   "pid": 79958,
+   "uptime": "7d10h",
+   "driverState": "online",
+   "target": "tmux: bmx-e1171426",
+   "handoffAllowed": false,
+   "compatibility": {
+    "cwdExists": false,
+    "cwdIsDirectory": false,
+    "host": "ch-LEGION-REN9000K-34IRZ",
+    "botmuxVersion": null,
+    "pluginServices": [
+     "botmux-dashboard (online)",
+     "botmux-StationAgent-opencode (online)",
+     "botmux-StationAgent-codex (online)"
+    ],
+    "unknown": [
+     "native_identity_not_exposed_by_list",
+     "driver_idle_state_not_proven",
+     "botmux_version_unknown",
+     "cwd_truncated_by_list"
+    ]
+   }
+  },
+  {
+   "source": "botmux",
+   "sessionId": "09643366",
+   "bot": "bot1 (opencode)",
+   "agent": "opencode",
+   "cwd": "/home/ch/project",
+   "pid": 46323,
+   "uptime": "7d11h",
+   "driverState": "online",
+   "target": "tmux: bmx-09643366",
+   "handoffAllowed": false,
+   "compatibility": {
+    "cwdExists": true,
+    "cwdIsDirectory": true,
+    "host": "ch-LEGION-REN9000K-34IRZ",
+    "botmuxVersion": null,
+    "pluginServices": [
+     "botmux-dashboard (online)",
+     "botmux-StationAgent-opencode (online)",
+     "botmux-StationAgent-codex (online)"
+    ],
+    "unknown": [
+     "native_identity_not_exposed_by_list",
+     "driver_idle_state_not_proven",
+     "botmux_version_unknown"
+    ]
+   }
+  },
+  {
+   "source": "botmux",
+   "sessionId": "a82efa4f",
+   "bot": "bot2 (codex)",
+   "agent": "codex",
+   "cwd": "/mnt",
+   "pid": 46741,
+   "uptime": "14d14h",
+   "driverState": "stopped",
+   "target": "tmux: bmx-a82efa4f (missi…",
+   "handoffAllowed": false,
+   "compatibility": {
+    "cwdExists": true,
+    "cwdIsDirectory": true,
+    "host": "ch-LEGION-REN9000K-34IRZ",
+    "botmuxVersion": null,
+    "pluginServices": [
+     "botmux-dashboard (online)",
+     "botmux-StationAgent-opencode (online)",
+     "botmux-StationAgent-codex (online)"
+    ],
+    "unknown": [
+     "native_identity_not_exposed_by_list",
+     "botmux_version_unknown"
+    ]
+   }
+  },
+  {
+   "source": "botmux",
+   "sessionId": "cd1244eb",
+   "bot": "bot2 (codex)",
+   "agent": "codex",
+   "cwd": "/home/ch/project/LearningAg…",
+   "pid": 543553,
+   "uptime": "17d18h",
+   "driverState": "stopped",
+   "target": "tmux: bmx-cd1244eb (missi…",
+   "handoffAllowed": false,
+   "compatibility": {
+    "cwdExists": false,
+    "cwdIsDirectory": false,
+    "host": "ch-LEGION-REN9000K-34IRZ",
+    "botmuxVersion": null,
+    "pluginServices": [
+     "botmux-dashboard (online)",
+     "botmux-StationAgent-opencode (online)",
+     "botmux-StationAgent-codex (online)"
+    ],
+    "unknown": [
+     "native_identity_not_exposed_by_list",
+     "botmux_version_unknown",
+     "cwd_truncated_by_list"
+    ]
+   }
+  }
+ ],
+ "unknown": [
+  "source_release_not_verified",
+  "native_export_import_not_tested",
+  "plugin_runtime_compatibility_not_tested",
+  "opencode_config_files=opencode.json,package-lock.json,opencode.jsonc,package.json"
+ ]
+}
