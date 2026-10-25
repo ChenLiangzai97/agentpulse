@@ -36,10 +36,6 @@ import {
 	getControlAction,
 	updateControlAction,
 } from "../services/control-actions.js";
-import {
-	finalizeOpenCodeFork,
-	type FinalizeForkInput,
-} from "../services/opencode-fork-service.js";
 import { claimNextLaunchRequest, updateLaunchDispatchStatus } from "../services/launch-dispatch.js";
 import { associateObservedSession } from "../services/launch-dispatch.js";
 import { cleanMachineName } from "../services/machine-name.js";
@@ -53,7 +49,12 @@ import {
 	SessionControlOriginError,
 	reserveOpenCodeInstance,
 } from "../services/opencode-control-provenance.js";
-import { acceptOpenCodeSnapshot, interruptOpenCodeInstance } from "../services/opencode-managed.js";
+import { type FinalizeForkInput, finalizeOpenCodeFork } from "../services/opencode-fork-service.js";
+import {
+	acceptOpenCodeSnapshot,
+	interruptOpenCodeInstance,
+	listOpenCodeForkChildren,
+} from "../services/opencode-managed.js";
 import { SessionOwnershipError } from "../services/session-ownership.js";
 import { getSession } from "../services/session-tracker.js";
 import { parseRegistrationShape } from "../services/supervisor-capabilities.js";
@@ -383,6 +384,25 @@ supervisorsAgentRouter.post(
 		}
 	},
 );
+supervisorsAgentRouter.get(
+	"/supervisors/:id/opencode/:instanceId/children",
+	requireSupervisorAuth(),
+	async (c) => {
+		const generation = Number(c.req.query("generation"));
+		if (!Number.isInteger(generation) || generation <= 0)
+			return c.json({ error: "generation_required" }, 400);
+		try {
+			return c.json(
+				await listOpenCodeForkChildren(c.req.param("id"), c.req.param("instanceId"), generation),
+			);
+		} catch (error) {
+			if (error instanceof SessionControlOriginError)
+				return c.json({ error: error.code }, error.status);
+			throw error;
+		}
+	},
+);
+
 supervisorsAgentRouter.post(
 	"/supervisors/:id/opencode/:instanceId/closed",
 	requireSupervisorAuth(),

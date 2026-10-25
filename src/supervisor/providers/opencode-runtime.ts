@@ -84,6 +84,13 @@ export interface OpenCodeRuntime {
 	touch(): void;
 	/** Registers a child from an AUTHENTICATED fork result (never from snapshots). */
 	registerManagedChild(nativeSessionId: string): void;
+	/** Per-child observation for a TRUSTED managed child; null when it is gone. */
+	forkChildSnapshot(nativeSessionId: string): Promise<{
+		messages: unknown[];
+		permissions: unknown[];
+		questions: unknown[];
+		status: { type: string };
+	} | null>;
 	/** Durable claims whose outcome is still unknown (reconciliation surface). */
 	unsettledClaims(): {
 		nativeSessionId: string;
@@ -1000,6 +1007,39 @@ export class OpenCodeRuntimePool {
 						throw new Error("opencode_invalid_child_session");
 					if (nativeSessionId === native.id) throw new Error("opencode_invalid_child_session");
 					knownSessions.add(nativeSessionId);
+				},
+				/**
+				 * Fetch ONE trusted child's own observation. The native identity
+				 * (directory) and interaction scoping are checked here; the server
+				 * still re-validates the binding/ledger before writing anything.
+				 */
+				async forkChildSnapshot(nativeSessionId: string) {
+					if (nativeSessionId === native.id || !knownSessions.has(nativeSessionId))
+						throw new Error("opencode_unknown_native_session");
+					const path = `/session/${encodeURIComponent(nativeSessionId)}`;
+					let session: { id?: unknown; directory?: unknown };
+					try {
+						session = await request<{ id?: unknown; directory?: unknown }>(path);
+					} catch (error) {
+						if (/opencode_http_404/.test(String((error as Error).message))) return null;
+						throw error;
+					}
+					if (session.id !== nativeSessionId || session.directory !== cwd)
+						throw new Error("opencode_child_directory_mismatch");
+					const [messages, permissions, questions, status] = await Promise.all([
+						request<unknown[]>(`${path}/message`),
+						request<unknown[]>("/permission"),
+						request<unknown[]>("/question"),
+						request<Record<string, { type: string }>>("/session/status"),
+					]);
+					const belongs = (item: unknown) =>
+						(item as { sessionID?: unknown } | null)?.sessionID === nativeSessionId;
+					return {
+						messages,
+						permissions: permissions.filter(belongs),
+						questions: questions.filter(belongs),
+						status: status[nativeSessionId] ?? { type: "idle" },
+					};
 				},
 				subscribe(onEvent) {
 					let stopped = false;

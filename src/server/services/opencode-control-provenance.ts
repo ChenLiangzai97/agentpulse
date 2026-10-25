@@ -361,6 +361,49 @@ export async function trustedForkChildIssue(params: {
 	return null;
 }
 
+/**
+ * Enumerate the fork children of an instance that pass the SAME trusted-
+ * creation proof used for authorization. This is the ONLY source the
+ * supervisor may use to poll child native sessions: a native session that is
+ * merely discovered in a parent snapshot is never included here.
+ */
+export async function trustedOpenCodeForkChildren(instance: {
+	id: string;
+	generation: number;
+	supervisorId: string;
+	launchRequestId: string;
+	sessionId: string;
+}): Promise<{ sessionId: string; nativeSessionId: string }[]> {
+	const bindings = await getDb()
+		.select()
+		.from(sessionControlBindings)
+		.where(
+			and(
+				eq(sessionControlBindings.instanceId, instance.id),
+				eq(sessionControlBindings.generation, instance.generation),
+			),
+		);
+	const children: { sessionId: string; nativeSessionId: string }[] = [];
+	for (const binding of bindings) {
+		if (
+			binding.origin !== "agentpulse_launch" ||
+			!binding.nativeSessionId ||
+			binding.sessionId === instance.sessionId
+		)
+			continue;
+		const issue = await trustedForkChildIssue({
+			childSessionId: binding.sessionId,
+			bindingInstanceId: binding.instanceId,
+			bindingNativeSessionId: binding.nativeSessionId,
+			bindingGeneration: binding.generation,
+			instance,
+		});
+		if (issue === null)
+			children.push({ sessionId: binding.sessionId, nativeSessionId: binding.nativeSessionId });
+	}
+	return children;
+}
+
 export async function inspectOpenCodeProvenance(sessionId: string) {
 	const [session] = await getDb().select().from(sessions).where(eq(sessions.sessionId, sessionId));
 	const [binding] = await getDb()

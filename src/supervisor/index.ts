@@ -202,6 +202,14 @@ async function main() {
 					{ method: "POST", body: JSON.stringify(body) },
 				);
 			},
+			// Committed (trusted) fork children only — the server enumerates them
+			// from the protected bindings + creation ledger for this generation.
+			listTrustedForkChildren: async (instanceId, generation) => {
+				const result = (await request(
+					`/supervisors/${registration.supervisor.id}/opencode/${instanceId}/children?generation=${generation}`,
+				)) as { children?: { sessionId: string; nativeSessionId: string }[] };
+				return result.children ?? [];
+			},
 		},
 	);
 	for (const signal of ["SIGTERM", "SIGINT"] as const)

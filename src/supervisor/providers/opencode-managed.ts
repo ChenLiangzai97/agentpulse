@@ -36,6 +36,15 @@ export function createManagedOpenCodeProvider(
 				childMap?: ForkChildMap;
 			},
 		) => Promise<unknown>;
+		/**
+		 * Server-verified, COMMITTED fork children of this instance/generation.
+		 * This is the only source of child native sessions the provider may
+		 * poll — snapshot-discovered sessions are observation-only elsewhere.
+		 */
+		listTrustedForkChildren?: (
+			instanceId: string,
+			generation: number,
+		) => Promise<{ sessionId: string; nativeSessionId: string }[]>;
 	},
 ) {
 	const pool = new OpenCodeRuntimePool({
@@ -72,6 +81,33 @@ export function createManagedOpenCodeProvider(
 		for (const [id, body] of closed) {
 			const runtime = closingRuntime.get(id);
 			if (runtime && deps.verdict(runtime.sessionId) === "send") {
+				// Final per-child observation BEFORE the instance is marked closed,
+				// so a trusted branch keeps its terminal messages.
+				for (const child of await trustedChildren(runtime)) {
+					if (
+						typeof child?.nativeSessionId !== "string" ||
+						!/^ses_[A-Za-z0-9_-]+$/.test(child.nativeSessionId) ||
+						child.nativeSessionId === runtime.nativeSessionId
+					)
+						continue;
+					try {
+						const childMessages = readOwnedOpenCodeHistory(
+							runtime.directory,
+							child.nativeSessionId,
+						);
+						await post(`/opencode/${id}/snapshot`, {
+							generation: body.generation,
+							nativeSessionId: child.nativeSessionId,
+							messages: childMessages,
+							children: [],
+							permissions: [],
+							questions: [],
+							status: { type: "interrupted" },
+						});
+					} catch {
+						// A child that cannot be read is left to its last observation.
+					}
+				}
 				const messages = readOwnedOpenCodeHistory(runtime.directory, runtime.nativeSessionId);
 				await post(`/opencode/${id}/snapshot`, {
 					generation: body.generation,
@@ -97,6 +133,49 @@ export function createManagedOpenCodeProvider(
 			closed.delete(id);
 		}
 	}
+	async function trustedChildren(
+		runtime: NonNullable<ReturnType<typeof pool.get>>,
+	): Promise<{ sessionId: string; nativeSessionId: string }[]> {
+		if (!deps.listTrustedForkChildren) return [];
+		try {
+			const children = await deps.listTrustedForkChildren(runtime.instanceId, runtime.generation);
+			return Array.isArray(children) ? children : [];
+		} catch {
+			// Enumeration failure must never take down the parent observation; the
+			// next poll retries with the server's committed set.
+			return [];
+		}
+	}
+	/**
+	 * Poll each TRUSTED child by its OWN native id. The parent runtime stays the
+	 * single process; the child gets its own snapshot post and is attributed to
+	 * its own AgentPulse binding by the server. A child failure is isolated so
+	 * one broken branch cannot starve the parent or its siblings.
+	 */
+	async function pollTrustedChildren(runtime: NonNullable<ReturnType<typeof pool.get>>) {
+		for (const child of await trustedChildren(runtime)) {
+			if (
+				!child ||
+				typeof child.nativeSessionId !== "string" ||
+				!/^ses_[A-Za-z0-9_-]+$/.test(child.nativeSessionId) ||
+				child.nativeSessionId === runtime.nativeSessionId
+			)
+				continue;
+			try {
+				runtime.registerManagedChild(child.nativeSessionId);
+				const snapshot = await runtime.forkChildSnapshot(child.nativeSessionId);
+				if (!snapshot) continue;
+				if (deps.verdict(runtime.sessionId) !== "send") return;
+				await post(`/opencode/${runtime.instanceId}/snapshot`, {
+					...snapshot,
+					generation: runtime.generation,
+					nativeSessionId: child.nativeSessionId,
+				});
+			} catch {
+				// Per-child observation failure: retry on the next poll.
+			}
+		}
+	}
 	async function poll() {
 		for (const [id, entry] of active) {
 			if (entry.polling) continue;
@@ -106,27 +185,33 @@ export function createManagedOpenCodeProvider(
 					await stop(id);
 					continue;
 				}
-				const snapshot = await entry.runtime.snapshot();
-				if (deps.verdict(id) !== "send") continue;
-				await post(`/opencode/${entry.runtime.instanceId}/snapshot`, {
-					...snapshot,
-					generation: entry.runtime.generation,
-					nativeSessionId: entry.runtime.nativeSessionId,
-				});
-			} catch (error) {
-				if (error instanceof Error && error.message === "opencode_process_interrupted") {
-					writePrivateFileSyncNoFollow(
-						join(entry.runtime.directory, "closed.json"),
-						JSON.stringify({ generation: entry.runtime.generation, state: "interrupted" }),
-					);
-					closingRuntime.set(entry.runtime.instanceId, entry.runtime);
-					closed.set(entry.runtime.instanceId, {
+				try {
+					const snapshot = await entry.runtime.snapshot();
+					if (deps.verdict(id) !== "send") continue;
+					await post(`/opencode/${entry.runtime.instanceId}/snapshot`, {
+						...snapshot,
 						generation: entry.runtime.generation,
-						state: "interrupted",
+						nativeSessionId: entry.runtime.nativeSessionId,
 					});
-					active.delete(id);
-					await entry.runtime.stop();
+				} catch (error) {
+					if (error instanceof Error && error.message === "opencode_process_interrupted") {
+						writePrivateFileSyncNoFollow(
+							join(entry.runtime.directory, "closed.json"),
+							JSON.stringify({ generation: entry.runtime.generation, state: "interrupted" }),
+						);
+						closingRuntime.set(entry.runtime.instanceId, entry.runtime);
+						closed.set(entry.runtime.instanceId, {
+							generation: entry.runtime.generation,
+							state: "interrupted",
+						});
+						active.delete(id);
+						await entry.runtime.stop();
+						continue;
+					}
+					// Parent ingestion can fail independently (e.g. the parent row
+					// was deleted). Trusted children must still be ingested.
 				}
+				await pollTrustedChildren(entry.runtime);
 			} finally {
 				entry.polling = false;
 			}

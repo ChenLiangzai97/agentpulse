@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import { and, eq, gt, inArray, ne, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
+import { partFingerprint } from "../../shared/opencode-copy.js";
 import type { Actor } from "../auth/actor.js";
 import { config } from "../config.js";
 import { getDb } from "../db/client.js";
@@ -10,6 +11,7 @@ import {
 	controlActions,
 	managedSessions,
 	opencodeForkRequests,
+	opencodeForks,
 	providerInstances,
 	providerInteractions,
 	sessionControlBindings,
@@ -17,15 +19,16 @@ import {
 } from "../db/schema/index.js";
 import { withTransaction } from "../db/with-transaction.js";
 import { assertCanEditSessionNotes } from "./authorization.js";
+import { activeLeases, withControlMutex } from "./control-lease.js";
 import { toSessionEventDtos } from "./event-dto.js";
 import { notifySessionEvents, notifySessionUpdated } from "./notifier.js";
-import { activeLeases, withControlMutex } from "./control-lease.js";
 import {
 	SessionControlOriginError,
 	assertSessionControlOrigin,
 	inspectOpenCodeProvenance,
 	recordExternalOpenCodeSession,
 	trustedForkChildIssue,
+	trustedOpenCodeForkChildren,
 } from "./opencode-control-provenance.js";
 import { normalizeOpenCodePart } from "./opencode-observer.js";
 
@@ -101,6 +104,101 @@ export async function ownedOpenCodeInstance(
 	if (!historical) await assertSessionControlOrigin(instance.sessionId);
 	return instance;
 }
+/**
+ * Supervisor-facing enumeration of TRUSTED committed fork children for one
+ * instance/generation. The provider uses this to poll each child by its native
+ * id; discovered-but-unbound native sessions are deliberately absent, so a
+ * child can never be attached or controlled merely because it appeared in a
+ * snapshot. The parent session row may already be gone — the child binding and
+ * its creation ledger are the authority.
+ */
+export async function listOpenCodeForkChildren(
+	supervisorId: string,
+	instanceId: string,
+	generation: number,
+) {
+	const [instance] = await getDb()
+		.select()
+		.from(providerInstances)
+		.where(eq(providerInstances.id, instanceId));
+	if (
+		!instance ||
+		instance.agentType !== "opencode" ||
+		instance.supervisorId !== supervisorId ||
+		instance.generation !== generation ||
+		!["reserved", "running"].includes(instance.state)
+	)
+		throw new SessionControlOriginError("provider_binding_invalid");
+	const children = await trustedOpenCodeForkChildren({
+		id: instance.id,
+		generation: instance.generation,
+		supervisorId: instance.supervisorId,
+		launchRequestId: instance.launchRequestId,
+		sessionId: instance.sessionId,
+	});
+	return {
+		instanceId: instance.id,
+		generation: instance.generation,
+		sessionId: instance.sessionId,
+		children,
+	};
+}
+
+interface ForkCopyInfo {
+	occurredAt: string;
+	parts: Map<string, string>;
+}
+
+function buildForkCopyIndex(childMap: unknown): Map<string, ForkCopyInfo> {
+	const index = new Map<string, ForkCopyInfo>();
+	const pairs = (childMap as { pairs?: unknown } | null)?.pairs;
+	if (!Array.isArray(pairs)) return index;
+	for (const raw of pairs) {
+		const pair = object(raw);
+		const childNativeId = pair.childNativeId;
+		const occurredAt = pair.parentOccurredAt;
+		if (typeof childNativeId !== "string" || typeof occurredAt !== "string") continue;
+		const parts = new Map<string, string>();
+		if (Array.isArray(pair.parts)) {
+			for (const rawPart of pair.parts) {
+				const part = object(rawPart);
+				if (typeof part.fingerprint === "string" && typeof part.parentOccurredAt === "string")
+					parts.set(part.fingerprint, part.parentOccurredAt);
+			}
+		}
+		const existing = index.get(childNativeId);
+		// A duplicated child message id is ambiguous: keep the LAST full entry
+		// only when it is the same message, never merge half-evidence.
+		if (existing && existing.occurredAt !== occurredAt) continue;
+		index.set(childNativeId, {
+			occurredAt,
+			parts: new Map([...(existing?.parts ?? []), ...parts]),
+		});
+	}
+	return index;
+}
+
+/**
+ * The ledger map is immutable and execution-time. It is NOT a message source:
+ * the timeline always comes from the native child snapshot; the map only
+ * restores the ORIGINAL occurrence time of the copied prefix and marks which
+ * messages must not be counted again as new usage.
+ */
+async function loadChildCopyIndex(bindingSessionId: string): Promise<Map<string, ForkCopyInfo>> {
+	const [fork] = await getDb()
+		.select()
+		.from(opencodeForks)
+		.where(eq(opencodeForks.childSessionId, bindingSessionId))
+		.limit(1);
+	if (!fork?.requestActionId) return new Map();
+	const [ledger] = await getDb()
+		.select({ childMap: opencodeForkRequests.childMap })
+		.from(opencodeForkRequests)
+		.where(eq(opencodeForkRequests.actionId, fork.requestActionId))
+		.limit(1);
+	return buildForkCopyIndex(ledger?.childMap);
+}
+
 export async function acceptOpenCodeSnapshot(
 	supervisorId: string,
 	instanceId: string,
@@ -235,7 +333,7 @@ export async function acceptOpenCodeSnapshot(
 		? { ...rawInput, permissions: [], questions: [], status: { type: "idle" } }
 		: rawInput;
 	const children: Array<{ session: Json; messages: unknown[] }> = [];
-	const permittedSessions = new Set([input.nativeSessionId]);
+	const descendants = new Set([input.nativeSessionId]);
 	for (let depth = 0; depth < 64; depth++) {
 		let changed = false;
 		for (const child of (input.children ?? []).slice(0, 256)) {
@@ -244,16 +342,41 @@ export async function acceptOpenCodeSnapshot(
 				typeof session.id !== "string" ||
 				!/^ses_[A-Za-z0-9_-]+$/.test(session.id) ||
 				session.directory !== instance.cwd ||
-				permittedSessions.has(session.id) ||
-				!permittedSessions.has(String(session.parentID))
+				descendants.has(session.id) ||
+				!descendants.has(String(session.parentID))
 			)
 				continue;
-			permittedSessions.add(session.id);
+			descendants.add(session.id);
 			children.push({ session, messages: Array.isArray(child.messages) ? child.messages : [] });
 			changed = true;
 		}
 		if (!changed) break;
 	}
+	// TRUSTED fork children have their OWN binding and are ingested from their
+	// own snapshot (the supervisor polls each of them). They must never also be
+	// materialized as a discovered, observe-only pseudo session. Unknown
+	// discovered sessions keep the old observe-only path — never a binding and
+	// never control.
+	const trustedNativeIds = new Set(
+		children.length > 0
+			? (
+					await trustedOpenCodeForkChildren({
+						id: instance.id,
+						generation: instance.generation,
+						supervisorId: instance.supervisorId,
+						launchRequestId: instance.launchRequestId,
+						sessionId: instance.sessionId,
+					})
+				).map((child) => child.nativeSessionId)
+			: [],
+	);
+	const observedChildren = children.filter(
+		(child) => !trustedNativeIds.has(String(child.session.id)),
+	);
+	const copyIndex =
+		binding.sessionId === instanceSessionId
+			? new Map<string, ForkCopyInfo>()
+			: await loadChildCopyIndex(binding.sessionId);
 	const timestamp = new Date().toISOString();
 	const changed = await withTransaction(async (tx) => {
 		const fence = await tx
@@ -278,9 +401,16 @@ export async function acceptOpenCodeSnapshot(
 				!Array.isArray(message.parts)
 			)
 				continue;
-			const created = Number(object(info.time).created) || Date.now();
+			const nativeCreated = Number(object(info.time).created) || Date.now();
+			const copy = copyIndex.get(info.id);
+			const messageCreated = copy ? Date.parse(copy.occurredAt) || nativeCreated : nativeCreated;
 			for (const value of message.parts) {
-				let part = object(value);
+				const nativePart = object(value);
+				const copiedPartTime = copy?.parts.get(partFingerprint(nativePart));
+				const partCreated = copiedPartTime
+					? Date.parse(copiedPartTime) || messageCreated
+					: messageCreated;
+				let part = nativePart;
 				if (
 					interruptedReplay &&
 					part.type === "tool" &&
@@ -304,8 +434,8 @@ export async function acceptOpenCodeSnapshot(
 					session_id: input.nativeSessionId,
 					data: JSON.stringify(info),
 					id: info.id,
-					time_created: created,
-					time_updated: Number(object(info.time).completed) || created,
+					time_created: partCreated,
+					time_updated: Number(object(info.time).completed) || partCreated,
 				};
 				const normalized = normalizeOpenCodePart(
 					{ ...source, id: part.id, message_id: info.id, data: JSON.stringify(part) },
@@ -323,7 +453,7 @@ export async function acceptOpenCodeSnapshot(
 					...normalized,
 					source: "managed_control" as const,
 					dedupKey,
-					createdAt: new Date(created).toISOString(),
+					createdAt: new Date(partCreated).toISOString(),
 				};
 				const rows = await tx
 					.insert(events)
@@ -340,8 +470,10 @@ export async function acceptOpenCodeSnapshot(
 		] as const) {
 			for (const value of requests) {
 				const payload = object(value);
-				if (!permittedSessions.has(String(payload.sessionID)) || typeof payload.id !== "string")
-					continue;
+				// STRICT native-session routing: an interaction belongs to the
+				// snapshot's OWN binding. Child interactions can never be written
+				// into the parent (and vice versa).
+				if (payload.sessionID !== input.nativeSessionId || typeof payload.id !== "string") continue;
 				const revision = createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 				const key = `${kind}:${payload.id}`;
 				pendingKeys.add(key);
@@ -377,6 +509,7 @@ export async function acceptOpenCodeSnapshot(
 			.from(providerInteractions)
 			.where(
 				and(
+					eq(providerInteractions.sessionId, binding.sessionId),
 					eq(providerInteractions.instanceId, instanceId),
 					eq(providerInteractions.generation, input.generation),
 				),
@@ -402,9 +535,18 @@ export async function acceptOpenCodeSnapshot(
 		for (const value of input.messages) {
 			const info = object(object(value).info);
 			const time = object(info.time);
-			if (info.role === "user") latestUser = Math.max(latestUser, Number(time.created) || 0);
+			const nativeCreated = Number(time.created) || 0;
+			const copy = typeof info.id === "string" ? copyIndex.get(info.id) : undefined;
+			const occurredAt = copy ? Date.parse(copy.occurredAt) || nativeCreated : nativeCreated;
+			if (info.role === "user") latestUser = Math.max(latestUser, occurredAt);
 			if (info.role === "assistant") {
-				latestAssistant = Math.max(latestAssistant, Number(time.completed) || 0);
+				latestAssistant = Math.max(
+					latestAssistant,
+					copy ? occurredAt : Number(time.completed) || 0,
+				);
+				// COPIED prefix messages belong to the parent's original turn:
+				// they are not NEW child usage and must not be counted twice.
+				if (copy) continue;
 				usage.cost += Number(info.cost) || 0;
 				const tokens = object(info.tokens);
 				usage.tokens.input += Number(tokens.input) || 0;
@@ -452,7 +594,7 @@ export async function acceptOpenCodeSnapshot(
 		.select()
 		.from(sessions)
 		.where(eq(sessions.sessionId, binding.sessionId));
-	await persistManagedChildren(instance, children, interruptedReplay);
+	await persistManagedChildren(instance, observedChildren, interruptedReplay);
 	notifySessionUpdated(updated);
 	notifySessionEvents(binding.sessionId, toSessionEventDtos(changed));
 	return { changed: changed.length };

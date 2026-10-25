@@ -134,6 +134,12 @@ const provider = createManagedOpenCodeProvider(
 				body: JSON.stringify(body),
 			});
 		},
+		listTrustedForkChildren: async (instanceId, generation) => {
+			const result = (await request(
+				`/supervisors/fixture-host/opencode/${instanceId}/children?generation=${generation}`,
+			)) as { children?: { sessionId: string; nativeSessionId: string }[] };
+			return result.children ?? [];
+		},
 	},
 );
 await getDb()
