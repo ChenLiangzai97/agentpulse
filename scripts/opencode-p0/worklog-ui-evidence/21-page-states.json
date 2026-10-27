@@ -1,0 +1,10 @@
+{
+ "before": {
+  "controllable": true,
+  "composerDisabled": false
+ },
+ "after": {
+  "unavailable": true,
+  "composerDisabled": true
+ }
+}

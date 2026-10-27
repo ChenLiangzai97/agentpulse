@@ -101,6 +101,8 @@ export function OpenCodeControls({
 }: { session: Session; onChanged: () => Promise<void> }) {
 	const t = useT();
 	const [cap, setCap] = useState<Session["controlCapabilities"]>();
+	/** Input area follows the SAME capability as the connection block. */
+	const sendBlocked = cap ? !cap.send : false;
 	const [items, setItems] = useState<Interaction[]>([]);
 	// Per-session draft (P1): survives tab switches and reloads; cleared on send.
 	const [prompt, setPrompt] = useState(() =>
@@ -484,6 +486,7 @@ export function OpenCodeControls({
 					)}
 					<textarea
 						aria-label="OpenCode 消息"
+						disabled={sendBlocked}
 						className="min-h-20 w-full rounded border bg-background p-2 text-sm"
 						maxLength={12000}
 						value={prompt}
@@ -494,6 +497,7 @@ export function OpenCodeControls({
 						}}
 						onKeyDown={(e) => {
 							// Enter sends (and routes /commands); Shift+Enter is a newline.
+							if (sendBlocked) return;
 							if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
 								e.preventDefault();
 								e.currentTarget.form?.requestSubmit();
@@ -504,7 +508,11 @@ export function OpenCodeControls({
 						<p className="mt-1 text-[11px] text-amber-400">{t("opencodeCmd.slashHint")}</p>
 					)}
 				</div>
-				<button type="submit" disabled={busy || !prompt.trim()} className="rounded border px-3">
+				<button
+					type="submit"
+					disabled={busy || sendBlocked || !prompt.trim()}
+					className="rounded border px-3"
+				>
 					{t("opencodeCmd.send")}
 				</button>
 			</form>
