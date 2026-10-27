@@ -35,12 +35,40 @@ try {
 	if ((await stop.count()) === 0) {
 		fail("stopped page: the 停止实例 button is MISSING (cannot exercise stop)");
 	} else {
+		// Capture THIS click's action id from its response, then poll THAT action.
+		const clickedAt = new Date().toISOString();
+		const responsePromise = page
+			.waitForResponse((r) => r.request().method() === "POST" && /\/stop$/.test(new URL(r.url()).pathname), {
+				timeout: 20_000,
+			})
+			.catch(() => null);
 		await stop.first().click();
-		await page.waitForTimeout(4000);
-		// The STOP must REALLY succeed: action row + protected binding.
-		const action = db
-			.query("SELECT id, status FROM control_actions WHERE session_id = $s AND action_type = 'stop' ORDER BY rowid DESC LIMIT 1")
-			.get({ $s: BID }) as { id?: string; status?: string } | null;
+		const response = await responsePromise;
+		let actionId: string | null = null;
+		if (response) {
+			const body = (await response.json().catch(() => null)) as
+				| { actionId?: string; id?: string; action?: { id?: string } }
+				| null;
+			actionId = body?.actionId ?? body?.id ?? body?.action?.id ?? null;
+		}
+		// Fallback only when the response carried no id: the row created by this click.
+		if (!actionId) {
+			const row = db
+				.query(
+					"SELECT id FROM control_actions WHERE session_id = $s AND action_type = 'stop' AND created_at >= $t ORDER BY rowid DESC LIMIT 1",
+				)
+				.get({ $s: BID, $t: clickedAt }) as { id?: string } | null;
+			actionId = row?.id ?? null;
+		}
+		check(Boolean(actionId), "captured THIS click's STOP actionId", actionId ?? "none");
+		let action: { id?: string; status?: string } | null = null;
+		for (let i = 0; i < 120 && actionId; i++) {
+			action = db
+				.query("SELECT id, status FROM control_actions WHERE id = $id")
+				.get({ $id: actionId }) as { id?: string; status?: string } | null;
+			if (action?.status && !["queued", "running"].includes(action.status)) break;
+			await page.waitForTimeout(500);
+		}
 		const binding = db
 			.query("SELECT stop_state, stop_epoch FROM session_control_bindings WHERE session_id = $s")
 			.get({ $s: BID }) as { stop_state?: string; stop_epoch?: number } | null;
