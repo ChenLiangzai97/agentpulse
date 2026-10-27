@@ -281,6 +281,11 @@ export const zhCN: typeof en = {
 		sessionDeleted: "会话已删除",
 		undo: "撤销",
 	},
+	nameSource: {
+		from: "来自 {agent}",
+		renamedByYou: "你已重命名",
+		renamedByYouAgent: "你已重命名 · 助手名称：“{name}”",
+	},
 	status: {
 		active: "进行中",
 		archived: "已归档",

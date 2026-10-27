@@ -289,6 +289,11 @@ export const en = {
 		sessionDeleted: "Session deleted",
 		undo: "Undo",
 	},
+	nameSource: {
+		from: "from {agent}",
+		renamedByYou: "Renamed by you",
+		renamedByYouAgent: 'Renamed by you · agent name: "{name}"',
+	},
 	status: {
 		active: "Active",
 		archived: "Archived",

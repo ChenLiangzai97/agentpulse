@@ -1,4 +1,5 @@
 import { AGENT_METADATA } from "../../shared/constants.js";
+import { t } from "../i18n/i18n.js";
 import type { AgentType, Session } from "../../shared/types.js";
 
 export type NameSource = "user" | "native" | "generated";
@@ -39,12 +40,12 @@ export function nameSourceCaption(
 	const shortLabel = AGENT_METADATA[agentType]?.shortLabel ?? "agent";
 	if (nameSource === "user") {
 		if (nativeName !== null && nativeName !== displayName) {
-			return `Renamed by you · agent name: "${nativeName}"`;
+			return t("nameSource.renamedByYouAgent", { name: nativeName });
 		}
-		return "Renamed by you";
+		return t("nameSource.renamedByYou");
 	}
 	if (nameSource === "native") {
-		return `from ${shortLabel}`;
+		return t("nameSource.from", { agent: shortLabel });
 	}
 	return null;
 }
