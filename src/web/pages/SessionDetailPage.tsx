@@ -21,7 +21,9 @@ import { SessionPromptComposer } from "../components/session-detail/SessionPromp
 import {
 	AgentObserveOnlyHint,
 	CodexStatusHint,
+	OpenCodeNotOwnerHint,
 	OpenCodeObserveOnlyHint,
+	OpenCodeUnavailableHint,
 	ManagedClaudeStatus,
 	ManagedCodexStatus,
 	selectStatusHint,
@@ -723,6 +725,10 @@ export function SessionDetailPage() {
 						return <AgentObserveOnlyHint agentType={sel.agentType} />;
 					case "OpenCodeObserveOnlyHint":
 						return <OpenCodeObserveOnlyHint />;
+					case "OpenCodeNotOwnerHint":
+						return <OpenCodeNotOwnerHint />;
+					case "OpenCodeUnavailableHint":
+						return <OpenCodeUnavailableHint />;
 					case "None":
 						return null;
 				}

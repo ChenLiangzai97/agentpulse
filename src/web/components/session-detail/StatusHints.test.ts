@@ -111,9 +111,39 @@ describe("selectStatusHint (F239)", () => {
 		expect(sel).toEqual({ component: "OpenCodeObserveOnlyHint" });
 	});
 
-	test("opencode + managedSession but NO trusted capability -> still observe-only", () => {
+	test("opencode + capabilities NOT loaded -> None (no conclusion yet)", () => {
 		const sel = selectStatusHint(
 			{ agentType: "opencode", managedSession, controlCapabilities: undefined },
+			"warm-heron",
+		);
+		expect(sel).toEqual({ component: "None" });
+	});
+
+	test("opencode + not_owner -> permission hint, not read-only", () => {
+		const sel = selectStatusHint(
+			{
+				agentType: "opencode",
+				managedSession: null,
+				controlCapabilities: {
+					origin: "agentpulse_launch", send: false, interrupt: false, stop: false,
+					respondPermission: false, answerQuestion: false, reason: "not_owner",
+				},
+			},
+			"warm-heron",
+		);
+		expect(sel).toEqual({ component: "OpenCodeNotOwnerHint" });
+	});
+
+	test("opencode + legacy source reason session_observe_only -> read-only", () => {
+		const sel = selectStatusHint(
+			{
+				agentType: "opencode",
+				managedSession: null,
+				controlCapabilities: {
+					origin: "legacy_unknown", send: false, interrupt: false, stop: false,
+					respondPermission: false, answerQuestion: false, reason: "session_observe_only",
+				},
+			},
 			"warm-heron",
 		);
 		expect(sel).toEqual({ component: "OpenCodeObserveOnlyHint" });
@@ -136,7 +166,7 @@ describe("selectStatusHint (F239)", () => {
 			},
 			"warm-heron",
 		);
-		expect(sel).toEqual({ component: "OpenCodeObserveOnlyHint" });
+		expect(sel).toEqual({ component: "OpenCodeUnavailableHint" });
 	});
 
 	test("copilot_cli + unmanaged -> AgentObserveOnlyHint", () => {

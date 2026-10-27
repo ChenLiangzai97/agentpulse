@@ -382,6 +382,9 @@ export const en = {
 		viewLaunch: "View launch",
 	},
 	hints: {
+		opencodeNotOwner: "Your account cannot operate this session. Ask the session owner for access.",
+		opencodeUnavailable:
+			"Cannot send right now: the managed instance is stopped, offline, or its binding is invalid.",
 		opencodeObserveOnly:
 			"Observed only for now — safe continuation is not available yet.",
 		showNameInCodex: "Show this name inside Codex",

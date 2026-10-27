@@ -37,6 +37,8 @@ export type StatusHintSelection =
 	| { component: "CodexStatusHint"; displayName: string }
 	| { component: "AgentObserveOnlyHint"; agentType: AgentType }
 	| { component: "OpenCodeObserveOnlyHint" }
+	| { component: "OpenCodeNotOwnerHint" }
+	| { component: "OpenCodeUnavailableHint" }
 	| { component: "None" };
 
 export function selectStatusHint(
@@ -46,11 +48,17 @@ export function selectStatusHint(
 	if (session.agentType === "opencode") {
 		// The SERVER-DERIVED capability is the authority: only a valid trusted
 		// binding owned by the viewer exposes send. A managedSession row (or
-		// an agentpulse_launch origin) alone does NOT mean controllable —
-		// external/unknown sources stay observe-only.
-		return session.controlCapabilities?.send === true
-			? { component: "None" }
-			: { component: "OpenCodeObserveOnlyHint" };
+		// an agentpulse_launch origin) alone does NOT mean controllable.
+		const caps = session.controlCapabilities;
+		// Capabilities not loaded yet: draw no conclusion.
+		if (!caps) return { component: "None" };
+		if (caps.send) return { component: "None" };
+		// send=false has DIFFERENT causes; do not explain them all as read-only.
+		if (caps.reason === "not_owner") return { component: "OpenCodeNotOwnerHint" };
+		if (caps.origin !== "agentpulse_launch" || caps.reason === "session_observe_only") {
+			return { component: "OpenCodeObserveOnlyHint" };
+		}
+		return { component: "OpenCodeUnavailableHint" };
 	}
 	if (session.agentType === "codex_cli" && session.managedSession) {
 		return { component: "ManagedCodexStatus", managedSession: session.managedSession };
@@ -77,6 +85,28 @@ export function OpenCodeObserveOnlyHint() {
 		<div className="mx-3 md:mx-6 mt-2 md:mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5">
 			<p className="text-[11px] leading-relaxed text-muted-foreground">
 				{t("hints.opencodeObserveOnly")}
+			</p>
+		</div>
+	);
+}
+
+/** Authorized but not this viewer's session. */
+export function OpenCodeNotOwnerHint() {
+	const t = useT();
+	return (
+		<div className="mx-3 md:mx-6 mt-2 md:mt-3 rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2.5">
+			<p className="text-[11px] leading-relaxed text-muted-foreground">{t("hints.opencodeNotOwner")}</p>
+		</div>
+	);
+}
+
+/** Managed but currently not sendable (stopped/offline/invalid binding). */
+export function OpenCodeUnavailableHint() {
+	const t = useT();
+	return (
+		<div className="mx-3 md:mx-6 mt-2 md:mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5">
+			<p className="text-[11px] leading-relaxed text-muted-foreground">
+				{t("hints.opencodeUnavailable")}
 			</p>
 		</div>
 	);

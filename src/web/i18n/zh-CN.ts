@@ -374,6 +374,8 @@ export const zhCN: typeof en = {
 		viewLaunch: "查看启动",
 	},
 	hints: {
+		opencodeNotOwner: "当前账号无权操作此会话，请向会话所有者申请权限。",
+		opencodeUnavailable: "当前不可发送：受管实例已停止、离线或绑定失效。",
 		opencodeObserveOnly:
 			"当前仅观察，安全接续尚未完成。",
 		showNameInCodex: "在 Codex 中显示此名称",
