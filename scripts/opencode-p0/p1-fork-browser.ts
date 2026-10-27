@@ -60,11 +60,7 @@ try {
 		if (!inherited) await child.waitForTimeout(500);
 	}
 	check(inherited, "child INHERITS the pre-fork marker (copyOf history)");
-	// Parent post-fork turn must NOT appear in the child; child turn must NOT appear in the parent.
-	const parentPost = `P1PARENTPOST-${tag}`;
-	check(await sendAndWait(page, `P0_HELLO ${parentPost}`), "parent post-fork turn completed");
-	await child.waitForTimeout(1000);
-	check(!(await childText()).includes(parentPost), "child does NOT receive the parent's post-fork turn");
+	// FIRST prove the child has a real CAUSAL terminal of its own turn, THEN test isolation.
 	const childTurn = `P1CHILD-${tag}`;
 	await ta(child).fill(`P0_HELLO ${childTurn}`);
 	await ta(child).press("Enter");
@@ -73,12 +69,25 @@ try {
 		childDone = Boolean(turnTerminal(rows(childId), childTurn));
 		if (!childDone) await child.waitForTimeout(500);
 	}
-	check(childDone, "child turn completed on the same instance");
+	check(childDone, "child has its OWN causal terminal for the child turn");
+	const parentPost = `P1PARENTPOST-${tag}`;
+	check(await sendAndWait(page, `P0_HELLO ${parentPost}`), "parent post-fork turn completed");
+	await child.waitForTimeout(1000);
+	check(!(await childText()).includes(parentPost), "child does NOT receive the parent's post-fork turn (non-empty child)");
 	await page.waitForTimeout(1000);
 	check(!(await page.locator("main").innerText()).includes(childTurn), "parent does NOT receive the child's turn");
-	// Child stop boundary: abort-only; the parent keeps working.
+	// Child stop: the STOP action must TRULY succeed and the child binding must be
+	// protected-stopped; the parent identity/turn must be untouched.
 	await child.getByRole("button", { name: "停止实例" }).click();
 	await child.waitForTimeout(2500);
+	const stopAction = db
+		.query("SELECT status FROM control_actions WHERE session_id = $s AND action_type = 'stop' ORDER BY rowid DESC LIMIT 1")
+		.get({ $s: childId }) as { status?: string } | null;
+	const childBinding = db.query("SELECT stop_state, stop_epoch FROM session_control_bindings WHERE session_id = $s").get({ $s: childId }) as { stop_state?: string; stop_epoch?: number } | null;
+	const parentBinding = db.query("SELECT stop_state, stop_epoch FROM session_control_bindings WHERE session_id = $s").get({ $s: AID }) as { stop_state?: string; stop_epoch?: number } | null;
+	check(stopAction?.status === "succeeded", "child STOP action succeeded", stopAction?.status ?? "none");
+	check(childBinding?.stop_state === "stopped", "child binding reached protected stopped", `stop_state=${childBinding?.stop_state} epoch=${childBinding?.stop_epoch}`);
+	check(parentBinding?.stop_state === "active" && parentBinding?.stop_epoch === 0, "parent binding identity/epoch untouched", `stop_state=${parentBinding?.stop_state} epoch=${parentBinding?.stop_epoch}`);
 	const afterStop = `P1AFTERSTOP-${tag}`;
 	check(await sendAndWait(page, `P0_HELLO ${afterStop}`), "parent still works after the CHILD stop (no shared-instance kill)");
 	await page.screenshot({ path: `${OUT}/16-fork-parent-after-child-stop.png`, fullPage: true });
