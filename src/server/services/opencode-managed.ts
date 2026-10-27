@@ -1,6 +1,6 @@
 /** Managed OpenCode protocol boundary. Native state is scoped to a protected instance/generation. */
 import { createHash } from "node:crypto";
-import { and, eq, gt, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, ne, sql, notInArray } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import { partFingerprint } from "../../shared/opencode-copy.js";
 import type { Actor } from "../auth/actor.js";
@@ -1209,6 +1209,45 @@ export async function interruptOpenCodeInstance(
 				updatedAt: new Date().toISOString(),
 			})
 			.where(eq(managedSessions.sessionId, instance.sessionId));
+		// An INTENTIONAL stop is still in flight when the instance ends. Exclude
+		// exactly THAT action (bound by id+claimToken+supervisor+instance+
+		// generation+binding stopEpoch) so its own result can settle it; the
+		// crash path (state="interrupted") still fails everything. This does
+		// not weaken the result guard: the route still compares the action
+		// epoch to the binding's current stopEpoch.
+		let intentionalStopId: string | null = null;
+		if (state === "stopped") {
+			const [binding] = await tx
+				.select({ stopEpoch: sessionControlBindings.stopEpoch })
+				.from(sessionControlBindings)
+				.where(eq(sessionControlBindings.sessionId, instance.sessionId));
+			const candidates = await tx
+				.select({
+					id: controlActions.id,
+					claimedBy: controlActions.claimedBySupervisorId,
+					metadata: controlActions.metadata,
+				})
+				.from(controlActions)
+				.where(
+					and(
+						eq(controlActions.sessionId, instance.sessionId),
+						eq(controlActions.actionType, "stop"),
+						inArray(controlActions.status, ["queued", "running"]),
+					),
+				);
+			intentionalStopId =
+				candidates.find((candidate: { id: string; claimedBy: string | null; metadata: Record<string, unknown> | null }) => {
+					const meta = candidate.metadata ?? {};
+					return (
+						candidate.claimedBy === supervisorId &&
+						meta.instanceId === instanceId &&
+						meta.generation === generation &&
+						meta.controlEpoch === binding?.stopEpoch &&
+						typeof meta.claimToken === "string" &&
+						meta.claimToken.length > 0
+					);
+				})?.id ?? null;
+		}
 		await tx
 			.update(controlActions)
 			.set({
@@ -1221,6 +1260,7 @@ export async function interruptOpenCodeInstance(
 				and(
 					eq(controlActions.sessionId, instance.sessionId),
 					inArray(controlActions.status, ["queued", "running"]),
+					...(intentionalStopId ? [notInArray(controlActions.id, [intentionalStopId])] : []),
 				),
 			);
 		await tx
