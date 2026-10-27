@@ -1,10 +1,17 @@
 {
- "before": {
-  "controllable": true,
-  "composerDisabled": false
+ "stop": {
+  "action": {
+   "id": "c65f42fb-0a57-4ece-85f4-74d3e0f3f61d",
+   "status": "failed"
+  },
+  "binding": {
+   "stop_state": "stopping",
+   "stop_epoch": 1
+  }
  },
  "after": {
   "unavailable": true,
+  "composerCount": 0,
   "composerDisabled": true
  }
 }

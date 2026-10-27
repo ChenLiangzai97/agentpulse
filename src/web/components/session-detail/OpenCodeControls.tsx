@@ -101,8 +101,9 @@ export function OpenCodeControls({
 }: { session: Session; onChanged: () => Promise<void> }) {
 	const t = useT();
 	const [cap, setCap] = useState<Session["controlCapabilities"]>();
-	/** Input area follows the SAME capability as the connection block. */
-	const sendBlocked = cap ? !cap.send : false;
+	/** SAME snapshot as the connection block (detail DTO). Until the capability
+	 * is loaded we do NOT open the input: unknown != allowed. */
+	const sendBlocked = session.controlCapabilities?.send !== true;
 	const [items, setItems] = useState<Interaction[]>([]);
 	// Per-session draft (P1): survives tab switches and reloads; cleared on send.
 	const [prompt, setPrompt] = useState(() =>
