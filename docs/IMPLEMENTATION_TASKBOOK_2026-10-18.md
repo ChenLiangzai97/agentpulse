@@ -93,3 +93,28 @@
 必要检查按变更选择：typecheck、Biome、相关服务/组件回归；结构变化跑 architecture；前端/服务入口变化跑生产 build；双数据库与初始化变化实测两方言全新/升级路径。浏览器不可用、原生版本不匹配或跨机环境缺失时列为未验证，不用模拟证据替代。
 
 首批行动：核对工作区并提交 P0 剩余问题清单；开始 P1 与 P4 的具体实现；P2/P3 先完成可验证原型和设计记录，再接入主路径。无需为日常可逆实现重复请求授权；真正需要停止旧驱动、迁移真实会话或改变旧授权守卫时提交具体对象、影响及回滚方案。
+
+## Status snapshot — 2026-10-27
+
+Implemented & committed (acceptance status in parentheses):
+- P1 drafts, async drafts, build provenance/hash gate, causal turn correlation
+  (native `parentID`), two tab-close entries — implementer run 14/14 (independent browser run pending).
+- Fork: acceptance route + finalize + trusted-child ingestion (own native
+  snapshots, generation/host checks, copyOf, idempotency) + browser inheritance
+  / isolation / STOP boundary — implementer 12/12 + model-request 暗号 proof
+  (independent browser run pending).
+- OpenCode observe-only hint keyed on server capability, with per-cause copy
+  (external/not_owner/unavailable/unknown) — 14/14 unit + both page types.
+- P2 real detached daemon A/B reconnect on the same native session/messageID —
+  implementer real-CLI run (independent run pending).
+- P3 read-only preflight (discovery, status, redaction) — base only.
+- P5 migration design + help snapshot — design only.
+
+Open / not accepted:
+- Stop → resume → real new turn (controlled operator entry), killed-instance
+  relaunch/rebuild, same-action/token/epoch reconciliation before clear.
+- P2 main path integration; reconnect cursor, approvals, action reconciliation;
+  resource reclamation; multi-host failure matrix.
+- P3 terminal discovery + real config/plugin compatibility preflight.
+- PG upgrade/interleave probes need independent acceptance re-run.
+- Product entries (fork/resume, external safe continuation) remain CLOSED.

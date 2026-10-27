@@ -33,7 +33,9 @@ const { claimNextControlAction, updateControlAction } = await import(
 );
 const { mapLaunchRequest } = await import("../../src/server/services/launch-validator.js");
 await initializeDatabase();
+const recordPath = join(root, "model-requests.jsonl");
 const mock = Bun.spawn(["python3", "scripts/opencode-p0/mock_model.py"], {
+	env: { ...process.env, P0_RECORD_FILE: recordPath },
 	stdout: "pipe",
 	stderr: "ignore",
 });
@@ -309,6 +311,7 @@ if (buildStale)
 	);
 const state = {
 	root,
+	recordPath: join(root, "model-requests.jsonl"),
 	url: server.url.origin,
 	buildInfo,
 	buildStale,

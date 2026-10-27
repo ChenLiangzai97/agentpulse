@@ -33,6 +33,9 @@ class Handler(BaseHTTPRequestHandler):
   if not done and body.get('tools'):
    if 'P0_PERMISSION' in content:tool=('bash',{'command':'printf P0_PERMISSION_OUTPUT','description':'P0 safe permission probe'})
    elif 'P0_QUESTION' in content:tool=('question',{'questions':[{'question':'Pick fixture options','header':'P0 fixture','options':[{'label':'Alpha','description':'A'},{'label':'Beta','description':'B'}],'multiple':True,'custom':True},{'question':'Enter fixture note','header':'P0 note','options':[{'label':'Default','description':'Use default'}],'custom':True}]})
+  recall=''
+  if 'P0_RECALL' in content:
+   recall=next((m.get('content') for m in messages if m.get('role')=='user' and isinstance(m.get('content'),str) and 'P1FORKSRC-' in m.get('content')),'')
   self.send_response(200)
   if body.get('stream'):
    self.send_header('Content-Type','text/event-stream');self.end_headers()
@@ -42,6 +45,7 @@ class Handler(BaseHTTPRequestHandler):
    try:
     chunk({'role':'assistant'})
     if tool:chunk({'tool_calls':[{'index':0,'id':'call_p0_'+tool[0],'type':'function','function':{'name':tool[0],'arguments':json.dumps(tool[1])}}]});chunk({},'tool_calls')
+    elif recall:chunk({'content':'P0_RECALLED '+recall.strip()[:160]});chunk({},'stop')
     else:chunk({'content':'P0_DONE'});chunk({},'stop')
     self.wfile.write(b'data: [DONE]\n\n');self.wfile.flush()
    except (BrokenPipeError,ConnectionResetError):pass

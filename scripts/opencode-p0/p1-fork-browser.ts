@@ -70,6 +70,27 @@ try {
 		if (!childDone) await child.waitForTimeout(500);
 	}
 	check(childDone, "child has its OWN causal terminal for the child turn");
+	// The 暗号 must reach the MODEL, not just the DOM: the child's model request
+	// must carry the inherited pre-fork marker, and a recall turn must answer
+	// from it (the mock extracts it from the request it received).
+	const record = (await Bun.file(S.recordPath as string).text())
+		.trim()
+		.split("\n")
+		.filter(Boolean)
+		.map((line) => JSON.parse(line) as { messages?: { role?: string; text?: string }[] });
+	const childReq = record.find((r) => r.messages?.some((m) => m.text?.includes(childTurn)));
+	check(
+		Boolean(childReq?.messages?.some((m) => m.text?.includes(srcMarker))),
+		"child MODEL REQUEST contains the inherited marker",
+	);
+	await ta(child).fill("P0_RECALL");
+	await ta(child).press("Enter");
+	let recalled = false;
+	for (let i = 0; i < 120 && !recalled; i++) {
+		recalled = (await childText()).includes("P0_RECALLED") && (await childText()).includes(srcMarker);
+		if (!recalled) await child.waitForTimeout(500);
+	}
+	check(recalled, "child ANSWERS from the inherited marker (model recall)");
 	const parentPost = `P1PARENTPOST-${tag}`;
 	check(await sendAndWait(page, `P0_HELLO ${parentPost}`), "parent post-fork turn completed");
 	await child.waitForTimeout(1000);
