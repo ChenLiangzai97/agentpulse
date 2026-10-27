@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { Session, SessionEvent, SupervisorRecord } from "../../../shared/types.js";
+import { AGENT_METADATA } from "../../../shared/constants.js";
+import type { AgentType } from "../../../shared/types.js";
 import { api } from "../../lib/api.js";
+import { useT } from "../../i18n/i18n.js";
+import { openCodeConnection } from "../../lib/opencode-connection.js";
 
 export function SessionConnections({
 	session,
@@ -55,12 +59,34 @@ export function SessionConnections({
 			setBusy(false);
 		}
 	}
+	const t = useT();
 	const launchable = session.agentType === "codex_cli" || session.agentType === "claude_code";
+	const openConn = openCodeConnection(session);
 	return (
 		<section className="space-y-3 border-b border-border px-3 py-3 md:px-6">
 			<div className="flex flex-wrap items-center gap-3 text-sm">
 				<span className="font-medium">会话连接</span>
-				{session.managedSession ? (
+				{openConn ? (
+					<>
+						<span className="text-muted-foreground">
+							执行器 {AGENT_METADATA[session.agentType as AgentType].label}
+							{openConn.kind === "controllable" && openConn.host ? ` · ${openConn.host}` : ""}
+						</span>
+						{openConn.kind === "loading" && (
+							<span className="text-muted-foreground">读取连接状态…</span>
+						)}
+						{openConn.kind === "controllable" && <span className="text-emerald-500">可对话</span>}
+						{openConn.kind === "notice" && (
+							<span className="text-amber-500">
+								{openConn.reason === "not_owner"
+									? t("hints.opencodeNotOwner")
+									: openConn.reason === "observe_only"
+										? t("hints.opencodeObserveOnly")
+										: t("hints.opencodeUnavailable")}
+							</span>
+						)}
+					</>
+				) : session.managedSession ? (
 					<>
 						<span className="text-muted-foreground">
 							{session.managedSession.hostName ?? session.machine} ·{" "}

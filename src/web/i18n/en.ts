@@ -290,6 +290,10 @@ export const en = {
 		undo: "Undo",
 	},
 	status: {
+		active: "Active",
+		archived: "Archived",
+		completed: "Completed",
+		failed: "Failed",
 		error: "Error",
 		idle: "Idle",
 		waiting: "Waiting",

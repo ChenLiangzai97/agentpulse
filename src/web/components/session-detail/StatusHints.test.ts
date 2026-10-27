@@ -108,7 +108,7 @@ describe("selectStatusHint (F239)", () => {
 			},
 			"warm-heron",
 		);
-		expect(sel).toEqual({ component: "OpenCodeObserveOnlyHint" });
+		expect(sel).toEqual({ component: "None" });
 	});
 
 	test("opencode + capabilities NOT loaded -> None (no conclusion yet)", () => {
@@ -131,7 +131,7 @@ describe("selectStatusHint (F239)", () => {
 			},
 			"warm-heron",
 		);
-		expect(sel).toEqual({ component: "OpenCodeNotOwnerHint" });
+		expect(sel).toEqual({ component: "None" });
 	});
 
 	test("opencode + legacy source reason session_observe_only -> read-only", () => {
@@ -146,7 +146,7 @@ describe("selectStatusHint (F239)", () => {
 			},
 			"warm-heron",
 		);
-		expect(sel).toEqual({ component: "OpenCodeObserveOnlyHint" });
+		expect(sel).toEqual({ component: "None" });
 	});
 
 	test("opencode + agentpulse_launch origin but send=false -> observe-only (origin alone is not control)", () => {
@@ -166,7 +166,7 @@ describe("selectStatusHint (F239)", () => {
 			},
 			"warm-heron",
 		);
-		expect(sel).toEqual({ component: "OpenCodeUnavailableHint" });
+		expect(sel).toEqual({ component: "None" });
 	});
 
 	test("copilot_cli + unmanaged -> AgentObserveOnlyHint", () => {

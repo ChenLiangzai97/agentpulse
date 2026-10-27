@@ -49,16 +49,9 @@ export function selectStatusHint(
 		// The SERVER-DERIVED capability is the authority: only a valid trusted
 		// binding owned by the viewer exposes send. A managedSession row (or
 		// an agentpulse_launch origin) alone does NOT mean controllable.
-		const caps = session.controlCapabilities;
-		// Capabilities not loaded yet: draw no conclusion.
-		if (!caps) return { component: "None" };
-		if (caps.send) return { component: "None" };
-		// send=false has DIFFERENT causes; do not explain them all as read-only.
-		if (caps.reason === "not_owner") return { component: "OpenCodeNotOwnerHint" };
-		if (caps.origin !== "agentpulse_launch" || caps.reason === "session_observe_only") {
-			return { component: "OpenCodeObserveOnlyHint" };
-		}
-		return { component: "OpenCodeUnavailableHint" };
+		// OpenCode messaging lives in the ONE merged SessionConnections block
+		// (source + controller + reason + next step); no second hint here.
+		return { component: "None" };
 	}
 	if (session.agentType === "codex_cli" && session.managedSession) {
 		return { component: "ManagedCodexStatus", managedSession: session.managedSession };

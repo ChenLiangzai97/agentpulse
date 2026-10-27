@@ -282,6 +282,10 @@ export const zhCN: typeof en = {
 		undo: "撤销",
 	},
 	status: {
+		active: "进行中",
+		archived: "已归档",
+		completed: "已完成",
+		failed: "失败",
 		error: "错误",
 		idle: "空闲",
 		waiting: "等待中",
