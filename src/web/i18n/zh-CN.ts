@@ -374,6 +374,8 @@ export const zhCN: typeof en = {
 		viewLaunch: "查看启动",
 	},
 	hints: {
+		opencodeObserveOnly:
+			"当前仅观察，安全接续尚未完成。",
 		showNameInCodex: "在 Codex 中显示此名称",
 		statuslineSuffix: ",然后在 Codex 中启用",
 	},

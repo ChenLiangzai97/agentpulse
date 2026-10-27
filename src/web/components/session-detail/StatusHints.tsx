@@ -35,12 +35,23 @@ export type StatusHintSelection =
 	| { component: "ManagedCodexStatus"; managedSession: NonNullable<Session["managedSession"]> }
 	| { component: "ManagedClaudeStatus"; managedSession: NonNullable<Session["managedSession"]> }
 	| { component: "CodexStatusHint"; displayName: string }
-	| { component: "AgentObserveOnlyHint"; agentType: AgentType };
+	| { component: "AgentObserveOnlyHint"; agentType: AgentType }
+	| { component: "OpenCodeObserveOnlyHint" }
+	| { component: "None" };
 
 export function selectStatusHint(
-	session: Pick<Session, "agentType" | "managedSession">,
+	session: Pick<Session, "agentType" | "managedSession" | "controlCapabilities">,
 	displayName: string,
 ): StatusHintSelection {
+	if (session.agentType === "opencode") {
+		// The SERVER-DERIVED capability is the authority: only a valid trusted
+		// binding owned by the viewer exposes send. A managedSession row (or
+		// an agentpulse_launch origin) alone does NOT mean controllable —
+		// external/unknown sources stay observe-only.
+		return session.controlCapabilities?.send === true
+			? { component: "None" }
+			: { component: "OpenCodeObserveOnlyHint" };
+	}
 	if (session.agentType === "codex_cli" && session.managedSession) {
 		return { component: "ManagedCodexStatus", managedSession: session.managedSession };
 	}
@@ -57,6 +68,18 @@ export function selectStatusHint(
 	// nothing to say), so this is a real "nothing to show" outcome for that
 	// case, not a bug — see StatusHints.test.ts.
 	return { component: "AgentObserveOnlyHint", agentType: session.agentType };
+}
+
+/** OpenCode with NO trusted controllable binding: say plainly it is read-only. */
+export function OpenCodeObserveOnlyHint() {
+	const t = useT();
+	return (
+		<div className="mx-3 md:mx-6 mt-2 md:mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5">
+			<p className="text-[11px] leading-relaxed text-muted-foreground">
+				{t("hints.opencodeObserveOnly")}
+			</p>
+		</div>
+	);
 }
 
 export function CodexStatusHint({ displayName }: { displayName: string }) {

@@ -21,6 +21,7 @@ import { SessionPromptComposer } from "../components/session-detail/SessionPromp
 import {
 	AgentObserveOnlyHint,
 	CodexStatusHint,
+	OpenCodeObserveOnlyHint,
 	ManagedClaudeStatus,
 	ManagedCodexStatus,
 	selectStatusHint,
@@ -719,9 +720,11 @@ export function SessionDetailPage() {
 					case "CodexStatusHint":
 						return <CodexStatusHint displayName={sel.displayName} />;
 					case "AgentObserveOnlyHint":
-						return session.controlCapabilities?.origin === "agentpulse_launch" ? null : (
-							<AgentObserveOnlyHint agentType={sel.agentType} />
-						);
+						return <AgentObserveOnlyHint agentType={sel.agentType} />;
+					case "OpenCodeObserveOnlyHint":
+						return <OpenCodeObserveOnlyHint />;
+					case "None":
+						return null;
 				}
 			})()}
 

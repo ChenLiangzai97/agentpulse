@@ -382,6 +382,8 @@ export const en = {
 		viewLaunch: "View launch",
 	},
 	hints: {
+		opencodeObserveOnly:
+			"Observed only for now — safe continuation is not available yet.",
 		showNameInCodex: "Show this name inside Codex",
 		statuslineSuffix: "in Codex, then enable",
 	},

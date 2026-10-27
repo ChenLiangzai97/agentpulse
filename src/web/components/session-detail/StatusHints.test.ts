@@ -71,6 +71,74 @@ describe("selectStatusHint (F239)", () => {
 		expect(sel).toEqual({ component: "AgentObserveOnlyHint", agentType: "copilot_cli" });
 	});
 
+	test("opencode + trusted capability (send) -> None (no observe-only warning)", () => {
+		const sel = selectStatusHint(
+			{
+				agentType: "opencode",
+				managedSession: null,
+				controlCapabilities: {
+					origin: "agentpulse_launch",
+					send: true,
+					interrupt: true,
+					stop: true,
+					respondPermission: true,
+					answerQuestion: true,
+					reason: null,
+				},
+			},
+			"warm-heron",
+		);
+		expect(sel).toEqual({ component: "None" });
+	});
+
+	test("opencode + external source -> OpenCodeObserveOnlyHint", () => {
+		const sel = selectStatusHint(
+			{
+				agentType: "opencode",
+				managedSession: null,
+				controlCapabilities: {
+					origin: "external",
+					send: false,
+					interrupt: false,
+					stop: false,
+					respondPermission: false,
+					answerQuestion: false,
+					reason: "external",
+				},
+			},
+			"warm-heron",
+		);
+		expect(sel).toEqual({ component: "OpenCodeObserveOnlyHint" });
+	});
+
+	test("opencode + managedSession but NO trusted capability -> still observe-only", () => {
+		const sel = selectStatusHint(
+			{ agentType: "opencode", managedSession, controlCapabilities: undefined },
+			"warm-heron",
+		);
+		expect(sel).toEqual({ component: "OpenCodeObserveOnlyHint" });
+	});
+
+	test("opencode + agentpulse_launch origin but send=false -> observe-only (origin alone is not control)", () => {
+		const sel = selectStatusHint(
+			{
+				agentType: "opencode",
+				managedSession: null,
+				controlCapabilities: {
+					origin: "agentpulse_launch",
+					send: false,
+					interrupt: false,
+					stop: false,
+					respondPermission: false,
+					answerQuestion: false,
+					reason: "binding_invalid",
+				},
+			},
+			"warm-heron",
+		);
+		expect(sel).toEqual({ component: "OpenCodeObserveOnlyHint" });
+	});
+
 	test("copilot_cli + unmanaged -> AgentObserveOnlyHint", () => {
 		const sel = selectStatusHint({ agentType: "copilot_cli", managedSession: null }, "quiet-otter");
 		expect(sel).toEqual({ component: "AgentObserveOnlyHint", agentType: "copilot_cli" });
