@@ -44,12 +44,13 @@ const QUESTION_SEQUENCE: Array<{
 	{
 		field: "defaultAgentType",
 		prompt:
-			"Which agent type? Reply with a number:\n1. Claude Code\n2. Codex CLI\n3. Skip (no default)",
+			"Which agent type? Reply with a number:\n1. Claude Code\n2. Codex CLI\n3. Skip (no default)\n4. OpenCode",
 		required: false,
 	},
 	{
 		field: "defaultLaunchMode",
-		prompt: "Which launch mode?\n1. interactive_terminal\n2. headless\n3. managed_codex\n4. Skip",
+		prompt:
+			"Which launch mode?\n1. interactive_terminal\n2. headless\n3. managed_codex\n4. Skip\n5. managed_opencode",
 		required: false,
 	},
 	{
@@ -86,6 +87,7 @@ function parseDefaultAgentType(reply: string): { ok: true; value: string | null 
 		return { ok: true, value: "claude_code" };
 	if (v === "2" || v === "codex" || v === "codex_cli" || v.includes("codex cli"))
 		return { ok: true, value: "codex_cli" };
+	if (v === "4" || v === "opencode") return { ok: true, value: "opencode" };
 	if (v === "3" || v === "skip" || v === "none" || v === "no default")
 		return { ok: true, value: null };
 	return { ok: false };
@@ -96,6 +98,8 @@ function parseDefaultLaunchMode(reply: string): { ok: true; value: string | null
 	if (v === "1" || v === "interactive_terminal" || v.includes("interactive"))
 		return { ok: true, value: "interactive_terminal" };
 	if (v === "2" || v === "headless") return { ok: true, value: "headless" };
+	if (v === "5" || v === "managed_opencode" || v.includes("opencode"))
+		return { ok: true, value: "managed_opencode" };
 	if (v === "3" || v === "managed_codex" || v.includes("managed"))
 		return { ok: true, value: "managed_codex" };
 	if (v === "4" || v === "skip" || v === "none") return { ok: true, value: null };

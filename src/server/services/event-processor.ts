@@ -8,6 +8,7 @@ import type {
 	SessionEvent,
 } from "../../shared/types.js";
 import { getDb } from "../db/client.js";
+import { providerInstances } from "../db/schema/index.js";
 import { events, sessions } from "../db/schema/index.js";
 import { withTransaction } from "../db/with-transaction.js";
 import {
@@ -45,6 +46,7 @@ import {
 import { getMode } from "./instance-mode.js";
 import { associateObservedSession } from "./launch-dispatch.js";
 import { generateSessionName } from "./name-generator.js";
+import { recordExternalOpenCodeSession } from "./opencode-control-provenance.js";
 import { getCachedProjects } from "./projects/cache.js";
 import { resolveProjectIdForCwd } from "./projects/resolver.js";
 import {
@@ -133,6 +135,7 @@ async function persistEvents(sessionId: string, plan: InsertPlan): Promise<Sessi
 				toolResponse: row.toolResponse,
 				rawPayload: row.rawPayload,
 				dedupKey: row.dedupKey,
+				...(row.dedupKey?.startsWith("managed:") ? { createdAt: row.createdAt } : {}),
 			})),
 		)
 		.onConflictDoNothing()
@@ -227,6 +230,31 @@ export async function insertNormalizedEvents(
 	});
 
 	return persistEvents(sessionId, plan);
+}
+
+/** Native supervisor events have stable delivery identity across offline replays. */
+export async function insertManagedDelivery(
+	sessionId: string,
+	event: NormalizedEvent,
+	deliveryId: string,
+	occurredAt?: string,
+) {
+	const parsed = occurredAt ? new Date(occurredAt) : new Date();
+	const date =
+		Number.isFinite(parsed.getTime()) && parsed.getTime() <= Date.now() + 60_000
+			? parsed
+			: new Date();
+	return persistEvents(sessionId, {
+		retained: [
+			{
+				...event,
+				createdAt: date.toISOString().slice(0, 19).replace("T", " "),
+				dedupKey: `managed:${deliveryId}`,
+				deletesIfStored: [],
+			},
+		],
+		drops: {},
+	});
 }
 
 /**
@@ -689,6 +717,16 @@ async function admitForeignKeyWrite(
  * exact identity to key on, and it's counted via recordLegacyObserverDelivery
  * so operators can see hosts that need a supervisor upgrade.
  */
+async function isProtectedOpenCodeIdentity(sessionId: string) {
+	const root = sessionId.split(":opencode-child:")[0];
+	const [instance] = await getDb()
+		.select({ id: providerInstances.id })
+		.from(providerInstances)
+		.where(eq(providerInstances.sessionId, root))
+		.limit(1);
+	return Boolean(instance);
+}
+
 export async function processHookEvent(
 	payload: HookEventPayload,
 	agentType: AgentType,
@@ -701,6 +739,8 @@ export async function processHookEvent(
 	events: SessionEvent[];
 }> {
 	const sessionId = payload.session_id;
+	if (await isProtectedOpenCodeIdentity(sessionId))
+		return { sessionId, isNew: false, session: null, events: [] };
 	const eventType = payload.hook_event_name;
 	const now = new Date().toISOString();
 	const attribution: Attribution = ctx.attribution ?? { ownerUserId: null, ingestKeyId: null };
@@ -934,6 +974,8 @@ export async function processHookEvent(
 			incrementIngestOwnerMismatch();
 		}
 	}
+
+	if (agentType === "opencode") await recordExternalOpenCodeSession(sessionId);
 
 	// D21: compute the terminal-latch/closed-turn state from the metadata as
 	// it stood *before* this event, then fold this event's own effects
@@ -1170,6 +1212,7 @@ export async function processStatusUpdate(
 	input: SemanticStatusUpdate,
 	attribution: Attribution = { ownerUserId: null, ingestKeyId: null },
 ): Promise<boolean> {
+	if (await isProtectedOpenCodeIdentity(input.session_id)) return false;
 	const { status, ...rest } = input;
 	const update: SemanticStatusUpdate = isSemanticStatus(status) ? { ...rest, status } : rest;
 

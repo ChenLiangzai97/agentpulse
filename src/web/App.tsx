@@ -37,6 +37,9 @@ const SettingsPage = lazy(() =>
 const TemplatesPage = lazy(() =>
 	import("./pages/TemplatesPage.js").then((module) => ({ default: module.TemplatesPage })),
 );
+const WorklogPage = lazy(() =>
+	import("./pages/WorklogPage.js").then((module) => ({ default: module.WorklogPage })),
+);
 const HostsPage = lazy(() =>
 	import("./pages/HostsPage.js").then((module) => ({ default: module.HostsPage })),
 );
@@ -208,6 +211,7 @@ export function App() {
 						<Route path="/projects" element={<ProjectsPage />} />
 						<Route path="/launches/:launchId" element={<LaunchDetailPage />} />
 						<Route path="/inbox" element={<InboxPage />} />
+						<Route path="/worklog" element={<WorklogPage />} />
 						<Route path="/digest" element={<DigestPage />} />
 						<Route path="/ask" element={<AskPage />} />
 						<Route path="/search" element={<SearchPage />} />

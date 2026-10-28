@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { getOperationalStatus } from "../../shared/session-state.js";
 import type { Session } from "../../shared/types.js";
 import { useOwnershipUi } from "../hooks/useOwnershipUi.js";
+import { useT } from "../i18n/i18n.js";
 import { describeApiError } from "../lib/api-errors.js";
 import { type SessionIntelligence, api } from "../lib/api.js";
 import type { OwnerChipModel } from "../lib/owner-chip.js";
@@ -46,6 +47,7 @@ interface SessionCardProps {
 }
 
 export function SessionCard({ session, intelligence, ownerChip }: SessionCardProps) {
+	const t = useT();
 	const intelligenceEnabled = useLabsStore((s) => s.isEnabled("intelligenceBadges"));
 	const navigate = useNavigate();
 	const removeSession = useSessionStore((s) => s.removeSession);
@@ -229,7 +231,7 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 				// triggered it. "Mark as seen" keeps the card mounted either
 				// way, so the banner alone is enough there.
 				if (shouldRaiseDismissToast(variant)) {
-					toast.success("Error dismissed", {
+					toast.success(t("sessionCard.errorDismissed"), {
 						action: { label: "Undo", onClick: () => runAckUndo() },
 						duration: UNDO_WINDOW_MS,
 					});
@@ -262,7 +264,7 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 			const result = await api.unacknowledgeSession(session.sessionId, "restore-error");
 			const outcome = classifyAckResponse(result);
 			if (outcome === "applied") {
-				toast.success("Error restored");
+				toast.success(t("sessionCard.errorRestored"));
 				return;
 			}
 			updateSession(rollbackAckState(previous));
@@ -273,7 +275,7 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 			);
 		} catch {
 			updateSession(rollbackAckState(previous));
-			toast.error("Couldn't restore");
+			toast.error(t("sessionCard.couldntRestore"));
 		}
 	}
 
@@ -290,11 +292,11 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 			const outcome = classifyAckResponse(result);
 			if (outcome !== "applied") {
 				updateSession(rollbackAckState(previous));
-				if (outcome === "not_owner") toast.error("Only the owner or an admin can undo this");
+				if (outcome === "not_owner") toast.error(t("sessionCard.onlyOwnerUndo"));
 			}
 		} catch {
 			updateSession(rollbackAckState(previous));
-			toast.error("Couldn't undo");
+			toast.error(t("sessionCard.couldntUndo"));
 		}
 	}
 
@@ -315,7 +317,7 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 			await api.deleteSession(session.sessionId);
 			removeSession(session.sessionId);
 			closeTab(session.sessionId);
-			toast.success("Session deleted");
+			toast.success(t("sessionCard.sessionDeleted"));
 		} catch (err) {
 			toast.error(describeApiError(err, "Couldn't delete the session."));
 		}
@@ -386,7 +388,10 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 							}
 						>
 							{session.metadata?.aiInitiated === true && (
-								<Wand2 className="w-3 h-3 flex-shrink-0" aria-label="Launched from Ask" />
+								<Wand2
+									className="w-3 h-3 flex-shrink-0"
+									aria-label={t("sessionCard.launchedFromAsk")}
+								/>
 							)}
 							{name}
 						</Link>
@@ -405,7 +410,7 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 									setRenaming(true);
 									setNewName(name);
 								}}
-								title="Rename"
+								title={t("sessionCard.rename")}
 								className="rounded min-w-[44px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
 							>
 								<svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -444,7 +449,7 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 							<button
 								type="button"
 								onClick={handleArchive}
-								title="Archive"
+								title={t("sessionCard.archive")}
 								className="rounded min-w-[44px] min-h-[44px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
 							>
 								<svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -484,7 +489,7 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 									setRenaming(true);
 									setNewName(name);
 								}}
-								title="Rename"
+								title={t("sessionCard.rename")}
 								className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
 							>
 								<svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -523,7 +528,7 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 							<button
 								type="button"
 								onClick={handleArchive}
-								title="Archive"
+								title={t("sessionCard.archive")}
 								className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
 							>
 								<svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -566,7 +571,7 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 			    <fieldset> gives us role="group" natively + aria-label support. */}
 			{confirming && (
 				<fieldset
-					aria-label="Confirm session deletion"
+					aria-label={t("sessionCard.confirmDeleteTitle")}
 					className="mb-2 flex items-center gap-2 border-0 p-0 m-0"
 					onClick={(e) => e.stopPropagation()}
 				>
@@ -589,7 +594,7 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 						}}
 						className="rounded px-2 py-1 text-xs text-red-400 border border-red-500/30 hover:bg-red-500/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/50"
 					>
-						Confirm delete
+						{t("sessionCard.confirmDelete")}
 					</button>
 				</fieldset>
 			)}
@@ -618,7 +623,7 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 						onClick={handleAckUndo}
 						className="min-h-[44px] md:min-h-0 font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
 					>
-						Undo
+						{t("sessionCard.undo")}
 					</button>
 				</div>
 			) : ackAction.kind === "mark_seen" ? (
@@ -649,7 +654,7 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 					className="mb-2 inline-flex min-h-[44px] md:min-h-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 				>
 					<Undo2 className="w-3.5 h-3.5" aria-hidden="true" />
-					Restore error
+					{t("sessionCard.restoreError")}
 				</button>
 			) : ackAction.permissionWaitNote ? (
 				<p
@@ -696,10 +701,10 @@ export function SessionCard({ session, intelligence, ownerChip }: SessionCardPro
 					)}
 					{isScratch && (
 						<span
-							title="Scratch workspace — created by AgentPulse for an Ask task"
+							title={t("sessionCard.scratchTitle")}
 							className="flex-shrink-0 text-[10px] font-medium text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0"
 						>
-							scratch
+							{t("sessionCard.scratchChip")}
 						</span>
 					)}
 				</div>

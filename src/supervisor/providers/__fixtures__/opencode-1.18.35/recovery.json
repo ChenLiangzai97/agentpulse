@@ -1,0 +1,1059 @@
+[
+  {
+    "path": "/session",
+    "request": {
+      "title": "P0 abort"
+    },
+    "response": {
+      "id": "ses_fixture8",
+      "slug": "stellar-squid",
+      "projectID": "global",
+      "directory": "<P0_ROOT>/project",
+      "path": "",
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "title": "P0 abort",
+      "version": "1.18.35",
+      "time": {
+        "created": 1792249258691,
+        "updated": 1792249258691
+      }
+    }
+  },
+  {
+    "path": "/session/ses_fixture8/prompt_async",
+    "request": {
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0_ABORT"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": null
+  },
+  {
+    "path": "/session/status",
+    "request": null,
+    "response": {
+      "ses_fixture8": {
+        "type": "busy"
+      }
+    }
+  },
+  {
+    "path": "/session/ses_fixture8/abort",
+    "request": {},
+    "response": true
+  },
+  {
+    "path": "/session/status",
+    "request": null,
+    "response": {}
+  },
+  {
+    "case": "abort",
+    "model_request_in_flight": true,
+    "busy_before": {
+      "type": "busy"
+    },
+    "status_after": null,
+    "elapsed_seconds": 0.007
+  },
+  {
+    "path": "/session",
+    "request": {
+      "title": "P0 question restart"
+    },
+    "response": {
+      "id": "ses_fixture9",
+      "slug": "clever-wizard",
+      "projectID": "global",
+      "directory": "<P0_ROOT>/project",
+      "path": "",
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "title": "P0 question restart",
+      "version": "1.18.35",
+      "time": {
+        "created": 1792249259324,
+        "updated": 1792249259324
+      }
+    }
+  },
+  {
+    "path": "/session/ses_fixture9/prompt_async",
+    "request": {
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0_QUESTION"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": null
+  },
+  {
+    "case": "question pending before restart",
+    "response": {
+      "id": "que_fixture3",
+      "sessionID": "ses_fixture9",
+      "questions": [
+        {
+          "question": "Pick fixture options",
+          "header": "P0 fixture",
+          "options": [
+            {
+              "label": "Alpha",
+              "description": "A"
+            },
+            {
+              "label": "Beta",
+              "description": "B"
+            }
+          ],
+          "multiple": true
+        },
+        {
+          "question": "Enter fixture note",
+          "header": "P0 note",
+          "options": [
+            {
+              "label": "Default",
+              "description": "Use default"
+            }
+          ]
+        }
+      ],
+      "tool": {
+        "messageID": "msg_fixture16",
+        "callID": "call_p0_question"
+      }
+    }
+  },
+  {
+    "case": "question SSE reconnect",
+    "response": {
+      "id": "evt_14a6165af001LzlpZ6SsoMSNfW",
+      "type": "server.connected",
+      "properties": {}
+    }
+  },
+  {
+    "path": "/question",
+    "request": null,
+    "response": [
+      {
+        "id": "que_fixture3",
+        "sessionID": "ses_fixture9",
+        "questions": [
+          {
+            "question": "Pick fixture options",
+            "header": "P0 fixture",
+            "options": [
+              {
+                "label": "Alpha",
+                "description": "A"
+              },
+              {
+                "label": "Beta",
+                "description": "B"
+              }
+            ],
+            "multiple": true
+          },
+          {
+            "question": "Enter fixture note",
+            "header": "P0 note",
+            "options": [
+              {
+                "label": "Default",
+                "description": "Use default"
+              }
+            ]
+          }
+        ],
+        "tool": {
+          "messageID": "msg_fixture16",
+          "callID": "call_p0_question"
+        }
+      }
+    ]
+  },
+  {
+    "path": "/question",
+    "request": null,
+    "response": []
+  },
+  {
+    "case": "question after process restart",
+    "same_request_pending": false
+  },
+  {
+    "path": "/question/que_fixture3/reply",
+    "request": {
+      "answers": [
+        [
+          "Alpha"
+        ],
+        [
+          "note"
+        ]
+      ]
+    },
+    "response": {
+      "http_status": 404,
+      "body": {
+        "_tag": "QuestionNotFoundError",
+        "requestID": "que_fixture3",
+        "message": "Question request not found: que_fixture3"
+      }
+    }
+  },
+  {
+    "path": "/session/ses_fixture9/message",
+    "request": null,
+    "response": [
+      {
+        "info": {
+          "id": "msg_fixture17",
+          "sessionID": "ses_fixture9",
+          "role": "user",
+          "time": {
+            "created": 1792249259328
+          },
+          "agent": "build",
+          "model": {
+            "providerID": "p0",
+            "modelID": "fixture-model"
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture33",
+            "sessionID": "ses_fixture9",
+            "messageID": "msg_fixture17",
+            "type": "text",
+            "text": "P0_QUESTION"
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture16",
+          "sessionID": "ses_fixture9",
+          "role": "assistant",
+          "time": {
+            "created": 1792249259333
+          },
+          "parentID": "msg_fixture17",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture34",
+            "sessionID": "ses_fixture9",
+            "messageID": "msg_fixture16",
+            "type": "step-start"
+          },
+          {
+            "id": "prt_fixture35",
+            "sessionID": "ses_fixture9",
+            "messageID": "msg_fixture16",
+            "type": "tool",
+            "callID": "call_p0_question",
+            "tool": "question",
+            "state": {
+              "status": "running",
+              "input": {
+                "questions": [
+                  {
+                    "question": "Pick fixture options",
+                    "header": "P0 fixture",
+                    "options": [
+                      {
+                        "label": "Alpha",
+                        "description": "A"
+                      },
+                      {
+                        "label": "Beta",
+                        "description": "B"
+                      }
+                    ],
+                    "multiple": true,
+                    "custom": true
+                  },
+                  {
+                    "question": "Enter fixture note",
+                    "header": "P0 note",
+                    "options": [
+                      {
+                        "label": "Default",
+                        "description": "Use default"
+                      }
+                    ],
+                    "custom": true
+                  }
+                ]
+              },
+              "time": {
+                "start": 1792249259356
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "path": "/session/ses_fixture9/prompt_async",
+    "request": {
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0_HELLO_AFTER_RESTART"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": null
+  },
+  {
+    "path": "/session/ses_fixture9/message",
+    "request": null,
+    "response": [
+      {
+        "info": {
+          "id": "msg_fixture17",
+          "sessionID": "ses_fixture9",
+          "role": "user",
+          "time": {
+            "created": 1792249259328
+          },
+          "agent": "build",
+          "model": {
+            "providerID": "p0",
+            "modelID": "fixture-model"
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture33",
+            "sessionID": "ses_fixture9",
+            "messageID": "msg_fixture17",
+            "type": "text",
+            "text": "P0_QUESTION"
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture16",
+          "sessionID": "ses_fixture9",
+          "role": "assistant",
+          "time": {
+            "created": 1792249259333
+          },
+          "parentID": "msg_fixture17",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture34",
+            "sessionID": "ses_fixture9",
+            "messageID": "msg_fixture16",
+            "type": "step-start"
+          },
+          {
+            "id": "prt_fixture35",
+            "sessionID": "ses_fixture9",
+            "messageID": "msg_fixture16",
+            "type": "tool",
+            "callID": "call_p0_question",
+            "tool": "question",
+            "state": {
+              "status": "running",
+              "input": {
+                "questions": [
+                  {
+                    "question": "Pick fixture options",
+                    "header": "P0 fixture",
+                    "options": [
+                      {
+                        "label": "Alpha",
+                        "description": "A"
+                      },
+                      {
+                        "label": "Beta",
+                        "description": "B"
+                      }
+                    ],
+                    "multiple": true,
+                    "custom": true
+                  },
+                  {
+                    "question": "Enter fixture note",
+                    "header": "P0 note",
+                    "options": [
+                      {
+                        "label": "Default",
+                        "description": "Use default"
+                      }
+                    ],
+                    "custom": true
+                  }
+                ]
+              },
+              "time": {
+                "start": 1792249259356
+              }
+            }
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture18",
+          "sessionID": "ses_fixture9",
+          "role": "user",
+          "time": {
+            "created": 1792249260242
+          },
+          "agent": "build",
+          "model": {
+            "providerID": "p0",
+            "modelID": "fixture-model"
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture36",
+            "sessionID": "ses_fixture9",
+            "messageID": "msg_fixture18",
+            "type": "text",
+            "text": "P0_HELLO_AFTER_RESTART"
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture19",
+          "sessionID": "ses_fixture9",
+          "role": "assistant",
+          "time": {
+            "created": 1792249260534
+          },
+          "parentID": "msg_fixture18",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          }
+        },
+        "parts": []
+      }
+    ]
+  },
+  {
+    "path": "/session",
+    "request": {
+      "title": "P0 permission restart",
+      "permission": [
+        {
+          "permission": "bash",
+          "pattern": "*",
+          "action": "ask"
+        }
+      ]
+    },
+    "response": {
+      "id": "ses_fixture10",
+      "slug": "shiny-nebula",
+      "projectID": "global",
+      "directory": "<P0_ROOT>/project",
+      "path": "",
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "title": "P0 permission restart",
+      "version": "1.18.35",
+      "time": {
+        "created": 1792249260555,
+        "updated": 1792249260555
+      },
+      "permission": [
+        {
+          "permission": "bash",
+          "pattern": "*",
+          "action": "ask"
+        }
+      ]
+    }
+  },
+  {
+    "path": "/session/ses_fixture10/prompt_async",
+    "request": {
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0_PERMISSION"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": null
+  },
+  {
+    "case": "permission pending before restart",
+    "response": {
+      "id": "per_fixture4",
+      "sessionID": "ses_fixture10",
+      "permission": "bash",
+      "patterns": [
+        "printf P0_PERMISSION_OUTPUT"
+      ],
+      "metadata": {
+        "command": "printf P0_PERMISSION_OUTPUT"
+      },
+      "always": [
+        "printf *"
+      ],
+      "tool": {
+        "messageID": "msg_fixture20",
+        "callID": "call_p0_bash"
+      }
+    }
+  },
+  {
+    "case": "permission SSE reconnect",
+    "response": {
+      "id": "evt_14a616b8f001RJeWBANA2cp5xA",
+      "type": "server.connected",
+      "properties": {}
+    }
+  },
+  {
+    "path": "/permission",
+    "request": null,
+    "response": [
+      {
+        "id": "per_fixture4",
+        "sessionID": "ses_fixture10",
+        "permission": "bash",
+        "patterns": [
+          "printf P0_PERMISSION_OUTPUT"
+        ],
+        "metadata": {
+          "command": "printf P0_PERMISSION_OUTPUT"
+        },
+        "always": [
+          "printf *"
+        ],
+        "tool": {
+          "messageID": "msg_fixture20",
+          "callID": "call_p0_bash"
+        }
+      }
+    ]
+  },
+  {
+    "path": "/permission",
+    "request": null,
+    "response": []
+  },
+  {
+    "case": "permission after process restart",
+    "same_request_pending": false
+  },
+  {
+    "path": "/permission/per_fixture4/reply",
+    "request": {
+      "reply": "once"
+    },
+    "response": {
+      "http_status": 404,
+      "body": {
+        "_tag": "PermissionNotFoundError",
+        "requestID": "per_fixture4",
+        "message": "Permission request not found: per_fixture4"
+      }
+    }
+  },
+  {
+    "path": "/session/ses_fixture10/message",
+    "request": null,
+    "response": [
+      {
+        "info": {
+          "id": "msg_fixture21",
+          "sessionID": "ses_fixture10",
+          "role": "user",
+          "time": {
+            "created": 1792249260561
+          },
+          "agent": "build",
+          "model": {
+            "providerID": "p0",
+            "modelID": "fixture-model"
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture37",
+            "sessionID": "ses_fixture10",
+            "messageID": "msg_fixture21",
+            "type": "text",
+            "text": "P0_PERMISSION"
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture20",
+          "sessionID": "ses_fixture10",
+          "role": "assistant",
+          "time": {
+            "created": 1792249260567
+          },
+          "parentID": "msg_fixture21",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture38",
+            "sessionID": "ses_fixture10",
+            "messageID": "msg_fixture20",
+            "type": "step-start"
+          },
+          {
+            "id": "prt_fixture39",
+            "sessionID": "ses_fixture10",
+            "messageID": "msg_fixture20",
+            "type": "tool",
+            "callID": "call_p0_bash",
+            "tool": "bash",
+            "state": {
+              "status": "running",
+              "input": {
+                "command": "printf P0_PERMISSION_OUTPUT",
+                "description": "P0 safe permission probe"
+              },
+              "time": {
+                "start": 1792249260897
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "path": "/session/ses_fixture10/prompt_async",
+    "request": {
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0_HELLO_AFTER_RESTART"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": null
+  },
+  {
+    "path": "/session/ses_fixture10/message",
+    "request": null,
+    "response": [
+      {
+        "info": {
+          "id": "msg_fixture21",
+          "sessionID": "ses_fixture10",
+          "role": "user",
+          "time": {
+            "created": 1792249260561
+          },
+          "agent": "build",
+          "model": {
+            "providerID": "p0",
+            "modelID": "fixture-model"
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture37",
+            "sessionID": "ses_fixture10",
+            "messageID": "msg_fixture21",
+            "type": "text",
+            "text": "P0_PERMISSION"
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture20",
+          "sessionID": "ses_fixture10",
+          "role": "assistant",
+          "time": {
+            "created": 1792249260567
+          },
+          "parentID": "msg_fixture21",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture38",
+            "sessionID": "ses_fixture10",
+            "messageID": "msg_fixture20",
+            "type": "step-start"
+          },
+          {
+            "id": "prt_fixture39",
+            "sessionID": "ses_fixture10",
+            "messageID": "msg_fixture20",
+            "type": "tool",
+            "callID": "call_p0_bash",
+            "tool": "bash",
+            "state": {
+              "status": "running",
+              "input": {
+                "command": "printf P0_PERMISSION_OUTPUT",
+                "description": "P0 safe permission probe"
+              },
+              "time": {
+                "start": 1792249260897
+              }
+            }
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture22",
+          "sessionID": "ses_fixture10",
+          "role": "user",
+          "time": {
+            "created": 1792249261744
+          },
+          "agent": "build",
+          "model": {
+            "providerID": "p0",
+            "modelID": "fixture-model"
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture40",
+            "sessionID": "ses_fixture10",
+            "messageID": "msg_fixture22",
+            "type": "text",
+            "text": "P0_HELLO_AFTER_RESTART"
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture23",
+          "sessionID": "ses_fixture10",
+          "role": "assistant",
+          "time": {
+            "created": 1792249262030
+          },
+          "parentID": "msg_fixture22",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          }
+        },
+        "parts": []
+      }
+    ]
+  },
+  {
+    "path": "/session",
+    "request": {
+      "title": "P0 message id replay"
+    },
+    "response": {
+      "id": "ses_fixture11",
+      "slug": "stellar-orchid",
+      "projectID": "global",
+      "directory": "<P0_ROOT>/project",
+      "path": "",
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "title": "P0 message id replay",
+      "version": "1.18.35",
+      "time": {
+        "created": 1792249262051,
+        "updated": 1792249262051
+      }
+    }
+  },
+  {
+    "path": "/session/ses_fixture11/message",
+    "request": {
+      "messageID": "msg_fixture24",
+      "noReply": true,
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0 same delivery"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": {
+      "info": {
+        "id": "msg_fixture24",
+        "role": "user",
+        "sessionID": "ses_fixture11",
+        "time": {
+          "created": 1792249262057
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "p0",
+          "modelID": "fixture-model"
+        }
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0 same delivery",
+          "messageID": "msg_fixture24",
+          "sessionID": "ses_fixture11",
+          "id": "prt_fixture41"
+        }
+      ]
+    }
+  },
+  {
+    "path": "/session/ses_fixture11/message",
+    "request": {
+      "messageID": "msg_fixture24",
+      "noReply": true,
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0 same delivery"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": {
+      "info": {
+        "id": "msg_fixture24",
+        "role": "user",
+        "sessionID": "ses_fixture11",
+        "time": {
+          "created": 1792249262068
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "p0",
+          "modelID": "fixture-model"
+        }
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0 same delivery",
+          "messageID": "msg_fixture24",
+          "sessionID": "ses_fixture11",
+          "id": "prt_fixture42"
+        }
+      ]
+    }
+  },
+  {
+    "path": "/session/ses_fixture11/message",
+    "request": null,
+    "response": [
+      {
+        "info": {
+          "id": "msg_fixture24",
+          "sessionID": "ses_fixture11",
+          "role": "user",
+          "time": {
+            "created": 1792249262068
+          },
+          "agent": "build",
+          "model": {
+            "providerID": "p0",
+            "modelID": "fixture-model"
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture41",
+            "sessionID": "ses_fixture11",
+            "messageID": "msg_fixture24",
+            "type": "text",
+            "text": "P0 same delivery"
+          },
+          {
+            "id": "prt_fixture42",
+            "sessionID": "ses_fixture11",
+            "messageID": "msg_fixture24",
+            "type": "text",
+            "text": "P0 same delivery"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "case": "same-messageID replay",
+    "messages": 1,
+    "text_parts": 2
+  }
+]

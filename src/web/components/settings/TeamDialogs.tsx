@@ -1,5 +1,6 @@
 import { type FormEvent, useId, useRef, useState } from "react";
 import type { SupervisorRecord } from "../../../shared/types.js";
+import { useT } from "../../i18n/i18n.js";
 import { describeApiError } from "../../lib/api-errors.js";
 import { api } from "../../lib/api.js";
 import { disableRequestBody, selfDemoteConfirm } from "../../pages/team-flows.js";
@@ -28,6 +29,7 @@ export function AddUserDialog({
 	onClose: () => void;
 	onCreated: (created: CreatedUser) => void;
 }) {
+	const t = useT();
 	const headingId = useId();
 	const usernameId = useId();
 	const roleId = useId();
@@ -68,7 +70,7 @@ export function AddUserDialog({
 			<form onSubmit={submit} noValidate className="flex flex-1 flex-col">
 				<div className="flex-1 space-y-4 p-5 md:p-6">
 					<h2 id={headingId} className="text-base font-semibold text-foreground">
-						Add user
+						{t("team.addUser")}
 					</h2>
 					<p className="text-sm text-hint">
 						Creates a local account with a one-time password. Nothing is sent to them: you hand over
@@ -76,7 +78,7 @@ export function AddUserDialog({
 					</p>
 					<div className="space-y-1">
 						<label htmlFor={usernameId} className="block text-sm text-foreground">
-							Username
+							{t("team.username")}
 						</label>
 						<input
 							ref={usernameRef}
@@ -103,7 +105,7 @@ export function AddUserDialog({
 					</div>
 					<div className="space-y-1">
 						<label htmlFor={roleId} className="block text-sm text-foreground">
-							Role
+							{t("team.role")}
 						</label>
 						<select
 							id={roleId}
@@ -111,8 +113,8 @@ export function AddUserDialog({
 							onChange={(e) => setRole(e.target.value as "user" | "admin")}
 							className={`${FIELD_CONTROL} sm:w-48`}
 						>
-							<option value="user">Member</option>
-							<option value="admin">Admin</option>
+							<option value="user">{t("team.member")}</option>
+							<option value="admin">{t("team.admin")}</option>
 						</select>
 					</div>
 					{error && (
@@ -147,6 +149,7 @@ export function DisableUserDialog({
 	onClose: () => void;
 	onDisabled: () => void;
 }) {
+	const t = useT();
 	const copy = disableDialogCopy({
 		name: row.name,
 		keyCount: row.keyCount,
@@ -215,6 +218,7 @@ export function ResetPasswordDialog({
 	onClose: () => void;
 	onReset: (password: string) => void;
 }) {
+	const t = useT();
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -257,6 +261,7 @@ export function PromoteDialog({
 	onClose: () => void;
 	onPromoted: () => void;
 }) {
+	const t = useT();
 	const copy = promoteConfirm(row);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -303,6 +308,7 @@ export function SelfDemoteDialog({
 	onClose: () => void;
 	onDemoted: () => void;
 }) {
+	const t = useT();
 	const copy = selfDemoteConfirm();
 	return (
 		<ConfirmDialog

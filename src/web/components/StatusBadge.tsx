@@ -1,4 +1,5 @@
 import { AlertTriangle } from "lucide-react";
+import { useT } from "../i18n/i18n.js";
 import { cn } from "../lib/utils.js";
 
 // Text colors pair a light-theme-safe shade with the existing dark-theme
@@ -64,6 +65,7 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, variant = "session", className }: StatusBadgeProps) {
+	const t = useT();
 	const styles =
 		variant === "semantic"
 			? SEMANTIC_STYLES[status] || { bg: "bg-slate-500/12", text: "text-slate-400" }
@@ -91,7 +93,7 @@ export function StatusBadge({ status, variant = "session", className }: StatusBa
 				<span className={cn("h-1.5 w-1.5 rounded-full animate-pulse-dot", sessionStyle.dot)} />
 			)}
 			{isError && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
-			{status}
+			{variant === "session" ? t(`status.${status}`) : status}
 		</span>
 	);
 }

@@ -18,6 +18,12 @@ export function SessionTabs() {
 	const sessionCwd = (sessionId: string): string | null => {
 		return sessions.find((s) => s.sessionId === sessionId)?.cwd ?? null;
 	};
+	// P1 tab metadata: the tooltip carries host + directory so multi-host
+	// work is distinguishable without opening the tab.
+	const sessionMeta = (sessionId: string): { cwd: string | null; host: string | null } => {
+		const row = sessions.find((s) => s.sessionId === sessionId);
+		return { cwd: row?.cwd ?? null, host: row?.reportedHost ?? null };
+	};
 
 	if (tabs.length === 0) return null;
 
@@ -78,7 +84,13 @@ export function SessionTabs() {
 							role="tab"
 							aria-selected={active}
 							tabIndex={0}
-							title={tab.displayName}
+							title={[
+								tab.displayName,
+								tab.cwd ?? sessionMeta(tab.sessionId).cwd ?? undefined,
+								sessionMeta(tab.sessionId).host ?? undefined,
+							]
+								.filter(Boolean)
+								.join(" · ")}
 							style={tabStyle}
 							className={`group relative flex items-center gap-2 pl-3 pr-1.5 py-2 flex-shrink-0 cursor-pointer transition-colors border-r border-border/60 focus:outline-none focus:ring-1 focus:ring-primary/50 ${
 								active

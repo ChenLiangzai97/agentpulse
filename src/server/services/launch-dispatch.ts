@@ -1,7 +1,11 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
-import type { LaunchRequest, LaunchRequestStatus } from "../../shared/types.js";
+import { and, asc, eq, isNull, ne } from "drizzle-orm";
+import type {
+	LaunchRequest,
+	LaunchRequestStatus,
+	SupervisorCapabilities,
+} from "../../shared/types.js";
 import { getDb } from "../db/client.js";
-import { launchRequests, sessions } from "../db/schema/index.js";
+import { launchRequests, sessions, supervisors } from "../db/schema/index.js";
 import { withTransaction } from "../db/with-transaction.js";
 import { applyAskInitiatedWatcher } from "./ai/auto-watcher.js";
 import { resolveObservedSessionCorrelation } from "./correlation-resolver.js";
@@ -106,6 +110,15 @@ function awaitingDeadlineIso() {
 }
 
 export async function claimNextLaunchRequest(supervisorId: string) {
+	const [host] = await getDb().select().from(supervisors).where(eq(supervisors.id, supervisorId));
+	const capabilities = host?.capabilities as unknown as SupervisorCapabilities | undefined;
+	const canOpenCode =
+		capabilities?.agentTypes?.includes("opencode") &&
+		capabilities?.launchModes?.includes("managed_opencode") &&
+		capabilities?.features?.includes("managed_opencode") &&
+		capabilities?.executables?.opencode?.available &&
+		capabilities?.executables?.opencode?.binaryVersion === "1.18.35" &&
+		capabilities?.executables?.opencodeProfile?.health === "ready";
 	const [row] = await getDb()
 		.select()
 		.from(launchRequests)
@@ -113,6 +126,7 @@ export async function claimNextLaunchRequest(supervisorId: string) {
 			and(
 				eq(launchRequests.requestedSupervisorId, supervisorId),
 				eq(launchRequests.status, "validated"),
+				...(canOpenCode ? [] : [ne(launchRequests.agentType, "opencode")]),
 			),
 		)
 		.orderBy(asc(launchRequests.createdAt))
@@ -130,7 +144,7 @@ export async function claimNextLaunchRequest(supervisorId: string) {
 			claimToken,
 			updatedAt: now,
 		})
-		.where(eq(launchRequests.id, row.id))
+		.where(and(eq(launchRequests.id, row.id), eq(launchRequests.status, "validated")))
 		.returning();
 
 	return claimed ? mapLaunchRequest(claimed) : null;

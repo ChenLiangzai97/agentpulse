@@ -252,6 +252,18 @@ describe("parseLaunchIntentResponse", () => {
 });
 
 describe("parseLaunchIntentResponse — D5 Pattern A' non-launchable agentType refusal", () => {
+	test("OpenCode launch requests are refused before falling back to a default agent", () => {
+		for (const intent of ["launch", "launch_needs_project"]) {
+			const result = parseLaunchIntentResponse(
+				{ intent, projectName: "agentpulse", agentType: "opencode" },
+				projects,
+			);
+			expect(result.kind).toBe("agent_refused");
+			if (result.kind === "agent_refused")
+				expect(result.replyText).toContain("OpenCode can't be launched");
+		}
+	});
+
 	test("agentType:copilot_cli yields the refusal object, not null/undefined, with a launch intent", () => {
 		const result = parseLaunchIntentResponse(
 			{ intent: "launch", projectName: "agentpulse", agentType: "copilot_cli" },

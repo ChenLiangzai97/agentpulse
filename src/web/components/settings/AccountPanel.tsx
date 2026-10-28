@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useT } from "../../i18n/i18n.js";
 import { api } from "../../lib/api.js";
 import { afterPasswordChange, classifyPasswordChangeFailure } from "../../lib/auth-session.js";
 import {
@@ -24,6 +25,7 @@ const INPUT_CLASS =
  * whose password an admin chose, it is the whole app until it succeeds.
  */
 export function AccountPanel({ forced = false }: AccountPanelProps) {
+	const t = useT();
 	const reloadUser = useUserStore((s) => s.load);
 	const [current, setCurrent] = useState("");
 	const [next, setNext] = useState("");
@@ -113,7 +115,12 @@ export function AccountPanel({ forced = false }: AccountPanelProps) {
 	const checks = passwordChecks(next);
 
 	return (
-		<form onSubmit={handleSubmit} noValidate className="space-y-4" aria-label="Change password">
+		<form
+			onSubmit={handleSubmit}
+			noValidate
+			className="space-y-4"
+			aria-label={t("account.changePassword")}
+		>
 			{forced && (
 				<p className="text-sm text-hint">
 					An admin chose your current password. Choose your own to continue. You'll be signed in
@@ -123,7 +130,7 @@ export function AccountPanel({ forced = false }: AccountPanelProps) {
 
 			<div className="space-y-1">
 				<label htmlFor={ids.current} className="block text-sm text-foreground">
-					Current password
+					{t("account.currentPassword")}
 				</label>
 				<input
 					ref={currentRef}
@@ -144,7 +151,7 @@ export function AccountPanel({ forced = false }: AccountPanelProps) {
 
 			<div className="space-y-1">
 				<label htmlFor={ids.next} className="block text-sm text-foreground">
-					New password
+					{t("account.newPassword")}
 				</label>
 				<input
 					ref={nextRef}
@@ -178,7 +185,7 @@ export function AccountPanel({ forced = false }: AccountPanelProps) {
 
 			<div className="space-y-1">
 				<label htmlFor={ids.confirm} className="block text-sm text-foreground">
-					Confirm new password
+					{t("account.confirmNewPassword")}
 				</label>
 				<input
 					ref={confirmRef}
@@ -218,9 +225,9 @@ export function AccountPanel({ forced = false }: AccountPanelProps) {
 				>
 					{submitting ? "Changing…" : "Change password"}
 				</button>
-				{submitting && <span className="text-xs text-hint">Signing you in again…</span>}
+				{submitting && <span className="text-xs text-hint">{t("account.signingInAgain")}</span>}
 				{blockedUntil !== null && (
-					<span className="text-xs text-hint">Paused until the wait is over.</span>
+					<span className="text-xs text-hint">{t("account.pausedWait")}</span>
 				)}
 			</div>
 		</form>

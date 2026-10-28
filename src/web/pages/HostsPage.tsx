@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import type { SupervisorRecord } from "../../shared/types.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { HostExcludeNotice } from "../components/HostExcludeNotice.js";
@@ -7,6 +8,7 @@ import { useCopyFeedback } from "../hooks/useCopyFeedback.js";
 import { useNoteUnknownOwners } from "../hooks/useNoteUnknownOwners.js";
 import { useOwnershipUi, useViewerIsAdmin } from "../hooks/useOwnershipUi.js";
 import { useSecretLifetime } from "../hooks/useSecretLifetime.js";
+import { t } from "../i18n/i18n.js";
 import { describeApiError } from "../lib/api-errors.js";
 import { ApiError, api } from "../lib/api.js";
 import { SECRET_LIFETIME_NOTE } from "../lib/one-time-secret.js";
@@ -217,7 +219,7 @@ export function HostsPage() {
 				<div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
 					<div>
 						<h1 id="hosts-heading" className="text-xl md:text-2xl font-bold text-foreground">
-							Hosts
+							{t("hosts.title")}
 						</h1>
 						<p className="mt-1 text-sm text-muted-foreground">
 							Connected supervisors, their capabilities, and their trusted roots.
@@ -257,7 +259,7 @@ export function HostsPage() {
 								/>
 							</label>
 							<label className="space-y-1">
-								<span className="text-xs text-muted-foreground">Expires at</span>
+								<span className="text-xs text-muted-foreground">{t("hosts.expiresAt")}</span>
 								<input
 									type="datetime-local"
 									value={enrollExpiresAt}
@@ -305,7 +307,7 @@ export function HostsPage() {
 										onClick={handleCopyToken}
 										className="inline-flex h-8 items-center justify-center rounded-md border border-border px-3 text-xs text-foreground transition-colors hover:bg-accent"
 									>
-										Copy token
+										{t("hosts.copyToken")}
 									</button>
 								</div>
 								<code className="mt-3 block break-all rounded-md bg-background px-3 py-2 text-xs text-foreground">
@@ -341,7 +343,7 @@ export function HostsPage() {
 					</div>
 
 					<div className="rounded-lg border border-border bg-card p-4 md:p-5">
-						<h2 className="text-sm font-semibold text-foreground">How it works</h2>
+						<h2 className="text-sm font-semibold text-foreground">{t("hosts.howItWorks")}</h2>
 						<div className="mt-3 space-y-3 text-xs text-muted-foreground">
 							<p>1. Create a one-time enrollment token here.</p>
 							<p>2. Start the supervisor on the target host with that token.</p>
@@ -354,7 +356,7 @@ export function HostsPage() {
 				<div className="grid gap-3 md:grid-cols-3">
 					<div className="rounded-lg border border-border bg-card px-4 py-3">
 						<div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-							Connected
+							{t("hosts.connected")}
 						</div>
 						<div className="mt-1 text-2xl font-semibold text-foreground">{connectedCount}</div>
 						<div className="mt-1 text-xs text-muted-foreground">Hosts currently heartbeating.</div>
@@ -450,6 +452,41 @@ export function HostsPage() {
 									</div>
 
 									<HostExcludeNotice supervisor={supervisor} />
+									<div className="mt-3 rounded border border-border p-3 text-xs space-y-1">
+										<strong>OpenCode · 隔离受管实例</strong>
+										<button
+											type="button"
+											className="ml-2 rounded border px-2 py-1"
+											disabled={!access.canManage || supervisor.status !== "connected"}
+											onClick={() =>
+												void api
+													.checkOpenCodeHostHealth(supervisor.id)
+													.then(() => toast.success("健康检查已排队，结果会更新到主机状态"))
+													.catch(() => toast.error("健康检查请求失败"))
+											}
+										>
+											检查模型健康
+										</button>
+										<p>
+											模型健康：
+											{supervisor.capabilities.executables?.opencodeProfile?.health ?? "未配置"} ·
+											CLI {supervisor.capabilities.executables?.opencode?.binaryVersion ?? "未检测"}
+										</p>
+										<p>
+											并发上限：
+											{supervisor.capabilities.executables?.opencodeProfile?.maxInstances ?? "—"} ·
+											闲置回收：
+											{Math.round(
+												(supervisor.capabilities.executables?.opencodeProfile?.idleTimeoutMs ?? 0) /
+													60000,
+											)}{" "}
+											分钟
+										</p>
+										<p>
+											在此主机 Supervisor 配置中设置 opencodeProfilePath，指向权限 0600
+											的独立模型配置文件。密钥仅在目标主机保存，网页不传输或回显。
+										</p>
+									</div>
 
 									<div className="mt-4 space-y-3 text-xs">
 										{access.ownerText !== null && (
@@ -481,19 +518,19 @@ export function HostsPage() {
 											</div>
 										</div>
 										<div>
-											<div className="text-muted-foreground">Agent types</div>
+											<div className="text-muted-foreground">{t("hosts.agentTypes")}</div>
 											<div className="mt-1 text-foreground">
 												{supervisor.capabilities.agentTypes.join(", ")}
 											</div>
 										</div>
 										<div>
-											<div className="text-muted-foreground">Features</div>
+											<div className="text-muted-foreground">{t("hosts.features")}</div>
 											<div className="mt-1 text-foreground">
 												{supervisor.capabilities.features.join(", ") || "None"}
 											</div>
 										</div>
 										<div>
-											<div className="text-muted-foreground">Executables</div>
+											<div className="text-muted-foreground">{t("hosts.executables")}</div>
 											<div className="mt-1 text-foreground">
 												<div className="break-all">
 													Claude:{" "}

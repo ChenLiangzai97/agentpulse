@@ -15,6 +15,7 @@ import type {
 export const PROVIDER_COMMAND: Record<LaunchableAgentType, string> = {
 	claude_code: "claude",
 	codex_cli: "codex",
+	opencode: "opencode",
 };
 
 function isWithinTrustedRoot(cwd: string, roots: string[]) {
@@ -79,6 +80,28 @@ export function validateAgainstSupervisor(
 	if (!isWithinTrustedRoot(template.cwd, supervisor.trustedRoots)) {
 		errors.push("Working directory is outside the supervisor's trusted roots.");
 	}
+	if (template.agentType === "opencode") {
+		if (requestedLaunchMode !== "managed_opencode")
+			errors.push("OpenCode requires managed_opencode mode.");
+		if (
+			!supervisor.capabilities.executables?.opencode?.available ||
+			supervisor.capabilities.executables?.opencode?.binaryVersion !== "1.18.35" ||
+			supervisor.capabilities.executables?.opencodeProfile?.health !== "ready" ||
+			!supervisor.capabilities.features.includes("managed_opencode")
+		)
+			errors.push("Host has no verified isolated OpenCode runtime/profile.");
+		if (
+			Object.keys(template.env ?? {}).length ||
+			template.model ||
+			template.approvalPolicy ||
+			template.sandboxMode
+		)
+			errors.push(
+				"OpenCode uses the host private profile; launch env/model/policy overrides are not supported.",
+			);
+	}
+	if (requestedLaunchMode === "managed_opencode" && template.agentType !== "opencode")
+		errors.push("managed_opencode requires OpenCode.");
 	if (!template.model) {
 		warnings.push("No explicit model selected. The provider default will be used.");
 	}

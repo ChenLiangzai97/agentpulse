@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import type { SupervisorRecord } from "../../../shared/types.js";
 import { useOwnershipUi } from "../../hooks/useOwnershipUi.js";
+import { useT } from "../../i18n/i18n.js";
 import { describeApiError } from "../../lib/api-errors.js";
 import { type AdminUserRow, type ApiKeyRow, type InstanceCounts, api } from "../../lib/api.js";
 import { addToIdSet, browserStorage, readIdSet, userScopedKey } from "../../lib/id-set-storage.js";
@@ -46,6 +47,7 @@ export function TeamPanel({
 	onKeysChanged,
 	onSupervisorsChanged,
 }: TeamPanelProps) {
+	const t = useT();
 	const ui = useOwnershipUi();
 	const teamOn = ui.showTeamCopy;
 	const [dialog, setDialog] = useState<DialogState>(null);
@@ -66,9 +68,10 @@ export function TeamPanel({
 				Team
 			</h2>
 			{!teamOn ? (
-				<SoloRow onOpen={() => setDialog({ kind: "mode", screen: "changes" })} />
+				<SoloRow t={t} onOpen={() => setDialog({ kind: "mode", screen: "changes" })} />
 			) : ui.showTeamSection ? (
 				<TeamAdmin
+					t={t}
 					apiKeys={apiKeys}
 					supervisors={supervisors}
 					dialogOpen={dialog !== null}
@@ -109,7 +112,10 @@ export function TeamPanel({
 
 // ── Solo ────────────────────────────────────────────────────────────────────
 
-function SoloRow({ onOpen }: { onOpen: () => void }) {
+function SoloRow({
+	t,
+	onOpen,
+}: { t: (key: string, params?: Record<string, string | number>) => string; onOpen: () => void }) {
 	const user = useUserStore((s) => s.user);
 	const disableAuth = useUserStore((s) => s.disableAuth);
 	const modeLockedByEnv = useUserStore((s) => s.modeLockedByEnv);
@@ -126,7 +132,7 @@ function SoloRow({ onOpen }: { onOpen: () => void }) {
 			<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 				<div>
 					<p className="text-sm text-foreground">
-						Team mode · <span className="font-medium">Off</span>
+						Team mode · <span className="font-medium">{t("team.off")}</span>
 					</p>
 					<p className="text-xs text-hint">For installs where several people sign in.</p>
 				</div>
@@ -137,7 +143,7 @@ function SoloRow({ onOpen }: { onOpen: () => void }) {
 					aria-describedby={available ? undefined : reasonId}
 					className="min-h-[44px] rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0"
 				>
-					Set up team mode
+					{t("team.setUpTeam")}
 				</button>
 			</div>
 			{!available && (
@@ -169,6 +175,7 @@ function TeamMemberNotice() {
 // ── Team mode, an admin ─────────────────────────────────────────────────────
 
 function TeamAdmin({
+	t,
 	apiKeys,
 	supervisors,
 	dialogOpen,
@@ -177,6 +184,7 @@ function TeamAdmin({
 	onKeysChanged,
 	onSupervisorsChanged,
 }: {
+	t: (key: string, params?: Record<string, string | number>) => string;
 	apiKeys: ApiKeyRow[];
 	supervisors: SupervisorRecord[];
 	dialogOpen: boolean;
@@ -270,6 +278,7 @@ function TeamAdmin({
 
 			{checklist.length > 0 && (
 				<Checklist
+					t={t}
 					items={checklist}
 					onReview={onReviewExisting}
 					onDismiss={(id) => {
@@ -282,13 +291,13 @@ function TeamAdmin({
 			)}
 
 			<div className="mb-3 mt-5 flex items-center justify-between gap-3">
-				<h3 className="text-sm font-semibold text-foreground">People</h3>
+				<h3 className="text-sm font-semibold text-foreground">{t("team.people")}</h3>
 				<button
 					type="button"
 					onClick={() => setAddUserOpen(true)}
 					className="min-h-[44px] rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 md:min-h-0"
 				>
-					Add user
+					{t("team.addUser")}
 				</button>
 			</div>
 
@@ -333,10 +342,12 @@ function TeamAdmin({
 }
 
 function Checklist({
+	t,
 	items,
 	onReview,
 	onDismiss,
 }: {
+	t: (key: string, params?: Record<string, string | number>) => string;
 	items: ChecklistItem[];
 	onReview: () => void;
 	onDismiss: (id: ChecklistItem["id"]) => void;
@@ -360,15 +371,15 @@ function Checklist({
 							<span className="text-foreground">{item.text}</span>
 							{item.id === "manage-keys" ? (
 								<a href="#settings-api-keys" className={ACTION_LINK}>
-									Review keys
+									{t("team.reviewKeys")}
 								</a>
 							) : item.id === "hosts" ? (
 								<Link to="/hosts" className={ACTION_LINK}>
-									Review hosts
+									{t("team.reviewHosts")}
 								</Link>
 							) : (
 								<button type="button" onClick={onReview} className={ACTION_LINK}>
-									Review
+									{t("team.review")}
 								</button>
 							)}
 							{item.detail && <p className="basis-full text-xs text-hint">{item.detail}</p>}

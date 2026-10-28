@@ -1,0 +1,1467 @@
+import { partFingerprint } from "../../shared/opencode-copy.js";
+import type { ForkChildMap, ForkSnapshot } from "./fork-snapshot.js";
+import { AbortAttempts } from "./abort-attempts.js";
+import { abortTerminal, runningTools, turnAssistants, turnTerminal } from "./claim-evidence.js";
+import { markAbort, newClaimState, observeClaim } from "./session-claim.js";
+import { randomBytes } from "node:crypto";
+import { constants } from "node:fs";
+/** Isolated OpenCode 1.18.35 runtime. Never adopts a process or accepts a caller URL. */
+import { mkdir, mkdtemp, open, readFile, readdir, realpath, rm, unlink, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { join } from "node:path";
+import { writePrivateFileAtomic } from "../../shared/atomic-file.js";
+import { writePrivateFileSyncNoFollow } from "../../shared/private-file.js";
+import { processStartTicks } from "./opencode-recovery.js";
+
+export interface OpenCodeRuntimeConfig {
+	executable: string;
+	profilePath: string;
+	stateDirectory: string;
+	maxInstances: number;
+	idleTimeoutMs: number;
+	stopGraceMs: number;
+	/** Deterministic test/diagnostics knob: wait before sending a native abort. */
+	abortRequestDelayMs?: number;
+	/** Test/diagnostics knob: deliver the native abort but lose its response once. */
+	abortResponseLossOnce?: boolean;
+}
+export type OpenCodeHealth =
+	| "ready"
+	| "not_configured"
+	| "authentication_failed"
+	| "model_unavailable"
+	| "unavailable";
+export interface OpenCodeProfile {
+	model: string;
+	provider: Record<
+		string,
+		{ npm: string; options: { baseURL?: string; apiKey?: string }; models: Record<string, unknown> }
+	>;
+}
+export interface OpenCodeRuntime {
+	instanceId: string;
+	generation: number;
+	sessionId: string;
+	nativeSessionId: string;
+	cwd: string;
+	pid: number;
+	directory: string;
+	/** Stable fork ledger for this instance (survives runtime restarts). */
+	ledgerDirectory: string;
+	request<T = unknown>(path: string, body?: unknown): Promise<T>;
+	prompt(
+		text: string,
+		options?: {
+			model?: { providerID: string; modelID: string };
+			agent?: string;
+			/** Target native session (default: the bound one; a fork child must be known). */
+			nativeSessionId?: string;
+		},
+	): Promise<{ messageID: string }>;
+	runCommand(
+		command: string,
+		args?: string,
+		options?: {
+			model?: { providerID: string; modelID: string };
+			agent?: string;
+			nativeSessionId?: string;
+		},
+	): Promise<void>;
+	abort(nativeSessionId?: string): Promise<void>;
+	stop(): Promise<void>;
+	snapshot(): Promise<{
+		messages: unknown[];
+		children?: { session: Record<string, unknown>; messages: unknown[] }[];
+		permissions: unknown[];
+		questions: unknown[];
+		status: unknown;
+		sessions: Record<string, { type: string }>;
+		commands?: unknown[];
+		agents?: unknown[];
+		providers?: unknown;
+	}>;
+	touch(): void;
+	/** Registers a child from an AUTHENTICATED fork result (never from snapshots). */
+	registerManagedChild(nativeSessionId: string): void;
+	/** Per-child observation for a TRUSTED managed child; null when it is gone. */
+	forkChildSnapshot(nativeSessionId: string): Promise<{
+		messages: unknown[];
+		permissions: unknown[];
+		questions: unknown[];
+		status: { type: string };
+	} | null>;
+	/** Durable claims whose outcome is still unknown (reconciliation surface). */
+	unsettledClaims(): {
+		nativeSessionId: string;
+		messageID: string;
+		kind: "prompt" | "command";
+		/** The attempt was an abort: native outcome is UNKNOWN until reconciled. */
+		abortRequested: boolean;
+	}[];
+	abortPending(target: string): boolean;
+	reconcileUnsettled(target: string): Promise<boolean>;
+	withResumeLock<T>(target: string, run: () => Promise<T>): Promise<T>;
+	markResumeUncertain(target: string): Promise<void>;
+	persistResumeIntent(
+		target: string,
+		intent: { actionId: string; claimToken: string; epoch: number },
+	): Promise<void>;
+	resolveResumeIntent(target: string): Promise<boolean>;
+	uncertainResumes(): string[];
+	/** Clears an uncertain resume ONLY after an external, verified reconciliation. */
+	clearResumeUncertain(target: string): Promise<boolean>;
+	unsettledAbortAttempts(): {
+		attemptId: string;
+		nativeSessionId: string;
+		claimId: string;
+		createdAt: string;
+	}[];
+	/** Claim-record cleanup failures (files left for reconciliation). */
+	cleanupIssues(): { claimId: string; path: string; error: string }[];
+	/** Evidence captured in the controlled window before executing a fork. */
+	captureForkSnapshot(forkPointMessageId?: string | null): Promise<ForkSnapshot>;
+	/** Holds the instance/source session for the whole capture+fork window. */
+	withExclusiveFork<T>(run: () => Promise<T>): Promise<T>;
+	/** Last user-message id of the target (turn identity). */
+	lastUserMessageId(target: string): Promise<string | null>;
+	/** Conservative native termination evidence bound to a turn identity. */
+	waitForNativeTermination(
+		target: string,
+		turnMessageId: string,
+		timeoutMs?: number,
+	): Promise<boolean>;
+	/** Parent->child message map for the execution-time copyOf window. */
+	captureChildMap(childNativeSessionId: string, parentSnapshot: ForkSnapshot): Promise<ForkChildMap>;
+	/** Root-session full fork only; the child stays unaddressable until confirmed. */
+	forkSession(
+		nativeSessionId?: string,
+		body?: Record<string, unknown>,
+	): Promise<{ id: string; parentID: string | null }>;
+	subscribe(onEvent: () => void): () => void;
+}
+
+/** Dedicated private file; ambient user auth/config is deliberately never copied. */
+export async function readOpenCodeProfile(path: string): Promise<OpenCodeProfile> {
+	let file: Awaited<ReturnType<typeof open>>;
+	try {
+		file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+	} catch {
+		throw new Error("opencode_not_configured");
+	}
+	let profile: OpenCodeProfile;
+	try {
+		const info = await file.stat();
+		if (!info.isFile() || (info.mode & 0o077) !== 0)
+			throw new Error("opencode_profile_must_be_private");
+		try {
+			profile = JSON.parse(await file.readFile("utf8")) as OpenCodeProfile;
+		} catch {
+			throw new Error("opencode_profile_invalid");
+		}
+	} finally {
+		await file.close();
+	}
+	const [providerID, ...modelParts] = String(profile?.model ?? "").split("/");
+	const modelID = modelParts.join("/");
+	const provider = profile?.provider?.[providerID];
+	if (
+		!provider ||
+		!modelID ||
+		!provider.models?.[modelID] ||
+		!provider.options?.apiKey ||
+		!provider.options.baseURL
+	)
+		throw new Error("opencode_not_configured");
+	if (provider.npm !== "@ai-sdk/openai-compatible")
+		throw new Error("opencode_unsupported_provider");
+	return profile;
+}
+
+export class OpenCodeRuntimePool {
+	private instances = new Map<
+		string,
+		{ runtime: OpenCodeRuntime; lastUsed: number; busy: boolean; pending: boolean }
+	>();
+	private starting = new Set<string>();
+	constructor(readonly config: OpenCodeRuntimeConfig) {
+		if (
+			!Number.isInteger(config.maxInstances) ||
+			config.maxInstances < 1 ||
+			config.maxInstances > 32 ||
+			config.idleTimeoutMs < 60_000 ||
+			config.stopGraceMs < 100 ||
+			config.stopGraceMs > 30_000
+		)
+			throw new Error("opencode_invalid_resource_limits");
+	}
+	get(sessionId: string) {
+		return this.instances.get(sessionId)?.runtime;
+	}
+	async start(input: {
+		instanceId: string;
+		generation: number;
+		sessionId: string;
+		cwd: string;
+		title: string;
+	}): Promise<OpenCodeRuntime> {
+		if (this.instances.has(input.sessionId) || this.starting.has(input.sessionId))
+			throw new Error("opencode_already_started");
+		if (this.instances.size + this.starting.size >= this.config.maxInstances)
+			throw new Error("opencode_capacity_exceeded");
+		this.starting.add(input.sessionId);
+		let process: ReturnType<typeof Bun.spawn> | undefined;
+		let directory: string | undefined;
+		let ledgerDirectory: string | undefined;
+		try {
+			const profile = await readOpenCodeProfile(this.config.profilePath);
+			const cwd = await realpath(input.cwd);
+			await mkdir(this.config.stateDirectory, { recursive: true, mode: 0o700 });
+			directory = await mkdtemp(join(this.config.stateDirectory, "instance-"));
+			// The fork ledger must outlive a runtime restart: it lives in a
+			// STABLE per-instance directory, not in the ephemeral instance dir.
+			ledgerDirectory = join(
+				this.config.stateDirectory,
+				"fork-ledger",
+				input.instanceId.replace(/[^A-Za-z0-9_-]/g, "_"),
+			);
+			await mkdir(ledgerDirectory, { recursive: true, mode: 0o700 });
+			const isolated: Record<string, string> = {};
+			for (const key of [
+				"XDG_CONFIG_HOME",
+				"XDG_DATA_HOME",
+				"XDG_CACHE_HOME",
+				"XDG_STATE_HOME",
+				"TMPDIR",
+			]) {
+				isolated[key] = join(directory, key.toLowerCase());
+				await mkdir(isolated[key], { mode: 0o700 });
+			}
+			const password = randomBytes(32).toString("hex");
+			const configPath = join(directory, "provider.json");
+			writePrivateFileSyncNoFollow(
+				configPath,
+				JSON.stringify({
+					model: profile.model,
+					small_model: profile.model,
+					provider: profile.provider,
+					enabled_providers: [profile.model.split("/")[0]],
+					snapshot: false,
+					share: "disabled",
+				}),
+			);
+			// Explicit allowlist prevents OPENCODE_CONFIG_CONTENT, provider keys, preload hooks and
+			// inherited BotMux configuration from weakening --pure isolation.
+			const environment: Record<string, string> = {
+				PATH: globalThis.process.env.PATH ?? "",
+				HOME: directory,
+				...isolated,
+				OPENCODE_CONFIG: configPath,
+				OPENCODE_SERVER_PASSWORD: password,
+				OPENCODE_SERVER_USERNAME: "agentpulse",
+				OPENCODE_DISABLE_EXTERNAL_SKILLS: "true",
+				OPENCODE_DISABLE_DEFAULT_PLUGINS: "true",
+			};
+			process = Bun.spawn({
+				cmd: [this.config.executable, "serve", "--pure", "--hostname", "127.0.0.1", "--port", "0"],
+				cwd,
+				env: environment,
+				stdin: "ignore",
+				stdout: "pipe",
+				stderr: "ignore",
+			});
+			const child = process;
+			const reader = (child.stdout as ReadableStream<Uint8Array>).getReader();
+			let output = "";
+			const startup = (async () => {
+				while (true) {
+					const { value, done } = await reader.read();
+					if (done) throw new Error("opencode_startup_failed");
+					output = (output + new TextDecoder().decode(value)).slice(-8192);
+					const match = output.match(/opencode server listening on (http:\/\/127\.0\.0\.1:\d+)/);
+					if (match) return match[1];
+				}
+			})();
+			const base = await Promise.race([
+				startup,
+				new Promise<never>((_, reject) => {
+					const timer = setTimeout(() => reject(new Error("opencode_startup_timeout")), 20_000);
+					timer.unref();
+				}),
+			]);
+			// Drain without persisting provider output (it can contain secrets or prompts).
+			void (async () => {
+				try {
+					while (!(await reader.read()).done) {}
+				} catch {}
+			})();
+			const request = async <T = unknown>(path: string, body?: unknown): Promise<T> => {
+				if (child.exitCode !== null) throw new Error("opencode_process_interrupted");
+				const url = new URL(path, base);
+				url.searchParams.set("directory", cwd);
+				if (url.origin !== base) throw new Error("opencode_invalid_path");
+				return new Promise<T>((resolve, reject) => {
+					const request = httpRequest(
+						url,
+						{
+							method: body === undefined ? "GET" : "POST",
+							headers: {
+								Authorization: `Basic ${btoa(`agentpulse:${password}`)}`,
+								"Content-Type": "application/json",
+							},
+						},
+						(response) => {
+							let text = "";
+							response.on("data", (chunk) => {
+								text += chunk;
+								if (text.length > 32 * 1024 * 1024)
+									request.destroy(new Error("opencode_response_too_large"));
+							});
+							response.on("error", reject);
+							response.on("end", () => {
+								if ((response.statusCode ?? 500) >= 300)
+									return reject(new Error(`opencode_http_${response.statusCode}`));
+								try {
+									resolve(text ? (JSON.parse(text) as T) : (undefined as T));
+								} catch (error) {
+									reject(error);
+								}
+							});
+						},
+					);
+					request.setTimeout(15000, () => request.destroy(new Error("opencode_timeout")));
+					request.on("error", reject);
+					request.end(body === undefined ? undefined : JSON.stringify(body));
+				});
+			};
+			const health = await request<{ healthy: boolean; version: string }>("/global/health");
+			if (!health.healthy || health.version !== "1.18.35")
+				throw new Error("opencode_unverified_protocol_version");
+			const native = await request<{ id: string; directory: string }>("/session", {
+				title: input.title,
+				permission: [{ permission: "*", pattern: "*", action: "ask" }],
+			});
+			if (native.directory !== cwd || !/^ses_[A-Za-z0-9_-]+$/.test(native.id))
+				throw new Error("opencode_directory_mismatch");
+			const nativePath = `/session/${encodeURIComponent(native.id)}`;
+			// A6: native sessions this runtime may address. The bound session plus
+			// children registered from an AUTHENTICATED fork result — snapshots only
+			// update OBSERVATION state and never grant control. Anything else is an
+			// explicit refusal (a bare id or a subtree match proves nothing).
+			const knownSessions = new Set<string>([native.id]);
+			// Per-target execution claims: ONE turn in flight per native session.
+			// Check-and-set is atomic within this single-threaded runtime, so two
+			// immediate prompts can never both pass before a snapshot reports busy.
+			interface Claim {
+				/** Unique per attempt: an old callback may never free a new claim. */
+				id: string;
+				/** Durable record path (unsettled across a supervisor crash). */
+				recordPath?: string;
+				/** Native user-message id sent with this request (correlation key). */
+				messageID: string;
+				state: ReturnType<typeof newClaimState>;
+				/** Attempt metadata mirrored into the durable record. */
+				attempt?: { instanceId: string; generation: number; nativeSessionId: string };
+			}
+			// native id -> in-flight claim bound to the REQUEST identity.
+			const executing = new Map<string, Claim>();
+			/** Incremented BEFORE the first await of each snapshot (observation gen). */
+			let snapshotSeq = 0;
+			// Claims whose outcome was never established survive a crash/restart as
+			// durable records. They BLOCK execution for their target until a later
+			// observation proves the turn ended (reconciliation).
+			const unsettled = new Map<
+				string,
+				{ messageID: string; kind: "prompt" | "command"; abortRequested: boolean }
+			>();
+			let claimsQuarantined = false;
+			const cleanupIssues: { claimId: string; path: string; error: string }[] = [];
+			// Freeze a target while ANY abort attempt is unresolved (attemptId-based,
+			// so repeated aborts never share one boolean).
+			const abortAttempts = new AbortAttempts();
+			// Targets under a controlled RESUME (check + report window): no new
+			// delivery or abort may start while the resume decision is in flight.
+			const resumeLocked = new Set<string>();
+			// A resume whose report outcome is UNKNOWN: permanently frozen until an
+			// explicit reconciliation clears it.
+			const resumeUncertain = new Set<string>();
+			const uncertainDirectory = join(
+				this.config.stateDirectory,
+				"resume-uncertain",
+				input.instanceId.replace(/[^A-Za-z0-9_-]/g, "_"),
+			);
+			// INDEPENDENT durable abort attempts (survive restarts; multiple per
+			// target; a standalone abort has no claim record of its own).
+			const attemptsDirectory = join(
+				this.config.stateDirectory,
+				"abort-attempts",
+				input.instanceId.replace(/[^A-Za-z0-9_-]/g, "_"),
+			);
+			await mkdir(attemptsDirectory, { recursive: true, mode: 0o700 });
+			const attemptFiles = new Map<string, string>();
+			interface PersistedAttempt {
+				attemptId: string;
+				nativeSessionId: string;
+				claimId: string;
+				createdAt: string;
+			}
+			const persistedAttempts = new Map<string, PersistedAttempt>();
+			for (const name of await readdir(attemptsDirectory)) {
+				if (!name.endsWith(".json")) continue;
+				try {
+					const record = JSON.parse(
+						await readFile(join(attemptsDirectory, name), "utf8"),
+					) as Record<string, unknown>;
+					if (
+						record.version !== 1 ||
+						record.instanceId !== input.instanceId ||
+						record.generation !== input.generation ||
+						typeof record.nativeSessionId !== "string" ||
+						!/^ses_[A-Za-z0-9_-]+$/.test(record.nativeSessionId) ||
+						typeof record.attemptId !== "string" ||
+						typeof record.claimId !== "string" ||
+						typeof record.createdAt !== "string"
+					) {
+						claimsQuarantined = true;
+						continue;
+					}
+					// Recovered attempts are UNKNOWN: block the target if it ever
+					// becomes addressable again, never auto-resolve.
+					abortAttempts.begin(
+						record.nativeSessionId,
+						record.attemptId,
+						record.claimId,
+						true,
+					);
+					attemptFiles.set(record.attemptId, join(attemptsDirectory, name));
+					persistedAttempts.set(record.attemptId, {
+						attemptId: record.attemptId,
+						nativeSessionId: record.nativeSessionId,
+						claimId: record.claimId,
+						createdAt: record.createdAt,
+					});
+				} catch {
+					claimsQuarantined = true;
+				}
+			}
+			await mkdir(uncertainDirectory, { recursive: true, mode: 0o700 });
+			let uncertainFiles: string[];
+			try {
+				uncertainFiles = await readdir(uncertainDirectory);
+			} catch {
+				// Fail closed: we cannot enumerate resume intents.
+				claimsQuarantined = true;
+				uncertainFiles = [];
+			}
+			for (const name of uncertainFiles) {
+				if (!name.endsWith(".json")) continue;
+				try {
+					const record = JSON.parse(
+						await readFile(join(uncertainDirectory, name), "utf8"),
+					) as Record<string, unknown>;
+					if (
+						record.version !== 1 ||
+						record.instanceId !== input.instanceId ||
+						record.generation !== input.generation ||
+						typeof record.nativeSessionId !== "string" ||
+						!/^ses_[A-Za-z0-9_-]+$/.test(record.nativeSessionId)
+					) {
+						claimsQuarantined = true;
+						continue;
+					}
+					resumeUncertain.add(record.nativeSessionId);
+				} catch {
+					claimsQuarantined = true;
+				}
+			}
+			const removeAttemptFile = async (attemptId: string) => {
+				const path = attemptFiles.get(attemptId);
+				if (!path) return;
+				try {
+					await unlink(path);
+				} catch (error) {
+					// The tracker already settled this attempt, so the IN-MEMORY fence
+					// is released; the file remains as a PENDING-CLEANUP record and
+					// will freeze the target again after a restart. It is listed here
+					// as a cleanup problem — never described as a live fence.
+					cleanupIssues.push({
+						claimId: attemptId,
+						path,
+						error: error instanceof Error ? error.message : "attempt_unlink_failed",
+					});
+					return;
+				}
+				attemptFiles.delete(attemptId);
+				persistedAttempts.delete(attemptId);
+			};
+			// Freeze a target while ANY abort attempt is unresolved. An attempt is
+			// resolved only when BOTH the native request responded AND the claim it
+			// was aimed at ended — claim release alone must not lift the fence.
+			const claimsDirectory = join(
+				this.config.stateDirectory,
+				"claims",
+				input.instanceId.replace(/[^A-Za-z0-9_-]/g, "_"),
+			);
+			{
+				await mkdir(claimsDirectory, { recursive: true, mode: 0o700 });
+				for (const name of await readdir(claimsDirectory)) {
+					if (!name.endsWith(".json")) continue;
+					try {
+						const record = JSON.parse(
+							await readFile(join(claimsDirectory, name), "utf8"),
+						) as Record<string, unknown>;
+						// FAIL CLOSED: a record we cannot fully attribute means this
+						// instance's claim state is unknown — quarantine the instance
+						// rather than executing with a possibly lost claim.
+						if (
+							record.version !== 1 ||
+							record.instanceId !== input.instanceId ||
+							record.generation !== input.generation ||
+							typeof record.nativeSessionId !== "string" ||
+							!/^ses_[A-Za-z0-9_-]+$/.test(record.nativeSessionId) ||
+							typeof record.messageID !== "string" ||
+							(record.kind !== "prompt" && record.kind !== "command")
+						) {
+							claimsQuarantined = true;
+							continue;
+						}
+						unsettled.set(record.nativeSessionId, {
+							messageID: record.messageID,
+							kind: record.kind,
+							abortRequested: record.abortRequested === true,
+						});
+					} catch {
+						// Unreadable/corrupt: quarantine the instance, keep the file.
+						claimsQuarantined = true;
+					}
+				}
+			}
+			/**
+			 * One fork window at a time: no prompt/command may run between the
+			 * snapshot and the native fork, or the captured parent state would be
+			 * a lie.
+			 */
+			let forking = false;
+			const withExclusiveFork = async <T>(run: () => Promise<T>): Promise<T> => {
+				if (forking) throw new Error("opencode_fork_busy");
+				forking = true;
+				try {
+					const deadline = Date.now() + 30_000;
+					while (executing.size > 0) {
+						if (Date.now() > deadline) throw new Error("opencode_fork_wait_timeout");
+						await Bun.sleep(50);
+					}
+					return await run();
+				} finally {
+					forking = false;
+				}
+			};
+			// Targets must be in the TRUSTED addressable set (bound session or a
+			// child registered from an authenticated fork result).
+			// Correlation helpers over the native message list. The COMPLETION of
+			// THIS request is proven only by an assistant message whose parentID is
+			// our messageID (and which is completed/failed), never by "some new id".
+			const assistantFor = (list: unknown[], messageID: string) =>
+				list.find((item) => {
+					const info = (item as { info?: Record<string, unknown> })?.info;
+					return info?.role === "assistant" && info?.parentID === messageID;
+				}) as { info?: Record<string, unknown> } | undefined;
+			// Evidence helpers live in claim-evidence.ts (unit-tested there).
+			const hasUserMessage = (list: unknown[], messageID: string) =>
+				list.some((item) => {
+					const info = (item as { info?: Record<string, unknown> })?.info;
+					return info?.id === messageID;
+				});
+			/**
+			 * Atomic pre-claim happens BEFORE any await; the baseline read can then
+			 * never interleave two same-target attempts. A baseline failure frees
+			 * only THIS claim id.
+			 */
+			// Per-claim file operations are SERIALIZED: an abort-intent write and a
+			// settlement delete can never interleave (no resurrected records).
+			const claimFileOps = new Map<string, Promise<void>>();
+			const enqueueClaimFileOp = (claimId: string, op: () => Promise<void>): Promise<void> => {
+				const previous = claimFileOps.get(claimId) ?? Promise.resolve();
+				let tracked: Promise<void>;
+				tracked = previous.then(op, op).finally(() => {
+					if (claimFileOps.get(claimId) === tracked) claimFileOps.delete(claimId);
+				});
+				claimFileOps.set(claimId, tracked);
+				return tracked;
+			};
+			const release = async (id: string, claim: Claim) => {
+				if (executing.get(id) !== claim) return;
+				executing.delete(id);
+				// The tracker returns EXACTLY the attempts that became settled now; a
+				// target-level frozen check would miss them (they are already removed).
+				for (const settledAttempt of abortAttempts.claimEnded(id, claim.id))
+					await removeAttemptFile(settledAttempt.attemptId);
+				if (!claim.recordPath) return;
+				try {
+					await enqueueClaimFileOp(claim.id, async () => {
+						try {
+							await unlink(claim.recordPath as string);
+						} catch (error) {
+							if ((error as { code?: string }).code === "ENOENT") return;
+							throw error;
+						}
+					});
+				} catch (error) {
+					// Cannot delete the durable record: FAIL CLOSED now (block the
+					// target) and keep the attempt observable.
+					unsettled.set(id, {
+						messageID: claim.messageID,
+						kind: claim.state.kind,
+						abortRequested: claim.state.abortRequested,
+					});
+					cleanupIssues.push({
+						claimId: claim.id,
+						path: claim.recordPath,
+						error: error instanceof Error ? error.message : "unlink_failed",
+					});
+				}
+			};
+			const integrate = async (
+				kind: "prompt" | "command",
+				target?: string,
+			): Promise<{ id: string; path: string; claim: Claim }> => {
+				const id = target ?? native.id;
+				if (id !== native.id && !knownSessions.has(id))
+					throw new Error("opencode_unknown_native_session");
+				if (claimsQuarantined) throw new Error("opencode_claims_quarantine");
+				if (abortAttempts.frozen(id)) throw new Error("opencode_abort_pending");
+				if (resumeLocked.has(id) || resumeUncertain.has(id))
+					throw new Error("opencode_resume_pending");
+				if (unsettled.has(id)) throw new Error("opencode_session_unsettled");
+				if (forking) throw new Error("opencode_session_busy");
+				if (executing.has(id)) throw new Error("opencode_session_busy");
+				if (id === native.id) {
+					const current = this.instances.get(input.sessionId);
+					if (!current || current.pending) throw new Error("opencode_session_busy");
+				}
+				const claim: Claim = {
+					id: crypto.randomUUID(),
+					messageID: `msg_ap_${crypto.randomUUID().replaceAll("-", "")}`,
+					state: newClaimState(kind, snapshotSeq + 1),
+				};
+				executing.set(id, claim); // synchronous: no interleaving here
+				try {
+					claim.recordPath = join(claimsDirectory, `${claim.id}.json`);
+					claim.attempt = {
+						instanceId: input.instanceId,
+						generation: input.generation,
+						nativeSessionId: id,
+					};
+					// Atomic + fsync; a write failure REFUSES delivery (catch releases
+					// and rethrows).
+					await writePrivateFileAtomic(
+						claim.recordPath,
+						JSON.stringify({
+							version: 1,
+							...claim.attempt,
+							messageID: claim.messageID,
+							kind,
+							abortRequested: false,
+							createdAt: new Date().toISOString(),
+						}),
+					);
+					await request<unknown[]>(`/session/${encodeURIComponent(id)}/message`);
+				} catch (error) {
+					await release(id, claim);
+					throw error;
+				}
+				return { id, path: id === native.id ? nativePath : `/session/${encodeURIComponent(id)}`, claim };
+			};
+			const pathFor = (target?: string): string => {
+				if (!target || target === native.id) return nativePath;
+				if (!knownSessions.has(target)) throw new Error("opencode_unknown_native_session");
+				return `/session/${encodeURIComponent(target)}`;
+			};
+			const subscriptions = new Set<() => void>();
+			const runtime: OpenCodeRuntime = {
+				ledgerDirectory: ledgerDirectory ?? directory,
+				/**
+				 * Evidence captured in the CONTROLLED WINDOW before the native fork.
+				 * The server verifies this exact snapshot; the action metadata mirror
+				 * is NOT accepted as evidence.
+				 */
+				async captureForkSnapshot(forkPointMessageId?: string | null) {
+					const list = await request<unknown[]>(`${nativePath}/message`);
+					const { createHash } = await import("node:crypto");
+					const messages = list.map((item) => {
+						const info = (item as { info?: { id?: unknown; time?: { created?: unknown } } })
+							?.info;
+						const created = Number(info?.time?.created ?? 0);
+						const occurredAt =
+							created > 0 ? new Date(created).toISOString() : new Date(0).toISOString();
+						const parts = Array.isArray((item as { parts?: unknown[] }).parts)
+							? ((item as { parts: unknown[] }).parts as {
+									time?: { start?: number; end?: number };
+								}[])
+							: [];
+						return {
+							nativeId: String(info?.id ?? ""),
+							contentHash: createHash("sha256").update(JSON.stringify(item)).digest("hex"),
+							occurredAt,
+							parts: parts.map((part) => {
+								const start = Number(part?.time?.start ?? 0);
+								return {
+									fingerprint: partFingerprint(part),
+									occurredAt:
+										start > 0 ? new Date(start).toISOString() : occurredAt,
+								};
+							}),
+						};
+					});
+					return {
+						version: 1 as const,
+						instanceId: input.instanceId,
+						nativeSessionId: native.id,
+						messages,
+						forkPointMessageId: forkPointMessageId ?? null,
+					};
+				},
+				/** Runs capture+fork with the instance/source session exclusively held. */
+				withExclusiveFork,
+				async forkSession(nativeSessionId?: string, body?: Record<string, unknown>) {
+					// SLICE LIMIT: only the bound root session, full-history fork.
+					if (nativeSessionId && nativeSessionId !== native.id)
+						throw new Error("opencode_fork_child_source_unsupported");
+					const created = await request<{ id?: unknown; parentID?: unknown }>(`${nativePath}/fork`, {
+						...(body ?? {}),
+					});
+					if (typeof created?.id !== "string" || !/^ses_[A-Za-z0-9_-]+$/.test(created.id))
+						throw new Error("opencode_fork_invalid_result");
+					// NOT addressable yet: registration is granted only after the
+					// server commits the managed binding (registerManagedChild).
+					return { id: created.id, parentID: typeof created.parentID === "string" ? created.parentID : null };
+				},
+				/**
+				 * Execution-time copy map. Native fork REMAPS ids and is
+				 * exclusive at the fork point, so the child history is the parent
+				 * prefix: child[i] <-> parent[i], never by id lookup.
+				 */
+				/** Last user-message id of the target (the turn identity to bind). */
+				async lastUserMessageId(target: string) {
+					const view = await runtime.snapshot();
+					const list =
+						target === native.id
+							? view.messages
+							: (view.children ?? []).find((child) => child.session.id === target)?.messages;
+					if (!list) return null;
+					for (const item of [...list].reverse()) {
+						const info = (item as { info?: { id?: unknown; role?: unknown } }).info;
+						if (info?.role === "user" && typeof info.id === "string") return info.id;
+					}
+					return null;
+				},
+				/**
+				 * NATIVE termination evidence AFTER an abort, BOUND to the turn that was
+				 * running when the abort was requested. Missing target / empty message
+				 * list / a NEWER user turn = UNKNOWN (never success). Terminality reuses
+				 * the strict whole-turn rule (completed, finish != tool-calls, no
+				 * running tool, or an error/cancel marker).
+				 */
+				async waitForNativeTermination(target: string, turnMessageId: string, timeoutMs = 15_000) {
+					if (!turnMessageId) return false;
+					const deadline = Date.now() + timeoutMs;
+					let quiet = 0;
+					while (Date.now() < deadline) {
+						const view = await runtime.snapshot();
+						const list =
+							target === native.id
+								? view.messages
+								: (view.children ?? []).find((child) => child.session.id === target)?.messages;
+						// Missing target or no evidence is NOT termination.
+						if (!list || list.length === 0) {
+							quiet = 0;
+							await Bun.sleep(200);
+							continue;
+						}
+						const raw = view.sessions[target]?.type;
+						const busy = raw === "busy" || raw === "retry";
+						const lastUser = [...list]
+							.reverse()
+							.find((item) => (item as { info?: Record<string, unknown> }).info?.role === "user") as
+							| { info?: Record<string, unknown> }
+							| undefined;
+						// The turn must not have been replaced by a newer user message.
+						const sameTurn = lastUser?.info?.id === turnMessageId;
+						const ended = sameTurn && abortTerminal(list, turnMessageId);
+						if (!busy && ended) quiet += 1;
+						else quiet = 0;
+						if (quiet >= 2) {
+							// The TURN ended. Only attempts whose OWN request already
+							// responded can be settled now; an in-flight abort stays UNKNOWN
+							// and keeps blocking (it could still land on a new turn).
+							for (const settledAttempt of abortAttempts.settleResponded(target))
+								await removeAttemptFile(settledAttempt.attemptId);
+							return true;
+						}
+						await Bun.sleep(200);
+					}
+					return false;
+				},
+				async captureChildMap(
+					childNativeSessionId: string,
+					parentSnapshot: ForkSnapshot,
+				): Promise<ForkChildMap> {
+					const childMessages = await request<unknown[]>(
+						`/session/${encodeURIComponent(childNativeSessionId)}/message`,
+					);
+					if (childMessages.length > parentSnapshot.messages.length)
+						throw new Error("opencode_fork_child_prefix_invalid");
+					return {
+						version: 1,
+						forkPointMessageId: parentSnapshot.forkPointMessageId,
+						pairs: childMessages.map((item, index) => {
+							const parentMessage = parentSnapshot.messages[index];
+							if (!parentMessage) throw new Error("opencode_fork_child_prefix_invalid");
+							const childParts = Array.isArray((item as { parts?: unknown[] }).parts)
+								? ((item as { parts: unknown[] }).parts as {
+										time?: { start?: number };
+									}[])
+								: [];
+							return {
+								parentNativeId: parentMessage.nativeId,
+								childNativeId: String((item as { info?: { id?: unknown } })?.info?.id ?? ""),
+								parentOccurredAt: parentMessage.occurredAt,
+								parts: childParts.map((part, partIndex) => {
+									const parentPart = parentMessage.parts[partIndex];
+									if (!parentPart) throw new Error("opencode_fork_child_prefix_invalid");
+									return {
+										fingerprint: parentPart.fingerprint,
+										parentOccurredAt: parentPart.occurredAt,
+									};
+								}),
+							};
+						}),
+					};
+				},
+				cleanupIssues() {
+					return [...cleanupIssues];
+				},
+				abortPending(target: string) {
+					return abortAttempts.frozen(target);
+				},
+				/**
+				 * INTERNAL reconciliation helper — NOT a recovery closure. A 404 only
+				 * proves "not found by THIS runtime under THIS directory"; it does not
+				 * prove the ORIGINAL process/storage domain is isolated. It therefore
+				 * refuses while any abort attempt is unresolved, and reports false if
+				 * any durable record could not be removed (nothing is deleted from the
+				 * in-memory set until every file is gone). A controlled operator entry
+				 * and the stopped→resume path remain OPEN.
+				 */
+				async reconcileUnsettled(target: string) {
+					if (abortAttempts.frozen(target)) return false;
+					try {
+						await request(`/session/${encodeURIComponent(target)}`);
+						return false; // still exists: NOT isolated
+					} catch (error) {
+						if (!/opencode_http_404/.test(String((error as Error).message))) return false;
+					}
+					// Remove the durable records FIRST; any failure keeps the target
+					// blocked and observable instead of reporting success.
+					const remaining: string[] = [];
+					let claimFiles: string[];
+					try {
+						claimFiles = await readdir(claimsDirectory);
+					} catch (error) {
+						// Cannot enumerate the durable records: NOT a clean state.
+						cleanupIssues.push({
+							claimId: target,
+							path: claimsDirectory,
+							error: error instanceof Error ? error.message : "reconcile_readdir_failed",
+						});
+						return false;
+					}
+					for (const name of claimFiles) {
+						if (!name.endsWith(".json")) continue;
+						const path = join(claimsDirectory, name);
+						try {
+							const record = JSON.parse(await readFile(path, "utf8")) as {
+								nativeSessionId?: unknown;
+							};
+							if (record.nativeSessionId !== target) continue;
+							await unlink(path);
+						} catch (error) {
+							remaining.push(path);
+							cleanupIssues.push({
+								claimId: target,
+								path,
+								error: error instanceof Error ? error.message : "reconcile_unlink_failed",
+							});
+						}
+					}
+					if (remaining.length > 0) return false;
+					for (const attempt of abortAttempts.pending(target)) {
+						abortAttempts.abandon(target, attempt.attemptId);
+						await removeAttemptFile(attempt.attemptId);
+					}
+					unsettled.delete(target);
+					return true;
+				},
+				/**
+				 * Controlled RESUME window: the target must be the SAME trusted,
+				 * addressable, live native session; deliveries and aborts are blocked
+				 * for the duration of the check (and the server's conditional flip +
+				 * token/epoch fence cover the report boundary).
+				 */
+				/** Unknown resume outcome: keep the target frozen until reconciliation. */
+				/**
+				 * Persist the resume INTENT (action/token/epoch/identity) BEFORE the
+				 * success report. A crash after the commit but before the response is
+				 * then still visible as an unresolved intent. Write failures are
+				 * fail-closed: the caller must not report success.
+				 */
+				async persistResumeIntent(
+					target: string,
+					intent: { actionId: string; claimToken: string; epoch: number },
+				) {
+					const path = join(uncertainDirectory, `${encodeURIComponent(target)}.json`);
+					await writePrivateFileAtomic(
+						path,
+						JSON.stringify({
+							version: 1,
+							instanceId: input.instanceId,
+							generation: input.generation,
+							nativeSessionId: target,
+							actionId: intent.actionId,
+							claimToken: intent.claimToken,
+							epoch: intent.epoch,
+							createdAt: new Date().toISOString(),
+						}),
+					);
+					resumeUncertain.add(target);
+					cleanupIssues.push({ claimId: intent.actionId, path, error: "resume_intent_pending" });
+				},
+				/** The success report landed: the intent is resolved. */
+				async resolveResumeIntent(target: string) {
+					const path = join(uncertainDirectory, `${encodeURIComponent(target)}.json`);
+					try {
+						await unlink(path);
+					} catch (error) {
+						if ((error as { code?: string }).code !== "ENOENT") {
+							cleanupIssues.push({
+								claimId: target,
+								path,
+								error: error instanceof Error ? error.message : "resume_intent_unlink_failed",
+							});
+							return false;
+						}
+					}
+					resumeUncertain.delete(target);
+					return true;
+				},
+				async markResumeUncertain(target: string) {
+					// Kept for the pre-report failure path (no intent was written).
+					resumeUncertain.add(target);
+				},
+				uncertainResumes() {
+					return [...resumeUncertain];
+				},
+				async withResumeLock<T>(target: string, run: () => Promise<T>): Promise<T> {
+					if (resumeUncertain.has(target))
+						throw new Error("opencode_resume_uncertain");
+					if (target !== native.id && !knownSessions.has(target))
+						throw new Error("opencode_unknown_native_session");
+					if (resumeLocked.has(target)) throw new Error("opencode_resume_pending");
+					resumeLocked.add(target);
+					try {
+						// Liveness/identity: the native session must still exist.
+						await request(`/session/${encodeURIComponent(target)}`);
+						return await run();
+					} finally {
+						resumeLocked.delete(target);
+					}
+				},
+				async clearResumeUncertain(target: string) {
+					const path = join(uncertainDirectory, `${encodeURIComponent(target)}.json`);
+					try {
+						await unlink(path);
+					} catch (error) {
+						if ((error as { code?: string }).code !== "ENOENT") {
+							cleanupIssues.push({
+								claimId: target,
+								path,
+								error: error instanceof Error ? error.message : "resume_clear_unlink_failed",
+							});
+							return false; // stay frozen until the durable record is gone
+						}
+					}
+					resumeUncertain.delete(target);
+					return true;
+				},
+				unsettledAbortAttempts() {
+					return [...persistedAttempts.values()];
+				},
+				unsettledClaims() {
+					return [...unsettled.entries()].map(([nativeSessionId, record]) => ({
+						nativeSessionId,
+						...record,
+					}));
+				},
+				registerManagedChild(nativeSessionId: string) {
+					if (!/^ses_[A-Za-z0-9_-]+$/.test(nativeSessionId))
+						throw new Error("opencode_invalid_child_session");
+					if (nativeSessionId === native.id) throw new Error("opencode_invalid_child_session");
+					knownSessions.add(nativeSessionId);
+				},
+				/**
+				 * Fetch ONE trusted child's own observation. The native identity
+				 * (directory) and interaction scoping are checked here; the server
+				 * still re-validates the binding/ledger before writing anything.
+				 */
+				async forkChildSnapshot(nativeSessionId: string) {
+					if (nativeSessionId === native.id || !knownSessions.has(nativeSessionId))
+						throw new Error("opencode_unknown_native_session");
+					const path = `/session/${encodeURIComponent(nativeSessionId)}`;
+					let session: { id?: unknown; directory?: unknown };
+					try {
+						session = await request<{ id?: unknown; directory?: unknown }>(path);
+					} catch (error) {
+						if (/opencode_http_404/.test(String((error as Error).message))) return null;
+						throw error;
+					}
+					if (session.id !== nativeSessionId || session.directory !== cwd)
+						throw new Error("opencode_child_directory_mismatch");
+					const [messages, permissions, questions, status] = await Promise.all([
+						request<unknown[]>(`${path}/message`),
+						request<unknown[]>("/permission"),
+						request<unknown[]>("/question"),
+						request<Record<string, { type: string }>>("/session/status"),
+					]);
+					const belongs = (item: unknown) =>
+						(item as { sessionID?: unknown } | null)?.sessionID === nativeSessionId;
+					return {
+						messages,
+						permissions: permissions.filter(belongs),
+						questions: questions.filter(belongs),
+						status: status[nativeSessionId] ?? { type: "idle" },
+					};
+				},
+				subscribe(onEvent) {
+					let stopped = false;
+					let active: ReturnType<typeof httpRequest> | undefined;
+					let timer: ReturnType<typeof setTimeout> | undefined;
+					const connect = () => {
+						if (stopped) return;
+						const url = new URL("/event", base);
+						url.searchParams.set("directory", cwd);
+						active = httpRequest(
+							url,
+							{ headers: { Authorization: `Basic ${btoa(`agentpulse:${password}`)}` } },
+							(response) => {
+								if (response.statusCode !== 200) {
+									response.resume();
+									return;
+								}
+								let buffer = "";
+								response.on("data", (chunk) => {
+									buffer += chunk.toString();
+									if (buffer.length > 2097152) buffer = "";
+									let boundary: number;
+									while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+										const frame = buffer.slice(0, boundary);
+										buffer = buffer.slice(boundary + 2);
+										if (frame.includes("data:")) onEvent();
+									}
+								});
+							},
+						);
+						active.on("error", () => {});
+						active.on("close", () => {
+							if (!stopped) {
+								timer = setTimeout(connect, 1000);
+								timer.unref();
+							}
+						});
+						active.end();
+					};
+					connect();
+					const cancel = () => {
+						stopped = true;
+						if (timer) clearTimeout(timer);
+						active?.destroy();
+						subscriptions.delete(cancel);
+					};
+					subscriptions.add(cancel);
+					return cancel;
+				},
+				...input,
+				cwd,
+				directory,
+				pid: child.pid,
+				nativeSessionId: native.id,
+				request,
+				touch: () => {
+					const entry = this.instances.get(input.sessionId);
+					if (entry) entry.lastUsed = Date.now();
+				},
+				prompt: async (text, options) => {
+					const claim = await integrate("prompt", options?.nativeSessionId);
+					const entry = this.instances.get(input.sessionId);
+					if (entry) entry.lastUsed = Date.now();
+					// No explicit model: inherit the session's current one (a previous
+					// explicit carry switches it natively and stickily per session).
+					// Never retry an ambiguous transport failure: native messageID is not part-idempotent.
+					try {
+						await request(`${claim.path}/prompt_async`, {
+							messageID: claim.claim.messageID,
+							...(options?.model ? { model: options.model } : {}),
+							...(options?.agent ? { agent: options.agent } : {}),
+							parts: [{ type: "text", text }],
+						});
+					} catch (error) {
+						// DEFINITIVE rejection (4xx) never accepted the turn — free it.
+						// Transport loss/timeout/5xx is UNKNOWN: keep the claim held.
+						const status = Number(/opencode_http_(\d{3})/.exec(String((error as Error).message))?.[1]);
+						if (status >= 400 && status < 500) await release(claim.id, claim.claim);
+						throw new Error("opencode_prompt_delivery_uncertain", { cause: error });
+					}
+					return { messageID: claim.claim.messageID };
+				},
+				runCommand: async (command, args, options) => {
+					// Native custom-command execution: the instance expands the command
+					// template as a user message and runs it. TUI built-ins are NOT
+					// valid here (verified: 1.18.35 answers UnknownError).
+					if (!/^[a-zA-Z0-9_-]+$/.test(command)) throw new Error("opencode_invalid_command");
+					const claim = await integrate("command", options?.nativeSessionId);
+					try {
+						await request(`${claim.path}/command`, {
+						command,
+						arguments: args ?? "",
+						messageID: `msg_${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`,
+						// /command's model field is the "provider/model" string form.
+						...(options?.model
+							? { model: `${options.model.providerID}/${options.model.modelID}` }
+							: {}),
+							...(options?.agent ? { agent: options.agent } : {}),
+						});
+					} catch (error) {
+						const status = Number(
+							/opencode_http_(\d{3})/.exec(String((error as Error).message))?.[1],
+						);
+						// Only a definitive 4xx proves the command never ran.
+						if (status >= 400 && status < 500) await release(claim.id, claim.claim);
+						throw error;
+					}
+					runtime.touch();
+				},
+				abort: async (nativeSessionId?: string) => {
+					const id = nativeSessionId ?? native.id;
+					const attemptId = crypto.randomUUID();
+					const held = executing.get(id);
+					// A target with NO claim is still frozen while the request is in
+					// flight (a prompt may start during the delay and be killed by this
+					// very abort): claimEnded starts true, the response releases it.
+					if (resumeLocked.has(id) || resumeUncertain.has(id))
+					throw new Error("opencode_resume_pending");
+					abortAttempts.begin(id, attemptId, held?.id ?? "");
+					const attemptPath = join(attemptsDirectory, `${attemptId}.json`);
+					attemptFiles.set(attemptId, attemptPath);
+					await writePrivateFileAtomic(
+						attemptPath,
+						JSON.stringify({
+							version: 1,
+							instanceId: input.instanceId,
+							generation: input.generation,
+							nativeSessionId: id,
+							attemptId,
+							claimId: held?.id ?? "",
+							createdAt: new Date().toISOString(),
+						}),
+					);
+					if (held?.recordPath && held.attempt) {
+						const path = held.recordPath;
+						const attempt = held.attempt;
+						const messageID = held.messageID;
+						const kind = held.state.kind;
+						try {
+							// PRE-NETWORK failure only: the request was never sent, so the
+							// attempt is abandoned (nothing can be killed later).
+							await enqueueClaimFileOp(held.id, () =>
+								writePrivateFileAtomic(
+									path,
+									JSON.stringify({
+										version: 1,
+										...attempt,
+										messageID,
+										kind,
+										abortRequested: true,
+										createdAt: new Date().toISOString(),
+									}),
+								),
+							);
+						} catch (error) {
+							abortAttempts.abandon(id, attemptId);
+							throw error;
+						}
+					}
+					try {
+						const delay = this.config.abortRequestDelayMs ?? 0;
+						if (delay > 0) await Bun.sleep(delay);
+						await request(`${pathFor(nativeSessionId)}/abort`, {});
+						if (this.config.abortResponseLossOnce) {
+							// The native side accepted it; only the RESPONSE is lost.
+							this.config.abortResponseLossOnce = false;
+							throw new Error("opencode_abort_response_lost");
+						}
+					} catch (error) {
+						// NETWORK STARTED: outcome UNKNOWN (maybe executed, maybe late).
+						// Keep the attempt/fence and surface it for reconciliation.
+						cleanupIssues.push({
+							claimId: held?.id ?? attemptId,
+							path: held?.recordPath ?? "",
+							error: "abort_transport_unknown",
+						});
+						throw error;
+					}
+					// A claim-bound attempt is resolved once BOTH the response and the
+					// claim end are known; a STANDALONE attempt stays persisted until a
+					// verified transport settlement or explicit isolation.
+					if (abortAttempts.respond(id, attemptId)) await removeAttemptFile(attemptId);
+					const current = executing.get(id);
+					if (held && current && current.id === held.id)
+						current.state = markAbort(current.state, snapshotSeq + 1);
+					runtime.touch();
+				},
+				stop: async () => {
+					for (const cancel of subscriptions) cancel();
+					// Only our live child handle can be signalled; no recovered PID or caller URL is trusted.
+					if (child.exitCode === null) {
+						child.kill("SIGTERM");
+						await Promise.race([
+							child.exited,
+							new Promise<void>((resolve) => setTimeout(resolve, this.config.stopGraceMs)),
+						]);
+						if (child.exitCode === null) {
+							child.kill("SIGKILL");
+							await child.exited;
+						}
+					}
+					this.instances.delete(input.sessionId);
+					await rm(configPath, { force: true });
+				},
+				snapshot: async () => {
+					// Observation generation: a snapshot that began BEFORE a claim
+					// (or before an abort) can never settle it, even if it returns
+					// later with a stale idle status.
+					const seq = ++snapshotSeq;
+					
+					const [
+						messages,
+						permissions,
+						questions,
+						status,
+						nativeSessions,
+						commands,
+						agents,
+						providers,
+					] = await Promise.all([
+						request<unknown[]>(`${nativePath}/message`),
+						request<unknown[]>("/permission"),
+						request<unknown[]>("/question"),
+						request<Record<string, { type: string }>>("/session/status"),
+						request<Record<string, unknown>[]>("/session"),
+						request<unknown[]>("/command").catch(() => []),
+						request<unknown[]>("/agent").catch(() => []),
+						request<unknown>("/config/providers").catch(() => null),
+					]);
+					const descendants = new Set<string>([native.id]);
+					for (const id of knownSessions) descendants.add(id);
+					for (let depth = 0; depth < 64; depth++) {
+						let changed = false;
+						for (const session of nativeSessions) {
+							if (
+								typeof session.id === "string" &&
+								session.directory === cwd &&
+								descendants.has(String(session.parentID)) &&
+								!descendants.has(session.id)
+							) {
+								descendants.add(session.id);
+								changed = true;
+							}
+						}
+						if (!changed) break;
+					}
+					const children = await Promise.all(
+						nativeSessions
+							.filter((session) => session.id !== native.id && descendants.has(String(session.id)))
+							.slice(0, 256)
+							.map(async (session) => ({
+								session,
+								messages: await request<unknown[]>(
+									`/session/${encodeURIComponent(String(session.id))}/message`,
+								),
+							})),
+					);
+					const belongs = (item: unknown) =>
+						descendants.has(String((item as { sessionID?: string })?.sessionID));
+					const hasRunningTools = [messages, ...children.map((child) => child.messages)]
+						.flat()
+						.some(
+							(value) =>
+								Array.isArray((value as { parts?: unknown[] }).parts) &&
+								(value as { parts: unknown[] }).parts.some((part) => {
+									const p = part as { type?: string; state?: { status?: string } };
+									return (
+										p.type === "tool" && ["running", "pending"].includes(p.state?.status ?? "")
+									);
+								}),
+						);
+					// Snapshots OBSERVE descendants; they never add them to the
+					// addressable set (only an authenticated fork result does).
+					// A target is no longer executing once its native status is idle.
+					for (const [id, claim] of [...executing]) {
+						const current =
+							id === native.id
+								? messages
+								: (children.find((child) => child.session.id === id)?.messages ?? []);
+						const raw = status[id]?.type;
+						const observation = {
+							seq,
+							status:
+								raw === "busy" || raw === "retry"
+									? ("busy" as const)
+									: raw === undefined
+										? ("missing" as const)
+										: ("idle" as const),
+							quiet:
+								!permissions.some((item) => (item as { sessionID?: string }).sessionID === id) &&
+								!questions.some((item) => (item as { sessionID?: string }).sessionID === id),
+							turnTerminal: turnTerminal(current, claim.messageID),
+							abortTerminal: abortTerminal(current, claim.messageID),
+							runningTools: runningTools(current),
+						};
+						const outcome = observeClaim(claim.state, observation);
+						claim.state = outcome.state;
+						if (outcome.release) await release(id, claim);
+					}
+					const boundBusy = status[native.id]?.type === "busy" || status[native.id]?.type === "retry";
+					const entry = this.instances.get(input.sessionId);
+					if (entry) {
+						// Instance entry tracks the BOUND session only; a busy CHILD
+						// must not gate the parent (and vice versa).
+						entry.busy = boundBusy;
+						entry.pending = permissions.some(
+							(item) => (item as { sessionID?: string }).sessionID === native.id,
+						) || questions.some((item) => (item as { sessionID?: string }).sessionID === native.id);
+						if (entry.busy || entry.pending) entry.lastUsed = Date.now();
+					}
+					return {
+						messages,
+						children,
+						permissions: permissions.filter(belongs),
+						questions: questions.filter(belongs),
+						status: status[native.id] ?? { type: "idle" },
+						sessions: status,
+						commands,
+						agents,
+						providers,
+					};
+				},
+			};
+			writePrivateFileSyncNoFollow(
+				join(directory, "manifest.json"),
+				JSON.stringify({
+					instanceId: input.instanceId,
+					sessionId: input.sessionId,
+					generation: input.generation,
+					pid: child.pid,
+					startTicks: await processStartTicks(child.pid),
+					cwd,
+					nativeSessionId: native.id,
+					protocolVersion: health.version,
+					startedAt: new Date().toISOString(),
+				}),
+			);
+			void child.exited.then(() => {
+				const current = this.instances.get(input.sessionId);
+				if (current?.runtime.pid === child.pid) this.instances.delete(input.sessionId);
+			});
+			this.instances.set(input.sessionId, {
+				runtime,
+				lastUsed: Date.now(),
+				busy: false,
+				pending: false,
+			});
+			return runtime;
+		} catch (error) {
+			if (process && process.exitCode === null) {
+				process.kill("SIGKILL");
+				await process.exited;
+			}
+			if (directory) await rm(directory, { recursive: true, force: true });
+			throw error;
+		} finally {
+			this.starting.delete(input.sessionId);
+		}
+	}
+	async reapIdle(now = Date.now()) {
+		const stopped: string[] = [];
+		for (const [id, entry] of this.instances) {
+			// Recheck pending and busy on the native server; failure is not proof of idleness.
+			try {
+				await entry.runtime.snapshot();
+			} catch {
+				continue;
+			}
+			if (!entry.busy && !entry.pending && now - entry.lastUsed >= this.config.idleTimeoutMs) {
+				await entry.runtime.stop();
+				stopped.push(id);
+			}
+		}
+		return stopped;
+	}
+	async close() {
+		await Promise.all([...this.instances.values()].map((entry) => entry.runtime.stop()));
+	}
+}
+
+/** Tiny real model request: registry membership is not credential/model health. */
+export async function checkOpenCodeProfileHealth(path: string): Promise<OpenCodeHealth> {
+	let profile: OpenCodeProfile;
+	try {
+		profile = await readOpenCodeProfile(path);
+	} catch {
+		return "not_configured";
+	}
+	const [providerID, ...model] = profile.model.split("/");
+	const options = profile.provider[providerID].options;
+	try {
+		const url = new URL("chat/completions", `${options.baseURL?.replace(/\/$/, "")}/`);
+		const status = await new Promise<number>((resolve, reject) => {
+			const request = (url.protocol === "https:" ? httpsRequest : httpRequest)(
+				url,
+				{
+					method: "POST",
+					headers: {
+						Authorization: `Bearer ${options.apiKey}`,
+						"Content-Type": "application/json",
+					},
+				},
+				(response) => {
+					response.resume();
+					resolve(response.statusCode ?? 500);
+				},
+			);
+			request.setTimeout(15000, () => request.destroy(new Error("timeout")));
+			request.on("error", reject);
+			request.end(
+				JSON.stringify({
+					model: model.join("/"),
+					messages: [{ role: "user", content: "Reply OK" }],
+					max_tokens: 1,
+					stream: false,
+				}),
+			);
+		});
+		if (status === 401 || status === 403) return "authentication_failed";
+		if (status === 404) return "model_unavailable";
+		return status >= 200 && status < 300 ? "ready" : "unavailable";
+	} catch {
+		return "unavailable";
+	}
+}

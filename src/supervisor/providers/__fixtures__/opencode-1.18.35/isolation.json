@@ -1,0 +1,20 @@
+{
+  "without_pure": {
+    "global-singular": true,
+    "global-plural": true,
+    "project-singular": true,
+    "project-plural": true,
+    "explicit": true
+  },
+  "with_pure": {
+    "global-singular": false,
+    "global-plural": false,
+    "project-singular": false,
+    "project-plural": false,
+    "explicit": false
+  },
+  "debug_paths": "home       <USER_HOME>\ndata       <P0_ROOT>/data/opencode\nbin        <P0_ROOT>/cache/opencode/bin\nlog        <P0_ROOT>/data/opencode/log\nrepos      <P0_ROOT>/data/opencode/repos\ncache      <P0_ROOT>/cache/opencode\nconfig     <P0_ROOT>/config/opencode\nstate      <P0_ROOT>/state/opencode\ntmp        <P0_ROOT>/tmp/opencode\n",
+  "db_paths": [
+    "data/opencode/opencode.db"
+  ]
+}

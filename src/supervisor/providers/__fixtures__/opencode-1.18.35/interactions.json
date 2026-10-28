@@ -1,0 +1,1370 @@
+[
+  {
+    "path": "/session",
+    "method": "POST",
+    "request": {
+      "title": "P0 permission once",
+      "permission": [
+        {
+          "permission": "bash",
+          "pattern": "*",
+          "action": "ask"
+        }
+      ]
+    },
+    "response": {
+      "id": "ses_fixture2",
+      "slug": "crisp-falcon",
+      "projectID": "global",
+      "directory": "<P0_ROOT>/project",
+      "path": "",
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "title": "P0 permission once",
+      "version": "1.18.35",
+      "time": {
+        "created": 1792249253910,
+        "updated": 1792249253910
+      },
+      "permission": [
+        {
+          "permission": "bash",
+          "pattern": "*",
+          "action": "ask"
+        }
+      ]
+    }
+  },
+  {
+    "path": "/session/ses_fixture2/prompt_async",
+    "method": "POST",
+    "request": {
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0_PERMISSION once"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": null
+  },
+  {
+    "case": "permission pending once",
+    "response": {
+      "id": "per_fixture1",
+      "sessionID": "ses_fixture2",
+      "permission": "bash",
+      "patterns": [
+        "printf P0_PERMISSION_OUTPUT"
+      ],
+      "metadata": {
+        "command": "printf P0_PERMISSION_OUTPUT"
+      },
+      "always": [
+        "printf *"
+      ],
+      "tool": {
+        "messageID": "msg_fixture3",
+        "callID": "call_p0_bash"
+      }
+    }
+  },
+  {
+    "path": "/permission/per_fixture1/reply",
+    "method": "POST",
+    "request": {
+      "reply": "once"
+    },
+    "response": true
+  },
+  {
+    "path": "/session/ses_fixture2/message",
+    "method": "GET",
+    "request": null,
+    "response": [
+      {
+        "info": {
+          "id": "msg_fixture4",
+          "sessionID": "ses_fixture2",
+          "role": "user",
+          "time": {
+            "created": 1792249253915
+          },
+          "agent": "build",
+          "model": {
+            "providerID": "p0",
+            "modelID": "fixture-model"
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture4",
+            "sessionID": "ses_fixture2",
+            "messageID": "msg_fixture4",
+            "type": "text",
+            "text": "P0_PERMISSION once"
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture3",
+          "sessionID": "ses_fixture2",
+          "role": "assistant",
+          "time": {
+            "created": 1792249253921,
+            "completed": 1792249254198
+          },
+          "parentID": "msg_fixture4",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "finish": "tool-calls"
+        },
+        "parts": [
+          {
+            "id": "prt_fixture5",
+            "sessionID": "ses_fixture2",
+            "messageID": "msg_fixture3",
+            "type": "step-start"
+          },
+          {
+            "id": "prt_fixture6",
+            "sessionID": "ses_fixture2",
+            "messageID": "msg_fixture3",
+            "type": "tool",
+            "callID": "call_p0_bash",
+            "tool": "bash",
+            "state": {
+              "status": "completed",
+              "input": {
+                "command": "printf P0_PERMISSION_OUTPUT",
+                "description": "P0 safe permission probe"
+              },
+              "output": "P0_PERMISSION_OUTPUT",
+              "title": "printf P0_PERMISSION_OUTPUT",
+              "metadata": {
+                "output": "P0_PERMISSION_OUTPUT",
+                "exit": 0,
+                "truncated": false
+              },
+              "time": {
+                "start": 1792249253945,
+                "end": 1792249254194
+              }
+            }
+          },
+          {
+            "id": "prt_fixture7",
+            "sessionID": "ses_fixture2",
+            "messageID": "msg_fixture3",
+            "type": "step-finish",
+            "reason": "tool-calls",
+            "cost": 0,
+            "tokens": {
+              "input": 0,
+              "output": 0,
+              "reasoning": 0,
+              "cache": {
+                "read": 0,
+                "write": 0
+              }
+            }
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture5",
+          "sessionID": "ses_fixture2",
+          "role": "assistant",
+          "time": {
+            "created": 1792249254200,
+            "completed": 1792249254242
+          },
+          "parentID": "msg_fixture4",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "finish": "stop"
+        },
+        "parts": [
+          {
+            "id": "prt_fixture8",
+            "sessionID": "ses_fixture2",
+            "messageID": "msg_fixture5",
+            "type": "step-start"
+          },
+          {
+            "id": "prt_fixture9",
+            "sessionID": "ses_fixture2",
+            "messageID": "msg_fixture5",
+            "type": "text",
+            "text": "P0_DONE",
+            "time": {
+              "start": 1792249254218,
+              "end": 1792249254220
+            }
+          },
+          {
+            "id": "prt_fixture10",
+            "sessionID": "ses_fixture2",
+            "messageID": "msg_fixture5",
+            "type": "step-finish",
+            "reason": "stop",
+            "cost": 0,
+            "tokens": {
+              "input": 0,
+              "output": 0,
+              "reasoning": 0,
+              "cache": {
+                "read": 0,
+                "write": 0
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "path": "/session",
+    "method": "POST",
+    "request": {
+      "title": "P0 permission reject",
+      "permission": [
+        {
+          "permission": "bash",
+          "pattern": "*",
+          "action": "ask"
+        }
+      ]
+    },
+    "response": {
+      "id": "ses_fixture3",
+      "slug": "misty-pixel",
+      "projectID": "global",
+      "directory": "<P0_ROOT>/project",
+      "path": "",
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "title": "P0 permission reject",
+      "version": "1.18.35",
+      "time": {
+        "created": 1792249254280,
+        "updated": 1792249254280
+      },
+      "permission": [
+        {
+          "permission": "bash",
+          "pattern": "*",
+          "action": "ask"
+        }
+      ]
+    }
+  },
+  {
+    "path": "/session/ses_fixture3/prompt_async",
+    "method": "POST",
+    "request": {
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0_PERMISSION reject"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": null
+  },
+  {
+    "case": "permission pending reject",
+    "response": {
+      "id": "per_fixture2",
+      "sessionID": "ses_fixture3",
+      "permission": "bash",
+      "patterns": [
+        "printf P0_PERMISSION_OUTPUT"
+      ],
+      "metadata": {
+        "command": "printf P0_PERMISSION_OUTPUT"
+      },
+      "always": [
+        "printf *"
+      ],
+      "tool": {
+        "messageID": "msg_fixture6",
+        "callID": "call_p0_bash"
+      }
+    }
+  },
+  {
+    "path": "/permission/per_fixture2/reply",
+    "method": "POST",
+    "request": {
+      "reply": "reject"
+    },
+    "response": true
+  },
+  {
+    "path": "/session/ses_fixture3/message",
+    "method": "GET",
+    "request": null,
+    "response": [
+      {
+        "info": {
+          "id": "msg_fixture7",
+          "sessionID": "ses_fixture3",
+          "role": "user",
+          "time": {
+            "created": 1792249254425
+          },
+          "agent": "build",
+          "model": {
+            "providerID": "p0",
+            "modelID": "fixture-model"
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture11",
+            "sessionID": "ses_fixture3",
+            "messageID": "msg_fixture7",
+            "type": "text",
+            "text": "P0_PERMISSION reject"
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture6",
+          "sessionID": "ses_fixture3",
+          "role": "assistant",
+          "time": {
+            "created": 1792249254445,
+            "completed": 1792249254555
+          },
+          "parentID": "msg_fixture7",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "finish": "tool-calls"
+        },
+        "parts": [
+          {
+            "id": "prt_fixture12",
+            "sessionID": "ses_fixture3",
+            "messageID": "msg_fixture6",
+            "type": "step-start"
+          },
+          {
+            "id": "prt_fixture13",
+            "sessionID": "ses_fixture3",
+            "messageID": "msg_fixture6",
+            "type": "tool",
+            "callID": "call_p0_bash",
+            "tool": "bash",
+            "state": {
+              "status": "error",
+              "input": {
+                "command": "printf P0_PERMISSION_OUTPUT",
+                "description": "P0 safe permission probe"
+              },
+              "error": "The user rejected permission to use this specific tool call.",
+              "time": {
+                "start": 1792249254457,
+                "end": 1792249254551
+              }
+            }
+          },
+          {
+            "id": "prt_fixture14",
+            "sessionID": "ses_fixture3",
+            "messageID": "msg_fixture6",
+            "type": "step-finish",
+            "reason": "tool-calls",
+            "cost": 0,
+            "tokens": {
+              "input": 0,
+              "output": 0,
+              "reasoning": 0,
+              "cache": {
+                "read": 0,
+                "write": 0
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "path": "/session",
+    "method": "POST",
+    "request": {
+      "title": "P0 permission always",
+      "permission": [
+        {
+          "permission": "bash",
+          "pattern": "*",
+          "action": "ask"
+        }
+      ]
+    },
+    "response": {
+      "id": "ses_fixture4",
+      "slug": "nimble-planet",
+      "projectID": "global",
+      "directory": "<P0_ROOT>/project",
+      "path": "",
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "title": "P0 permission always",
+      "version": "1.18.35",
+      "time": {
+        "created": 1792249254567,
+        "updated": 1792249254567
+      },
+      "permission": [
+        {
+          "permission": "bash",
+          "pattern": "*",
+          "action": "ask"
+        }
+      ]
+    }
+  },
+  {
+    "path": "/session/ses_fixture4/prompt_async",
+    "method": "POST",
+    "request": {
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0_PERMISSION always"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": null
+  },
+  {
+    "case": "permission pending always",
+    "response": {
+      "id": "per_fixture3",
+      "sessionID": "ses_fixture4",
+      "permission": "bash",
+      "patterns": [
+        "printf P0_PERMISSION_OUTPUT"
+      ],
+      "metadata": {
+        "command": "printf P0_PERMISSION_OUTPUT"
+      },
+      "always": [
+        "printf *"
+      ],
+      "tool": {
+        "messageID": "msg_fixture8",
+        "callID": "call_p0_bash"
+      }
+    }
+  },
+  {
+    "path": "/permission/per_fixture3/reply",
+    "method": "POST",
+    "request": {
+      "reply": "always"
+    },
+    "response": true
+  },
+  {
+    "path": "/session/ses_fixture4/message",
+    "method": "GET",
+    "request": null,
+    "response": [
+      {
+        "info": {
+          "id": "msg_fixture9",
+          "sessionID": "ses_fixture4",
+          "role": "user",
+          "time": {
+            "created": 1792249254570
+          },
+          "agent": "build",
+          "model": {
+            "providerID": "p0",
+            "modelID": "fixture-model"
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture15",
+            "sessionID": "ses_fixture4",
+            "messageID": "msg_fixture9",
+            "type": "text",
+            "text": "P0_PERMISSION always"
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture8",
+          "sessionID": "ses_fixture4",
+          "role": "assistant",
+          "time": {
+            "created": 1792249254575,
+            "completed": 1792249254688
+          },
+          "parentID": "msg_fixture9",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "finish": "tool-calls"
+        },
+        "parts": [
+          {
+            "id": "prt_fixture16",
+            "sessionID": "ses_fixture4",
+            "messageID": "msg_fixture8",
+            "type": "step-start"
+          },
+          {
+            "id": "prt_fixture17",
+            "sessionID": "ses_fixture4",
+            "messageID": "msg_fixture8",
+            "type": "tool",
+            "callID": "call_p0_bash",
+            "tool": "bash",
+            "state": {
+              "status": "completed",
+              "input": {
+                "command": "printf P0_PERMISSION_OUTPUT",
+                "description": "P0 safe permission probe"
+              },
+              "output": "P0_PERMISSION_OUTPUT",
+              "title": "printf P0_PERMISSION_OUTPUT",
+              "metadata": {
+                "output": "P0_PERMISSION_OUTPUT",
+                "exit": 0,
+                "truncated": false
+              },
+              "time": {
+                "start": 1792249254594,
+                "end": 1792249254685
+              }
+            }
+          },
+          {
+            "id": "prt_fixture18",
+            "sessionID": "ses_fixture4",
+            "messageID": "msg_fixture8",
+            "type": "step-finish",
+            "reason": "tool-calls",
+            "cost": 0,
+            "tokens": {
+              "input": 0,
+              "output": 0,
+              "reasoning": 0,
+              "cache": {
+                "read": 0,
+                "write": 0
+              }
+            }
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture10",
+          "sessionID": "ses_fixture4",
+          "role": "assistant",
+          "time": {
+            "created": 1792249254689,
+            "completed": 1792249254706
+          },
+          "parentID": "msg_fixture9",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "finish": "stop"
+        },
+        "parts": [
+          {
+            "id": "prt_fixture19",
+            "sessionID": "ses_fixture4",
+            "messageID": "msg_fixture10",
+            "type": "step-start"
+          },
+          {
+            "id": "prt_fixture20",
+            "sessionID": "ses_fixture4",
+            "messageID": "msg_fixture10",
+            "type": "text",
+            "text": "P0_DONE",
+            "time": {
+              "start": 1792249254703,
+              "end": 1792249254704
+            }
+          },
+          {
+            "id": "prt_fixture21",
+            "sessionID": "ses_fixture4",
+            "messageID": "msg_fixture10",
+            "type": "step-finish",
+            "reason": "stop",
+            "cost": 0,
+            "tokens": {
+              "input": 0,
+              "output": 0,
+              "reasoning": 0,
+              "cache": {
+                "read": 0,
+                "write": 0
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "path": "/session/ses_fixture4/prompt_async",
+    "method": "POST",
+    "request": {
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0_PERMISSION repeat same session"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": null
+  },
+  {
+    "case": "always same-session reuse",
+    "tool_count": 2,
+    "last_status": "completed"
+  },
+  {
+    "path": "/session",
+    "method": "POST",
+    "request": {
+      "title": "P0 always scope boundary",
+      "permission": [
+        {
+          "permission": "bash",
+          "pattern": "*",
+          "action": "ask"
+        }
+      ]
+    },
+    "response": {
+      "id": "ses_fixture5",
+      "slug": "jolly-garden",
+      "projectID": "global",
+      "directory": "<P0_ROOT>/project",
+      "path": "",
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "title": "P0 always scope boundary",
+      "version": "1.18.35",
+      "time": {
+        "created": 1792249254903,
+        "updated": 1792249254903
+      },
+      "permission": [
+        {
+          "permission": "bash",
+          "pattern": "*",
+          "action": "ask"
+        }
+      ]
+    }
+  },
+  {
+    "path": "/session/ses_fixture5/prompt_async",
+    "method": "POST",
+    "request": {
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0_PERMISSION other session"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": null
+  },
+  {
+    "case": "always authorizes another session in same instance",
+    "tool_status": "completed",
+    "output": "P0_PERMISSION_OUTPUT",
+    "same_server": true,
+    "same_project": true,
+    "different_session": true
+  },
+  {
+    "path": "/session",
+    "method": "POST",
+    "request": {
+      "title": "P0 question reply"
+    },
+    "response": {
+      "id": "ses_fixture6",
+      "slug": "crisp-panda",
+      "projectID": "global",
+      "directory": "<P0_ROOT>/project",
+      "path": "",
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "title": "P0 question reply",
+      "version": "1.18.35",
+      "time": {
+        "created": 1792249255022,
+        "updated": 1792249255022
+      }
+    }
+  },
+  {
+    "path": "/session/ses_fixture6/prompt_async",
+    "method": "POST",
+    "request": {
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0_QUESTION reply"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": null
+  },
+  {
+    "case": "question pending reply",
+    "response": {
+      "id": "que_fixture1",
+      "sessionID": "ses_fixture6",
+      "questions": [
+        {
+          "question": "Pick fixture options",
+          "header": "P0 fixture",
+          "options": [
+            {
+              "label": "Alpha",
+              "description": "A"
+            },
+            {
+              "label": "Beta",
+              "description": "B"
+            }
+          ],
+          "multiple": true
+        },
+        {
+          "question": "Enter fixture note",
+          "header": "P0 note",
+          "options": [
+            {
+              "label": "Default",
+              "description": "Use default"
+            }
+          ]
+        }
+      ],
+      "tool": {
+        "messageID": "msg_fixture11",
+        "callID": "call_p0_question"
+      }
+    }
+  },
+  {
+    "path": "/question/que_fixture1/reply",
+    "method": "POST",
+    "request": {
+      "answers": [
+        [
+          "Alpha",
+          "Beta"
+        ],
+        [
+          "P0 freeform note"
+        ]
+      ]
+    },
+    "response": true
+  },
+  {
+    "path": "/session/ses_fixture6/message",
+    "method": "GET",
+    "request": null,
+    "response": [
+      {
+        "info": {
+          "id": "msg_fixture12",
+          "sessionID": "ses_fixture6",
+          "role": "user",
+          "time": {
+            "created": 1792249255025
+          },
+          "agent": "build",
+          "model": {
+            "providerID": "p0",
+            "modelID": "fixture-model"
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture22",
+            "sessionID": "ses_fixture6",
+            "messageID": "msg_fixture12",
+            "type": "text",
+            "text": "P0_QUESTION reply"
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture11",
+          "sessionID": "ses_fixture6",
+          "role": "assistant",
+          "time": {
+            "created": 1792249255029,
+            "completed": 1792249255141
+          },
+          "parentID": "msg_fixture12",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "finish": "tool-calls"
+        },
+        "parts": [
+          {
+            "id": "prt_fixture23",
+            "sessionID": "ses_fixture6",
+            "messageID": "msg_fixture11",
+            "type": "step-start"
+          },
+          {
+            "id": "prt_fixture24",
+            "sessionID": "ses_fixture6",
+            "messageID": "msg_fixture11",
+            "type": "tool",
+            "callID": "call_p0_question",
+            "tool": "question",
+            "state": {
+              "status": "completed",
+              "input": {
+                "questions": [
+                  {
+                    "question": "Pick fixture options",
+                    "header": "P0 fixture",
+                    "options": [
+                      {
+                        "label": "Alpha",
+                        "description": "A"
+                      },
+                      {
+                        "label": "Beta",
+                        "description": "B"
+                      }
+                    ],
+                    "multiple": true,
+                    "custom": true
+                  },
+                  {
+                    "question": "Enter fixture note",
+                    "header": "P0 note",
+                    "options": [
+                      {
+                        "label": "Default",
+                        "description": "Use default"
+                      }
+                    ],
+                    "custom": true
+                  }
+                ]
+              },
+              "output": "User has answered your questions: \"Pick fixture options\"=\"Alpha, Beta\", \"Enter fixture note\"=\"P0 freeform note\". You can now continue with the user's answers in mind.",
+              "title": "Asked 2 questions",
+              "metadata": {
+                "answers": [
+                  [
+                    "Alpha",
+                    "Beta"
+                  ],
+                  [
+                    "P0 freeform note"
+                  ]
+                ],
+                "truncated": false
+              },
+              "time": {
+                "start": 1792249255045,
+                "end": 1792249255137
+              }
+            }
+          },
+          {
+            "id": "prt_fixture25",
+            "sessionID": "ses_fixture6",
+            "messageID": "msg_fixture11",
+            "type": "step-finish",
+            "reason": "tool-calls",
+            "cost": 0,
+            "tokens": {
+              "input": 0,
+              "output": 0,
+              "reasoning": 0,
+              "cache": {
+                "read": 0,
+                "write": 0
+              }
+            }
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture13",
+          "sessionID": "ses_fixture6",
+          "role": "assistant",
+          "time": {
+            "created": 1792249255143,
+            "completed": 1792249255154
+          },
+          "parentID": "msg_fixture12",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "finish": "stop"
+        },
+        "parts": [
+          {
+            "id": "prt_fixture26",
+            "sessionID": "ses_fixture6",
+            "messageID": "msg_fixture13",
+            "type": "step-start"
+          },
+          {
+            "id": "prt_fixture27",
+            "sessionID": "ses_fixture6",
+            "messageID": "msg_fixture13",
+            "type": "text",
+            "text": "P0_DONE",
+            "time": {
+              "start": 1792249255151,
+              "end": 1792249255152
+            }
+          },
+          {
+            "id": "prt_fixture28",
+            "sessionID": "ses_fixture6",
+            "messageID": "msg_fixture13",
+            "type": "step-finish",
+            "reason": "stop",
+            "cost": 0,
+            "tokens": {
+              "input": 0,
+              "output": 0,
+              "reasoning": 0,
+              "cache": {
+                "read": 0,
+                "write": 0
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "path": "/session",
+    "method": "POST",
+    "request": {
+      "title": "P0 question reject"
+    },
+    "response": {
+      "id": "ses_fixture7",
+      "slug": "mighty-moon",
+      "projectID": "global",
+      "directory": "<P0_ROOT>/project",
+      "path": "",
+      "cost": 0,
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "reasoning": 0,
+        "cache": {
+          "read": 0,
+          "write": 0
+        }
+      },
+      "title": "P0 question reject",
+      "version": "1.18.35",
+      "time": {
+        "created": 1792249255251,
+        "updated": 1792249255251
+      }
+    }
+  },
+  {
+    "path": "/session/ses_fixture7/prompt_async",
+    "method": "POST",
+    "request": {
+      "parts": [
+        {
+          "type": "text",
+          "text": "P0_QUESTION reject"
+        }
+      ],
+      "model": {
+        "providerID": "p0",
+        "modelID": "fixture-model"
+      }
+    },
+    "response": null
+  },
+  {
+    "case": "question pending reject",
+    "response": {
+      "id": "que_fixture2",
+      "sessionID": "ses_fixture7",
+      "questions": [
+        {
+          "question": "Pick fixture options",
+          "header": "P0 fixture",
+          "options": [
+            {
+              "label": "Alpha",
+              "description": "A"
+            },
+            {
+              "label": "Beta",
+              "description": "B"
+            }
+          ],
+          "multiple": true
+        },
+        {
+          "question": "Enter fixture note",
+          "header": "P0 note",
+          "options": [
+            {
+              "label": "Default",
+              "description": "Use default"
+            }
+          ]
+        }
+      ],
+      "tool": {
+        "messageID": "msg_fixture14",
+        "callID": "call_p0_question"
+      }
+    }
+  },
+  {
+    "path": "/question/que_fixture2/reject",
+    "method": "POST",
+    "request": {},
+    "response": true
+  },
+  {
+    "path": "/session/ses_fixture7/message",
+    "method": "GET",
+    "request": null,
+    "response": [
+      {
+        "info": {
+          "id": "msg_fixture15",
+          "sessionID": "ses_fixture7",
+          "role": "user",
+          "time": {
+            "created": 1792249255255
+          },
+          "agent": "build",
+          "model": {
+            "providerID": "p0",
+            "modelID": "fixture-model"
+          }
+        },
+        "parts": [
+          {
+            "id": "prt_fixture29",
+            "sessionID": "ses_fixture7",
+            "messageID": "msg_fixture15",
+            "type": "text",
+            "text": "P0_QUESTION reject"
+          }
+        ]
+      },
+      {
+        "info": {
+          "id": "msg_fixture14",
+          "sessionID": "ses_fixture7",
+          "role": "assistant",
+          "time": {
+            "created": 1792249255259,
+            "completed": 1792249255368
+          },
+          "parentID": "msg_fixture15",
+          "modelID": "fixture-model",
+          "providerID": "p0",
+          "mode": "build",
+          "agent": "build",
+          "path": {
+            "cwd": "<P0_ROOT>/project",
+            "root": "<P0_ROOT>/project"
+          },
+          "cost": 0,
+          "tokens": {
+            "input": 0,
+            "output": 0,
+            "reasoning": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "finish": "tool-calls"
+        },
+        "parts": [
+          {
+            "id": "prt_fixture30",
+            "sessionID": "ses_fixture7",
+            "messageID": "msg_fixture14",
+            "type": "step-start"
+          },
+          {
+            "id": "prt_fixture31",
+            "sessionID": "ses_fixture7",
+            "messageID": "msg_fixture14",
+            "type": "tool",
+            "callID": "call_p0_question",
+            "tool": "question",
+            "state": {
+              "status": "error",
+              "input": {
+                "questions": [
+                  {
+                    "question": "Pick fixture options",
+                    "header": "P0 fixture",
+                    "options": [
+                      {
+                        "label": "Alpha",
+                        "description": "A"
+                      },
+                      {
+                        "label": "Beta",
+                        "description": "B"
+                      }
+                    ],
+                    "multiple": true,
+                    "custom": true
+                  },
+                  {
+                    "question": "Enter fixture note",
+                    "header": "P0 note",
+                    "options": [
+                      {
+                        "label": "Default",
+                        "description": "Use default"
+                      }
+                    ],
+                    "custom": true
+                  }
+                ]
+              },
+              "error": "The user dismissed this question",
+              "time": {
+                "start": 1792249255269,
+                "end": 1792249255365
+              }
+            }
+          },
+          {
+            "id": "prt_fixture32",
+            "sessionID": "ses_fixture7",
+            "messageID": "msg_fixture14",
+            "type": "step-finish",
+            "reason": "tool-calls",
+            "cost": 0,
+            "tokens": {
+              "input": 0,
+              "output": 0,
+              "reasoning": 0,
+              "cache": {
+                "read": 0,
+                "write": 0
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

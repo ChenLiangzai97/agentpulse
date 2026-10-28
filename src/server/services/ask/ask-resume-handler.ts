@@ -10,6 +10,10 @@ import {
 	pickFirstCapableSupervisor,
 	validateAgainstSupervisor,
 } from "../launch-compatibility.js";
+import {
+	SessionControlOriginError,
+	assertSessionControlOrigin,
+} from "../opencode-control-provenance.js";
 import { getCachedProjects } from "../projects/cache.js";
 import { getSearchBackend } from "../search/index.js";
 import { listSupervisors } from "../supervisor-registry.js";
@@ -156,6 +160,16 @@ export async function handleResumeIntent(
 	}
 
 	const parentSession = resolution.session;
+	try {
+		await assertSessionControlOrigin(parentSession.sessionId);
+	} catch (error) {
+		if (error instanceof SessionControlOriginError)
+			return {
+				replyText: "OpenCode session is observe-only; control is unavailable.",
+				actionRequestId: null,
+			};
+		throw error;
+	}
 	const parentName = parentSession.displayName ?? parentSession.sessionId.slice(0, 8);
 
 	// Pre-check existence: re-fetch to confirm the row is still present
@@ -188,7 +202,8 @@ export async function handleResumeIntent(
 			actionRequestId: null,
 		};
 	}
-	const launchMode: LaunchMode = intent.mode ?? "interactive_terminal";
+	const launchMode: LaunchMode =
+		intent.mode ?? (agentType === "opencode" ? "managed_opencode" : "interactive_terminal");
 
 	const rawTemplate: Partial<SessionTemplateInput> = {
 		name: `${parentName} (resumed)`,

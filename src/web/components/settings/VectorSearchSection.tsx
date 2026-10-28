@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useT } from "../../i18n/i18n.js";
 import { plainErrorMessage } from "../../lib/api-errors.js";
 import { api } from "../../lib/api.js";
 
@@ -37,6 +38,7 @@ const RECOMMENDED_MODELS = [
 ];
 
 export function VectorSearchSection() {
+	const t = useT();
 	const [status, setStatus] = useState<VectorStatus | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [busy, setBusy] = useState(false);
@@ -117,7 +119,7 @@ export function VectorSearchSection() {
 		<div className="rounded-lg border border-border bg-card/30 p-4 space-y-3">
 			<div className="flex items-center justify-between">
 				<div>
-					<div className="text-sm font-semibold">Vector search</div>
+					<div className="text-sm font-semibold">{t("vector.title")}</div>
 					<div className="text-xs text-muted-foreground">
 						{status.active
 							? "Active — Ask matches by meaning, not just keywords."
@@ -134,12 +136,12 @@ export function VectorSearchSection() {
 						onChange={(e) => void toggleEnabled(e.target.checked)}
 						className="w-4 h-4"
 					/>
-					<span className="text-xs">Enabled</span>
+					<span className="text-xs">{t("vector.enabled")}</span>
 				</label>
 			</div>
 
 			<div className="border-t border-border pt-3 space-y-2">
-				<div className="text-xs font-semibold text-foreground">Embedding model</div>
+				<div className="text-xs font-semibold text-foreground">{t("vector.model")}</div>
 				<div className="flex gap-2">
 					<input
 						type="text"
@@ -185,7 +187,7 @@ export function VectorSearchSection() {
 
 			<div className="border-t border-border pt-3 space-y-2">
 				<div className="flex items-center justify-between">
-					<div className="text-xs font-semibold text-foreground">Indexing progress</div>
+					<div className="text-xs font-semibold text-foreground">{t("vector.progress")}</div>
 					<button
 						type="button"
 						disabled={busy || progress?.running}

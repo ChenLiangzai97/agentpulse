@@ -94,7 +94,9 @@ describe("solo: every route that existed before answers with exactly the same st
 		for (const [route, expected] of BASE_ROUTE_STATUSES) {
 			PROBE_CALLERS.forEach((caller, i) => {
 				const got = statuses[route]?.[caller];
-				if (got !== expected[i]) {
+				// Resume now exists: an unbound probe session is a conflict, rather than a 501 stub.
+				const want = route === "POST /sessions/:sessionId/resume" ? 409 : expected[i];
+				if (got !== want) {
 					mismatches.push(`${route} as ${caller}: ${expected[i]} before, ${got} now`);
 				}
 			});
@@ -125,7 +127,10 @@ describe("upgrade: a pre-team install (one admin, one user, three ownerless mana
 			]);
 			for (const [route, expected] of BASE_ROUTE_STATUSES) {
 				for (const caller of ["localAdmin", "localUser", "ownerlessManageKey"] as const) {
-					const want = expected[PROBE_CALLERS.indexOf(caller)];
+					const want =
+						route === "POST /sessions/:sessionId/resume"
+							? 409
+							: expected[PROBE_CALLERS.indexOf(caller)];
 					const got = statuses[route]?.[caller];
 					if (got !== want) {
 						mismatches.push(`${route} as ${caller}: ${want} before, ${got} now`);

@@ -1,4 +1,5 @@
 import { ChevronDown, HelpCircle } from "lucide-react";
+import { NewSessionDialog } from "../components/NewSessionDialog.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -33,6 +34,7 @@ import { useOwnerGroupStats } from "../hooks/useOwnerGroupStats.js";
 import { useOwnershipUi } from "../hooks/useOwnershipUi.js";
 import { useSessions } from "../hooks/useSessions.js";
 import { type ListedTab, useTabSessionList } from "../hooks/useTabSessionList.js";
+import { useT } from "../i18n/i18n.js";
 import { ApiError, api } from "../lib/api.js";
 import { HOST_ALL } from "../lib/host-scope.js";
 import { browserStorage } from "../lib/id-set-storage.js";
@@ -41,6 +43,7 @@ import { ownerLabel } from "../lib/owner-label.js";
 import { type DashboardScope, OWNER_ALL, OWNER_ME, personOwnerId } from "../lib/owner-scope.js";
 import { canAcknowledgeSession, cn, formatDuration } from "../lib/utils.js";
 import { useConnectionStore } from "../stores/connection-store.js";
+import { useLabsStore } from "../stores/labs-store.js";
 import { useSessionStore } from "../stores/session-store.js";
 import { useUiPrefsStore } from "../stores/ui-prefs-store.js";
 import { useUserStore } from "../stores/user-store.js";
@@ -131,6 +134,7 @@ const LIVE_REFRESH_DEBOUNCE_MS = 500;
 const LIVE_REFRESH_MAX_WAIT_MS = 5000;
 
 export function DashboardPage() {
+	const t = useT();
 	const navigate = useNavigate();
 	const ui = useOwnershipUi();
 	const showScratch = useUiPrefsStore((s) => s.showScratch);
@@ -198,6 +202,7 @@ export function DashboardPage() {
 	// Single-select operational status filter, driven by the four status cards.
 	// Only meaningful on the Active tab; selecting a card switches to it.
 	const [statusFilter, setStatusFilter] = useState<ActiveOperationalStatus | null>(null);
+	const [newSessionOpen, setNewSessionOpen] = useState(false);
 	const [search, setSearch] = useState("");
 	// AGEN: the server-bound search (useOperationalSessionList's `q`) is
 	// debounced so a fast typist doesn't fire one request per keystroke —
@@ -673,10 +678,8 @@ export function DashboardPage() {
 		return (
 			<div className="p-3 md:p-6 max-w-3xl">
 				<div className="mb-4">
-					<h1 className="text-xl md:text-2xl font-bold text-foreground">Dashboard</h1>
-					<p className="text-sm text-muted-foreground mt-0.5">
-						No sessions yet — follow the steps below to wire up your first agent.
-					</p>
+					<h1 className="text-xl md:text-2xl font-bold text-foreground">{t("dashboard.title")}</h1>
+					<p className="text-sm text-muted-foreground mt-0.5">{t("dashboard.noSessionsYet")}</p>
 				</div>
 				<FirstRunWelcome serverUrl={window.location.origin} />
 			</div>
@@ -737,7 +740,7 @@ export function DashboardPage() {
 				})
 			: null;
 	const titles = tileTitles(viewKindNow);
-	const listHeadingText = `${statusFilter && filter === "active" ? STATUS_CARD_LABEL[statusFilter] : filter.charAt(0).toUpperCase() + filter.slice(1)} sessions`;
+	const listHeadingText = `${statusFilter && filter === "active" ? t(STATUS_CARD_LABEL_KEY[statusFilter]) : filter.charAt(0).toUpperCase() + filter.slice(1)} sessions`;
 	const viewEveryone = () => chooseOwner(OWNER_ALL);
 	// "Show all of <name>" narrows to that person; focus follows to the Owner select, where the change is.
 	const showAllOf = (ownerId: string) => {
@@ -756,6 +759,7 @@ export function DashboardPage() {
 
 	return (
 		<div className="p-3 md:p-6">
+			{newSessionOpen && <NewSessionDialog onClose={() => setNewSessionOpen(false)} />}
 			{/* Header. Under Mine | Everyone the subtitle says what the switch does, and the
 			    Owner select sits beside it: they are one control (whose sessions). */}
 			<div
@@ -766,13 +770,22 @@ export function DashboardPage() {
 				}
 			>
 				<div>
-					<h1
-						ref={headingRef}
-						tabIndex={-1}
-						className="text-xl md:text-2xl font-bold text-foreground focus:outline-none"
-					>
-						Dashboard
-					</h1>
+					<div className="flex items-center gap-3">
+						<h1
+							ref={headingRef}
+							tabIndex={-1}
+							className="text-xl md:text-2xl font-bold text-foreground focus:outline-none"
+						>
+							{t("dashboard.title")}
+						</h1>
+						<button
+							type="button"
+							onClick={() => setNewSessionOpen(true)}
+							className="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:opacity-90"
+						>
+							+ {t("newSession.title")}
+						</button>
+					</div>
 					<p
 						className={cn(
 							"text-sm mt-0.5 max-w-xl",
@@ -780,8 +793,8 @@ export function DashboardPage() {
 						)}
 					>
 						{ui.showScope
-							? "Mine is a filter. Everyone who can sign in sees every session."
-							: "Your AI coding agents, all in one place"}
+							? t("dashboard.subtitleScope")
+							: t("dashboard.subtitle")}
 					</p>
 				</div>
 				{ui.showScope && (
@@ -834,7 +847,9 @@ export function DashboardPage() {
 			) : (
 				<>
 					{refreshDelayed && (
-						<output className="mb-2 block text-xs text-hint">Updates are delayed. Retrying…</output>
+						<output className="mb-2 block text-xs text-hint">
+							{t("dashboard.updatesDelayed")}
+						</output>
 					)}
 					<ConnectMachineCard suppress={emptyState?.actions.includes("setup") ?? false} />
 
@@ -852,7 +867,7 @@ export function DashboardPage() {
 								onClick={viewAllMachines}
 								className="min-h-[44px] rounded font-medium text-primary underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0"
 							>
-								Show all machines
+								{t("dashboard.showAllMachines")}
 							</button>
 						</p>
 					)}
@@ -886,7 +901,7 @@ export function DashboardPage() {
 							<StatCard
 								compact={teamLayout}
 								key={status}
-								label={STATUS_CARD_LABEL[status]}
+								label={t(STATUS_CARD_LABEL_KEY[status])}
 								value={displayCount(stats ? counts[status] : null)}
 								title={stateHelp(viewKindNow, status)}
 								tone={STATUS_CARD_TONE[status]}
@@ -897,8 +912,7 @@ export function DashboardPage() {
 					</div>
 					{stats?.truncated && (
 						<p className="text-[11px] text-amber-800 dark:text-amber-400 mb-2">
-							Counts may be under-reported — the session backlog is larger than this view can fully
-							scan.
+							{t("dashboard.countsUnderreported")}
 						</p>
 					)}
 					{othersActive > 0 && !emptyState?.actions.includes("viewEveryone") && (
@@ -909,7 +923,7 @@ export function DashboardPage() {
 								onClick={viewEveryone}
 								className="min-h-[44px] rounded font-medium text-primary underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-0"
 							>
-								View everyone
+								{t("dashboard.viewEveryone")}
 							</button>
 						</p>
 					)}
@@ -960,7 +974,7 @@ export function DashboardPage() {
 					>
 						<StatCard
 							compact={teamLayout}
-							label="Active Sessions"
+							label={t("dashboard.activeSessions")}
 							value={displayCount(stats ? activeTotal : null)}
 							title={titles.active}
 							sub={
@@ -973,19 +987,19 @@ export function DashboardPage() {
 						/>
 						<StatCard
 							compact={teamLayout}
-							label="Sessions Today"
+							label={t("dashboard.sessionsToday")}
 							value={displayCount(stats?.totalSessionsToday)}
 							title={titles.today}
 						/>
 						<StatCard
 							compact={teamLayout}
-							label="Tool Uses Today"
+							label={t("dashboard.toolUsesToday")}
 							value={displayCount(stats?.totalToolUsesToday)}
 							title={titles.toolUses}
 						/>
 						<StatCard
 							compact={teamLayout}
-							label="Total Sessions"
+							label={t("dashboard.totalSessions")}
 							value={displayCount(stats ? scopeTotal : null)}
 							title={titles.total}
 						/>
@@ -1054,7 +1068,7 @@ export function DashboardPage() {
 									type="text"
 									value={search}
 									onChange={(e) => setSearch(e.target.value)}
-									placeholder="Search sessions..."
+									placeholder={t("dashboard.searchPlaceholder")}
 									className="w-full rounded-md border border-input bg-background pl-8 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
 								/>
 								{search && (
@@ -1077,7 +1091,7 @@ export function DashboardPage() {
 												d="M6 18L18 6M6 6l12 12"
 											/>
 										</svg>
-										<span className="sr-only">Clear search</span>
+										<span className="sr-only">{t("dashboard.clearSearch")}</span>
 									</button>
 								)}
 							</div>
@@ -1129,7 +1143,8 @@ export function DashboardPage() {
 									className="flex min-h-[44px] w-full items-center justify-between gap-2 px-3 text-left text-xs text-foreground md:hidden"
 								>
 									<span className="truncate">
-										<span className="font-semibold">Live Sessions</span> · {strip.count}
+										<span className="font-semibold">{t("dashboard.liveSessions")}</span> ·{" "}
+										{strip.count}
 										{strip.attention ? ` · ${strip.attention}` : ""}
 									</span>
 									<ChevronDown
@@ -1145,10 +1160,10 @@ export function DashboardPage() {
 								<div className="border-b border-border px-3 py-2.5 md:px-4">
 									<div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
 										<div>
-											<h2 className="text-sm font-semibold text-foreground">Live Sessions</h2>
-											<p className="text-xs text-muted-foreground">
-												Quick-switch between active sessions without hunting through the grid.
-											</p>
+											<h2 className="text-sm font-semibold text-foreground">
+												{t("dashboard.liveSessions")}
+											</h2>
+											<p className="text-xs text-muted-foreground">{t("dashboard.liveHint")}</p>
 										</div>
 										<div className="text-xs text-muted-foreground">
 											{/* AGEN: activeSessions is bounded to whatever page
@@ -1214,7 +1229,7 @@ export function DashboardPage() {
 													)}
 												</div>
 												<div>
-													<span className="text-foreground">Last activity:</span>{" "}
+													<span className="text-foreground">{t("dashboard.lastActivity")}</span>{" "}
 													{formatDuration(selectedActiveSession.lastActivityAt)}
 												</div>
 											</div>
@@ -1240,7 +1255,7 @@ export function DashboardPage() {
 							<div className="mb-3 flex items-center gap-2">
 								<span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
 									{statusChipText({
-										label: STATUS_CARD_LABEL[statusFilter],
+										label: t(STATUS_CARD_LABEL_KEY[statusFilter]),
 										listTotal: operationalList.total,
 										cardCount: counts[statusFilter],
 										search: debouncedSearch,
@@ -1249,7 +1264,7 @@ export function DashboardPage() {
 										type="button"
 										onClick={clearStatusFilter}
 										className="ml-1 min-h-[44px] md:min-h-0 inline-flex items-center rounded text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-										aria-label={`Clear the ${STATUS_CARD_LABEL[statusFilter]} filter`}
+										aria-label={`Clear the ${t(STATUS_CARD_LABEL_KEY[statusFilter])} filter`}
 									>
 										Clear
 									</button>
@@ -1397,7 +1412,7 @@ export function DashboardPage() {
 								onClick={() => tabList.loadMore()}
 								className="min-h-[44px] rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
 							>
-								Load more
+								{t("dashboard.loadMore")}
 							</button>
 						</div>
 					)}
@@ -1408,7 +1423,7 @@ export function DashboardPage() {
 								onClick={() => operationalList.loadMore()}
 								className="min-h-[44px] rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
 							>
-								Load more
+								{t("dashboard.loadMore")}
 							</button>
 						</div>
 					)}
@@ -1418,11 +1433,11 @@ export function DashboardPage() {
 	);
 }
 
-const STATUS_CARD_LABEL: Record<ActiveOperationalStatus, string> = {
-	waiting: "Waiting",
-	working: "Working",
-	idle: "Idle",
-	error: "Error",
+const STATUS_CARD_LABEL_KEY: Record<ActiveOperationalStatus, string> = {
+	waiting: "status.waiting",
+	working: "status.working",
+	idle: "status.idle",
+	error: "status.error",
 };
 
 /** ERROR strongest, WAITING attention, WORKING active, IDLE neutral (see StatusBadge). */
@@ -1449,6 +1464,7 @@ function StatusHelpPopover({
 	onOpenChange: (open: boolean) => void;
 	kind: ViewKind;
 }) {
+	const t = useT();
 	const containerRef = useRef<HTMLDivElement>(null);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -1500,7 +1516,7 @@ function StatusHelpPopover({
 				className="min-h-[44px] md:min-h-0 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
 			>
 				<HelpCircle className="w-3.5 h-3.5" aria-hidden="true" />
-				What do these states mean?
+				{t("dashboard.statesHelpQ")}
 			</button>
 			{/* AGEN: normal flow, not `absolute` -- an absolutely positioned
 			    panel directly below this trigger would float on top of the
@@ -1518,13 +1534,15 @@ function StatusHelpPopover({
 					// shape per the WAI-ARIA Dialog (Non-Modal) pattern.
 					role="dialog"
 					aria-modal="false"
-					aria-label="What the operational states mean"
+					aria-label={t("dashboard.statesHelpTitle")}
 					className="mt-2 w-full max-w-72 rounded-md border border-border bg-card shadow-lg p-3 text-xs"
 				>
 					<dl className="space-y-2">
 						{ACTIVE_OPERATIONAL_STATUSES.map((status) => (
 							<div key={status}>
-								<dt className="font-semibold text-foreground">{STATUS_CARD_LABEL[status]}</dt>
+								<dt className="font-semibold text-foreground">
+									{t(STATUS_CARD_LABEL_KEY[status])}
+								</dt>
 								<dd className="text-muted-foreground">{stateHelp(kind, status)}</dd>
 							</div>
 						))}

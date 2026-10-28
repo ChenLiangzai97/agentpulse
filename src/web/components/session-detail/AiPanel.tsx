@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { t, useT } from "../../i18n/i18n.js";
 import { plainErrorMessage } from "../../lib/api-errors.js";
 import {
 	type AiProposal,
@@ -20,6 +21,7 @@ interface AiPanelProps {
 
 /** The AI tab: a line about Session summaries while they're off, above whatever the tab itself shows. */
 export function AiPanel(props: AiPanelProps) {
+	const t = useT();
 	return (
 		<>
 			<div className="px-4 pt-4 empty:hidden md:px-6">
@@ -31,6 +33,7 @@ export function AiPanel(props: AiPanelProps) {
 }
 
 function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
+	const t = useT();
 	const featureActive = useAiStatusStore((s) => s.status?.active ?? null);
 	const [providers, setProviders] = useState<AiProvider[]>([]);
 	const [config, setConfig] = useState<AiWatcherConfig | null>(null);
@@ -115,7 +118,7 @@ function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
 	}
 
 	if (loading) {
-		return <div className="p-6 text-sm text-muted-foreground">Loading watcher…</div>;
+		return <div className="p-6 text-sm text-muted-foreground">{t("ai.loadingWatcher")}</div>;
 	}
 
 	if (featureActive === false) {
@@ -123,7 +126,7 @@ function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
 			<div className="p-6 text-sm text-muted-foreground">
 				AI watcher is disabled. Enable it in{" "}
 				<a href="/settings" className="text-primary hover:underline">
-					Settings
+					{t("ai.settings")}
 				</a>
 				.
 			</div>
@@ -135,7 +138,7 @@ function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
 			<div className="p-6 text-sm text-muted-foreground">
 				Add a provider in{" "}
 				<a href="/settings" className="text-primary hover:underline">
-					Settings
+					{t("ai.settings")}
 				</a>{" "}
 				to enable a watcher on this session.
 			</div>
@@ -163,7 +166,7 @@ function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
 				<div className="flex items-center justify-between gap-3">
 					<div>
 						<div className="flex items-center gap-2">
-							<span className="text-sm font-semibold">Watcher</span>
+							<span className="text-sm font-semibold">{t("ai.watcher")}</span>
 							<WatcherStateBadge state={deriveState(config, openHitl)} />
 						</div>
 						<div className="text-xs text-muted-foreground mt-0.5">
@@ -171,9 +174,7 @@ function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
 								? `${config.continuationsUsed} / ${config.maxContinuations} continuations this cycle`
 								: "Off — no LLM calls fire for this session."}
 							{!sessionIsManaged && config?.enabled && (
-								<span className="ml-2 text-[10px] text-amber-300">
-									observed session: watcher can propose, not dispatch
-								</span>
+								<span className="ml-2 text-[10px] text-amber-300">{t("ai.observedOnly")}</span>
 							)}
 						</div>
 					</div>
@@ -183,7 +184,7 @@ function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
 							onClick={disableWatcher}
 							className="text-xs px-3 py-1.5 rounded border border-border hover:bg-muted/50"
 						>
-							Disable
+							{t("ai.disable")}
 						</button>
 					) : (
 						<button
@@ -191,7 +192,7 @@ function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
 							onClick={enableWatcher}
 							className="text-xs px-3 py-1.5 rounded bg-primary/15 border border-primary/30 text-primary hover:bg-primary/20"
 						>
-							Enable watcher
+							{t("ai.enableWatcher")}
 						</button>
 					)}
 				</div>
@@ -210,7 +211,7 @@ function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
 			{proposals.length > 0 && (
 				<div className="rounded-lg border border-border bg-card/30">
 					<div className="px-4 py-2 border-b border-border text-xs uppercase tracking-wider text-muted-foreground">
-						Recent proposals
+						{t("ai.recentProposals")}
 					</div>
 					<ul className="divide-y divide-border">
 						{proposals.slice(0, 10).map((p) => (
@@ -240,10 +241,10 @@ function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
 					className="rounded-lg border border-border bg-card/30"
 				>
 					<summary className="px-4 py-2 text-xs font-semibold cursor-pointer select-none">
-						Advanced
+						{t("ai.advanced")}
 					</summary>
 					<div className="px-4 pb-4 pt-2 space-y-3 text-xs">
-						<Field label="Provider">
+						<Field label={t("ai.provider")}>
 							<select
 								value={config.providerId}
 								onChange={(e) => updateConfigField("providerId", e.target.value)}
@@ -256,17 +257,17 @@ function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
 								))}
 							</select>
 						</Field>
-						<Field label="Policy">
+						<Field label={t("ai.policy")}>
 							<select
 								value={config.policy}
 								onChange={(e) => updateConfigField("policy", e.target.value as AiWatcherPolicy)}
 								className="w-full bg-background border border-border rounded px-2 py-1"
 							>
-								<option value="ask_always">Always ask</option>
-								<option value="ask_on_risk">Ask on risky actions (coming in phase 2)</option>
+								<option value="ask_always">{t("ai.alwaysAsk")}</option>
+								<option value="ask_on_risk">{t("ai.riskyPhase2")}</option>
 							</select>
 						</Field>
-						<Field label="Max continuations per cycle">
+						<Field label={t("ai.maxContinuations")}>
 							<input
 								type="number"
 								min={1}
@@ -278,12 +279,12 @@ function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
 								className="w-full bg-background border border-border rounded px-2 py-1 font-mono"
 							/>
 						</Field>
-						<Field label="Custom system prompt (optional)">
+						<Field label={t("ai.customSystemPrompt")}>
 							<textarea
 								rows={4}
 								value={config.systemPrompt ?? ""}
 								onChange={(e) => updateConfigField("systemPrompt", e.target.value || null)}
-								placeholder="Leave blank to use the default watcher policy."
+								placeholder={t("ai.watcherPolicyHint")}
 								className="w-full bg-background border border-border rounded px-2 py-1 font-mono text-[11px]"
 							/>
 						</Field>
@@ -291,9 +292,9 @@ function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
 							<Field
 								label={
 									<span className="flex items-center gap-1.5">
-										Notification channel
+										{t("ai.notificationChannel")}
 										<span className="rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[9px] font-semibold uppercase px-1 py-0.5">
-											Labs
+											{t("ai.labs")}
 										</span>
 									</span>
 								}
@@ -303,7 +304,7 @@ function AiWatcherPanel({ sessionId, sessionIsManaged }: AiPanelProps) {
 									onChange={(e) => updateConfigField("channelId", e.target.value || null)}
 									className="w-full bg-background border border-border rounded px-2 py-1"
 								>
-									<option value="">In-app only</option>
+									<option value="">{t("ai.inAppOnly")}</option>
 									{channels.map((ch) => (
 										<option key={ch.id} value={ch.id}>
 											{ch.label} · {ch.kind}
@@ -351,7 +352,11 @@ function ProposalBadge({ state, decision }: { state: string; decision: string | 
 	const base =
 		"flex-shrink-0 text-[10px] font-mono rounded border px-1.5 py-0.5 uppercase tracking-wider";
 	if (state === "failed") {
-		return <span className={`${base} bg-red-500/10 text-red-300 border-red-500/30`}>failed</span>;
+		return (
+			<span className={`${base} bg-red-500/10 text-red-300 border-red-500/30`}>
+				{t("ai.failed")}
+			</span>
+		);
 	}
 	if (state === "hitl_waiting") {
 		return (
@@ -360,19 +365,23 @@ function ProposalBadge({ state, decision }: { state: string; decision: string | 
 	}
 	if (state === "hitl_declined") {
 		return (
-			<span className={`${base} bg-muted/40 text-muted-foreground border-border`}>declined</span>
+			<span className={`${base} bg-muted/40 text-muted-foreground border-border`}>
+				{t("ai.declined")}
+			</span>
 		);
 	}
 	if (state === "hitl_applied") {
 		return (
 			<span className={`${base} bg-emerald-500/10 text-emerald-300 border-emerald-500/30`}>
-				applied
+				{t("ai.applied")}
 			</span>
 		);
 	}
 	if (state === "cancelled") {
 		return (
-			<span className={`${base} bg-muted/40 text-muted-foreground border-border`}>cancelled</span>
+			<span className={`${base} bg-muted/40 text-muted-foreground border-border`}>
+				{t("ai.cancelled")}
+			</span>
 		);
 	}
 	return (
@@ -415,12 +424,12 @@ function HitlCard({
 	return (
 		<div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
 			<div className="flex items-center justify-between">
-				<div className="text-sm font-semibold text-amber-200">Watcher wants your approval</div>
+				<div className="text-sm font-semibold text-amber-200">{t("ai.watcherApproval")}</div>
 				<span className="text-[10px] font-mono text-muted-foreground">
 					{new Date(proposal.createdAt).toLocaleTimeString()}
 				</span>
 			</div>
-			<div className="text-xs text-muted-foreground">Proposed next prompt:</div>
+			<div className="text-xs text-muted-foreground">{t("ai.proposedNext")}</div>
 			<pre className="text-xs font-mono bg-background border border-border rounded p-3 whitespace-pre-wrap break-words">
 				{proposal.nextPrompt || proposal.reportSummary || "(no content)"}
 			</pre>
@@ -431,7 +440,7 @@ function HitlCard({
 			{customOpen && (
 				<div className="space-y-2">
 					<label className="text-[10px] uppercase tracking-wider text-muted-foreground">
-						Custom prompt
+						{t("ai.customPrompt")}
 					</label>
 					<textarea
 						rows={5}
@@ -451,14 +460,14 @@ function HitlCard({
 							disabled={submitting || !proposal.nextPrompt}
 							className="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground disabled:opacity-40"
 						>
-							Approve
+							{t("ai.approve")}
 						</button>
 						<button
 							type="button"
 							onClick={() => setCustomOpen(true)}
 							className="text-xs px-3 py-1.5 rounded border border-border hover:bg-muted/40"
 						>
-							Custom…
+							{t("ai.customDots")}
 						</button>
 						<button
 							type="button"
@@ -466,7 +475,7 @@ function HitlCard({
 							disabled={submitting}
 							className="text-xs px-3 py-1.5 rounded border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40"
 						>
-							Decline
+							{t("ai.decline")}
 						</button>
 					</>
 				) : (
@@ -477,14 +486,14 @@ function HitlCard({
 							disabled={submitting || !customPrompt.trim()}
 							className="text-xs px-3 py-1.5 rounded bg-primary text-primary-foreground disabled:opacity-40"
 						>
-							Send custom
+							{t("ai.sendCustom")}
 						</button>
 						<button
 							type="button"
 							onClick={() => setCustomOpen(false)}
 							className="text-xs px-3 py-1.5 rounded border border-border hover:bg-muted/40"
 						>
-							Back
+							{t("ai.back")}
 						</button>
 					</>
 				)}

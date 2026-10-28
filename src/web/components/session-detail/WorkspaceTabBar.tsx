@@ -1,3 +1,4 @@
+import { t } from "../../i18n/i18n.js";
 import { type WorkspaceTabId, tabBadgeAccessibleName } from "../../lib/session-summary-core.js";
 import { WorkspaceTabButton } from "./SharedControls.js";
 
@@ -38,22 +39,26 @@ export function WorkspaceTabBar(props: WorkspaceTabBarProps) {
 	);
 	return (
 		<nav
-			aria-label="Session sections"
+			aria-label={t("tabs.sections")}
 			className="flex flex-nowrap items-center gap-1.5 overflow-x-auto md:flex-wrap md:gap-2"
 		>
-			{tab("overview", "Overview")}
+			{tab("overview", t("tabs.overview"))}
 			{props.summaryAvailable &&
 				tab(
 					"summary",
-					"Summary",
-					props.summaryBadge,
+					t("summary.tab"),
+					props.summaryBadge
+						? props.summaryBadge === "Summarizing"
+							? t("badge.summarizing")
+							: t("badge.new")
+						: null,
 					tabBadgeAccessibleName(props.summaryBadge as "Summarizing" | "New" | null),
 				)}
-			{tab("activity", "Activity", props.isWorking ? "Working" : null)}
-			{tab("notes", "Notes")}
+			{tab("activity", t("tabs.activity"), props.isWorking ? t("status.working") : null)}
+			{tab("notes", t("panels.notes"))}
 			{tab("instructions", props.instructionsLabel)}
-			{props.hasLaunch && tab("launch", "Launch")}
-			{props.aiTabEnabled && tab("ai", "AI")}
+			{props.hasLaunch && tab("launch", t("tabs.launch"))}
+			{props.aiTabEnabled && tab("ai", t("tabs.ai"))}
 		</nav>
 	);
 }

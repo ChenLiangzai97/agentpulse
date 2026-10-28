@@ -1,19 +1,21 @@
 import type { OwnershipUi } from "./ownership-ui.js";
 
+/** Labels are i18n keys resolved by the rendering components (AGEN-72 follow-up: nav i18n). */
+
 export interface NavLinkItem {
 	to: string;
 	label: string;
 }
 
-const SETTINGS: NavLinkItem = { to: "/settings", label: "Settings" };
-const USERS: NavLinkItem = { to: "/settings?panel=team", label: "Users" };
-const CHANGE_PASSWORD: NavLinkItem = { to: "/settings?panel=account", label: "Change password" };
+const SETTINGS: NavLinkItem = { to: "/settings", label: "nav.settings" };
+const USERS: NavLinkItem = { to: "/settings?panel=team", label: "nav.users" };
+const CHANGE_PASSWORD: NavLinkItem = { to: "/settings?panel=account", label: "nav.changePassword" };
 
 /** Setup and Hosts: where a person wires up their own machines. */
 export function machinesMenuItems(ui: OwnershipUi): NavLinkItem[] {
 	return [
-		{ to: "/setup", label: ui.showTeamCopy ? "Set up hooks" : "Setup" },
-		{ to: "/hosts", label: "Hosts" },
+		{ to: "/setup", label: ui.showTeamCopy ? "nav.setupHooks" : "nav.setup" },
+		{ to: "/hosts", label: "nav.hosts" },
 	];
 }
 

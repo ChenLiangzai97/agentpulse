@@ -1,0 +1,44 @@
+{
+ "probe": "ap_interleave_probe_a5c242d8_f3c9_4040_801c_9be94b1131d5",
+ "scenarioA": {
+  "stop1": "opencode_stop_deferred",
+  "permitBefore": "allowed",
+  "report": "failed"
+ },
+ "scenarioB": {
+  "stopState": "stopping",
+  "claimed": null
+ },
+ "scenarioC": {
+  "stop1": "opencode_stop_deferred",
+  "permitAfter": "provider_binding_invalid"
+ },
+ "scenarioE": {
+  "finalizeFirst": {
+   "stop": "opencode_stop_deferred",
+   "replayed": false
+  },
+  "stopFirst": {
+   "rejected": "provider_binding_invalid",
+   "artifactsUnchanged": {
+    "sessions": 6,
+    "managed": 6,
+    "bindings": 6,
+    "lineage": 1,
+    "ledgerIdentities": 1
+   },
+   "artifactsAfter": {
+    "sessions": 6,
+    "managed": 6,
+    "bindings": 6,
+    "lineage": 1,
+    "ledgerIdentities": 1
+   }
+  }
+ },
+ "scenarioD": {
+  "waitedMs": 408,
+  "blockedWhileHeld": true
+ },
+ "ok": true
+}

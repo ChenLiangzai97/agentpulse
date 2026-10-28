@@ -27,7 +27,11 @@ export function RecentLaunchesPanel({
 					>
 						<div className="flex items-center justify-between gap-2">
 							<span className="font-medium text-foreground">
-								{launch.agentType === "claude_code" ? "Claude Code" : "Codex CLI"}
+								{launch.agentType === "claude_code"
+									? "Claude Code"
+									: launch.agentType === "opencode"
+										? "OpenCode"
+										: "Codex CLI"}
 							</span>
 							<div className="text-right">
 								<span className="text-muted-foreground">

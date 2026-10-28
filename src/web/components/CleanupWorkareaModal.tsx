@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { Project } from "../../shared/types.js";
 import { useDialogFocusTrap } from "../hooks/useDialogFocusTrap.js";
+import { useT } from "../i18n/i18n.js";
 import { describeApiError } from "../lib/api-errors.js";
 import { api } from "../lib/api.js";
 
@@ -27,6 +28,7 @@ const CONFIRM_PHRASE = "delete";
  * supervisor — the modal is the consent gate, not the executor.
  */
 export function CleanupWorkareaModal({ project, onClose, onCleanedUp }: CleanupWorkareaModalProps) {
+	const t = useT();
 	const [confirmText, setConfirmText] = useState("");
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -94,11 +96,11 @@ export function CleanupWorkareaModal({ project, onClose, onCleanedUp }: CleanupW
 				className="rounded-lg border border-border bg-card p-6 w-full max-w-md mx-4 shadow-xl"
 			>
 				<h3 id={headingId} className="text-sm font-semibold text-foreground mb-2">
-					Delete scratch workspace?
+					{t("cleanup.title")}
 				</h3>
 				<div id={descriptionId} className="space-y-3 text-sm text-muted-foreground">
 					<p>
-						AgentPulse will run <code className="font-mono text-foreground">rm -rf</code> on the
+						{t("cleanup.willRun")} <code className="font-mono text-foreground">rm -rf</code> on the
 						workspace below, remove the project, and delete{" "}
 						{sessionCount === null
 							? "any sessions still attached to it"
@@ -108,12 +110,14 @@ export function CleanupWorkareaModal({ project, onClose, onCleanedUp }: CleanupW
 					<div className="rounded-md border border-border bg-background p-2 font-mono text-xs text-foreground break-all">
 						{project.cwd}
 					</div>
-					<p className="text-xs text-amber-300">This cannot be undone.</p>
+					<p className="text-xs text-amber-300">{t("cleanup.cannotUndo")}</p>
 				</div>
 
 				<div className="mt-4 space-y-1">
 					<label className="text-xs text-muted-foreground" htmlFor="cleanup-confirm-input">
-						Type <span className="font-mono text-foreground">{CONFIRM_PHRASE}</span> to confirm
+						{t("cleanup.typePrefix")}{" "}
+						<span className="font-mono text-foreground">{CONFIRM_PHRASE}</span>{" "}
+						{t("cleanup.typeSuffix")}
 					</label>
 					<input
 						id="cleanup-confirm-input"

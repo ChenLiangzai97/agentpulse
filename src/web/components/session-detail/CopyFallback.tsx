@@ -1,8 +1,10 @@
 import { useEffect, useId, useRef } from "react";
+import { useT } from "../../i18n/i18n.js";
 import { COPY_FALLBACK_LINE, COPY_HANDOFF_HINT } from "../../lib/summary-copy.js";
 
 /** The text, selected and ready to copy by hand, when the browser refused the clipboard. */
 export function CopyFallback({ text, onClose }: { text: string; onClose: () => void }) {
+	const t = useT();
 	const box = useRef<HTMLTextAreaElement>(null);
 	useEffect(() => {
 		box.current?.focus();
@@ -16,7 +18,7 @@ export function CopyFallback({ text, onClose }: { text: string; onClose: () => v
 				readOnly
 				value={text}
 				rows={10}
-				aria-label="Text to copy"
+				aria-label={t("copyFallback.textToCopy")}
 				className="w-full rounded-md border border-input bg-background p-2 font-mono text-xs text-foreground"
 			/>
 			<button
@@ -58,6 +60,7 @@ export function CopyBar({
 	fallback: string | null;
 	onCloseFallback: () => void;
 }) {
+	const t = useT();
 	const hintId = useId();
 	return (
 		<>

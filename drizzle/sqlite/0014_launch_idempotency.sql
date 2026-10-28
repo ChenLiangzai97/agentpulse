@@ -1,0 +1,3 @@
+ALTER TABLE `launch_requests` ADD `idempotency_key` text;--> statement-breakpoint
+ALTER TABLE `launch_requests` ADD `idempotency_owner` text;--> statement-breakpoint
+CREATE UNIQUE INDEX `uq_launch_idempotency` ON `launch_requests` (`idempotency_owner`,`idempotency_key`);

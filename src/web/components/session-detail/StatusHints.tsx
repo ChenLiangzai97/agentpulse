@@ -1,6 +1,7 @@
 import { AGENT_METADATA } from "../../../shared/constants.js";
 import type { AgentType, Session } from "../../../shared/types.js";
 import { useCopyFeedback } from "../../hooks/useCopyFeedback.js";
+import { t, useT } from "../../i18n/i18n.js";
 
 /**
  * F24 (D35): the caveat text for an observe-only agent (Copilot CLI), or
@@ -34,12 +35,24 @@ export type StatusHintSelection =
 	| { component: "ManagedCodexStatus"; managedSession: NonNullable<Session["managedSession"]> }
 	| { component: "ManagedClaudeStatus"; managedSession: NonNullable<Session["managedSession"]> }
 	| { component: "CodexStatusHint"; displayName: string }
-	| { component: "AgentObserveOnlyHint"; agentType: AgentType };
+	| { component: "AgentObserveOnlyHint"; agentType: AgentType }
+	| { component: "OpenCodeObserveOnlyHint" }
+	| { component: "OpenCodeNotOwnerHint" }
+	| { component: "OpenCodeUnavailableHint" }
+	| { component: "None" };
 
 export function selectStatusHint(
-	session: Pick<Session, "agentType" | "managedSession">,
+	session: Pick<Session, "agentType" | "managedSession" | "controlCapabilities">,
 	displayName: string,
 ): StatusHintSelection {
+	if (session.agentType === "opencode") {
+		// The SERVER-DERIVED capability is the authority: only a valid trusted
+		// binding owned by the viewer exposes send. A managedSession row (or
+		// an agentpulse_launch origin) alone does NOT mean controllable.
+		// OpenCode messaging lives in the ONE merged SessionConnections block
+		// (source + controller + reason + next step); no second hint here.
+		return { component: "None" };
+	}
 	if (session.agentType === "codex_cli" && session.managedSession) {
 		return { component: "ManagedCodexStatus", managedSession: session.managedSession };
 	}
@@ -58,6 +71,40 @@ export function selectStatusHint(
 	return { component: "AgentObserveOnlyHint", agentType: session.agentType };
 }
 
+/** OpenCode with NO trusted controllable binding: say plainly it is read-only. */
+export function OpenCodeObserveOnlyHint() {
+	const t = useT();
+	return (
+		<div className="mx-3 md:mx-6 mt-2 md:mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5">
+			<p className="text-[11px] leading-relaxed text-muted-foreground">
+				{t("hints.opencodeObserveOnly")}
+			</p>
+		</div>
+	);
+}
+
+/** Authorized but not this viewer's session. */
+export function OpenCodeNotOwnerHint() {
+	const t = useT();
+	return (
+		<div className="mx-3 md:mx-6 mt-2 md:mt-3 rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2.5">
+			<p className="text-[11px] leading-relaxed text-muted-foreground">{t("hints.opencodeNotOwner")}</p>
+		</div>
+	);
+}
+
+/** Managed but currently not sendable (stopped/offline/invalid binding). */
+export function OpenCodeUnavailableHint() {
+	const t = useT();
+	return (
+		<div className="mx-3 md:mx-6 mt-2 md:mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5">
+			<p className="text-[11px] leading-relaxed text-muted-foreground">
+				{t("hints.opencodeUnavailable")}
+			</p>
+		</div>
+	);
+}
+
 export function CodexStatusHint({ displayName }: { displayName: string }) {
 	const renameCommand = `/rename ${displayName}`;
 	const { copy } = useCopyFeedback();
@@ -66,10 +113,11 @@ export function CodexStatusHint({ displayName }: { displayName: string }) {
 		<div className="mx-3 md:mx-6 mt-2 md:mt-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5">
 			<div className="flex items-start justify-between gap-3">
 				<div className="min-w-0">
-					<p className="text-xs font-medium text-foreground">Show this name inside Codex</p>
+					<p className="text-xs font-medium text-foreground">{t("hints.showNameInCodex")}</p>
 					<p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-						Run <span className="font-mono text-foreground">{renameCommand}</span> in Codex, then
-						enable <span className="font-mono text-foreground">thread-title</span> in{" "}
+						Run <span className="font-mono text-foreground">{renameCommand}</span>{" "}
+						{t("hints.statuslineSuffix")}{" "}
+						<span className="font-mono text-foreground">thread-title</span> in{" "}
 						<span className="font-mono text-foreground">/statusline</span>. This uses Codex&apos;s
 						built-in status line instead of terminal-specific hacks.
 					</p>
@@ -91,6 +139,7 @@ export function ManagedCodexStatus({
 }: {
 	managedSession: NonNullable<Session["managedSession"]>;
 }) {
+	const t = useT();
 	const syncTone =
 		managedSession.providerSyncState === "synced"
 			? "text-emerald-400 border-emerald-500/20 bg-emerald-500/10"
@@ -145,6 +194,7 @@ export function ManagedClaudeStatus({
 }: {
 	managedSession: NonNullable<Session["managedSession"]>;
 }) {
+	const t = useT();
 	const tone =
 		managedSession.managedState === "completed"
 			? "text-emerald-400 border-emerald-500/20 bg-emerald-500/10"

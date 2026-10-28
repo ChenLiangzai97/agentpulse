@@ -85,6 +85,41 @@
 			"when": 1791087960575,
 			"tag": "0011_ai_session_summaries",
 			"breakpoints": true
+		},
+		{
+			"idx": 12,
+			"version": "7",
+			"when": 1792249655464,
+			"tag": "0012_opencode_provenance",
+			"breakpoints": true
+		},
+		{
+			"idx": 13,
+			"version": "7",
+			"when": 1792250671998,
+			"tag": "0013_opencode_interactions",
+			"breakpoints": true
+		},
+		{
+			"idx": 14,
+			"version": "7",
+			"when": 1792291306009,
+			"tag": "0014_launch_idempotency",
+			"breakpoints": true
+		},
+		{
+			"idx": 15,
+			"version": "6",
+			"when": 1792400000000,
+			"tag": "0015_fork_infra",
+			"breakpoints": true
+		},
+		{
+			"idx": 16,
+			"version": "6",
+			"when": 1792500000000,
+			"tag": "0016_session_stop_epoch",
+			"breakpoints": true
 		}
 	]
 }

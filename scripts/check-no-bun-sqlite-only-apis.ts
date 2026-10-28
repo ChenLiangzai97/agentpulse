@@ -37,6 +37,8 @@ import { join, relative } from "node:path";
 const ROOT = new URL("..", import.meta.url).pathname;
 
 const ALLOWLISTED_SUFFIXES = [
+	// Reads the private native OpenCode SQLite store, never the AgentPulse destination DB.
+	"src/supervisor/providers/opencode-recovery.ts",
 	// Core DB adapter and test helpers
 	"src/server/db/client.ts",
 	// The withTransaction helper is the canonical DB-layer file for sync-tx

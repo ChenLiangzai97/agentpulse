@@ -2,7 +2,8 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { loadSupervisorConfig } from "../config.js";
 
-type JsonRpcId = number;
+export type JsonRpcId = number | string;
+export type JsonRpcRequest = JsonRpcNotification & { id: JsonRpcId };
 
 export type JsonRpcNotification = {
 	method: string;
@@ -37,6 +38,8 @@ export class RpcClient {
 	private notifications: JsonRpcNotification[] = [];
 	private waiters: RpcWaiter[] = [];
 	private listeners = new Set<(notification: JsonRpcNotification) => void>();
+	private requestListener?: (rpcRequest: JsonRpcRequest) => Promise<void>;
+	private closed = false;
 	private closeListeners = new Set<(error?: Error) => void>();
 
 	private constructor(ws: WebSocket) {
@@ -65,11 +68,47 @@ export class RpcClient {
 		});
 	}
 
+	onRequest(listener: (rpcRequest: JsonRpcRequest) => Promise<void>) {
+		this.requestListener = listener;
+	}
+
+	notify(method: string, params?: unknown) {
+		this.ws.send(JSON.stringify({ method, params }));
+	}
+
+	respond(id: JsonRpcId, result: unknown) {
+		if (this.closed || this.ws.readyState !== WebSocket.OPEN)
+			throw new Error("Approval connection has closed; request expired.");
+		this.ws.send(JSON.stringify({ id, result }));
+	}
+
 	async request<T>(method: string, params?: unknown): Promise<T> {
 		const id = this.nextId++;
 		return await new Promise<T>((resolve, reject) => {
-			this.pending.set(id, { resolve, reject });
-			this.ws.send(JSON.stringify({ id, method, params }));
+			if (this.closed) {
+				reject(new Error("Codex connection closed"));
+				return;
+			}
+			const timer = setTimeout(() => {
+				this.pending.delete(id);
+				reject(new Error(`Timed out waiting for ${method}; execution outcome may be unknown.`));
+			}, 30_000);
+			this.pending.set(id, {
+				resolve: (value) => {
+					clearTimeout(timer);
+					resolve(value);
+				},
+				reject: (error) => {
+					clearTimeout(timer);
+					reject(error);
+				},
+			});
+			try {
+				this.ws.send(JSON.stringify({ id, method, params }));
+			} catch (error) {
+				this.pending.get(id)?.reject(error as Error);
+				this.pending.delete(id);
+			}
 		});
 	}
 
@@ -107,7 +146,35 @@ export class RpcClient {
 	}
 
 	private handleMessage(raw: string) {
-		const message = JSON.parse(raw) as JsonRpcNotification | JsonRpcResponse;
+		let message: JsonRpcNotification | JsonRpcResponse | JsonRpcRequest;
+		try {
+			message = JSON.parse(raw);
+		} catch {
+			return;
+		}
+		if (!message || typeof message !== "object") return;
+		// Server requests and client responses have independent ID namespaces.
+		if ("id" in message && "method" in message) {
+			if (!this.requestListener) {
+				this.ws.send(
+					JSON.stringify({
+						id: message.id,
+						error: { code: -32601, message: "Unsupported server request" },
+					}),
+				);
+				return;
+			}
+			void this.requestListener(message).catch(() => {
+				if (!this.closed)
+					this.ws.send(
+						JSON.stringify({
+							id: message.id,
+							error: { code: -32603, message: "Unable to present request" },
+						}),
+					);
+			});
+			return;
+		}
 		if ("id" in message) {
 			const pending = this.pending.get(message.id);
 			if (!pending) return;
@@ -121,6 +188,7 @@ export class RpcClient {
 		}
 
 		this.notifications.push(message);
+		if (this.notifications.length > 200) this.notifications.shift();
 		// F25: listeners are frequently async (they report state/events back to
 		// the server) and are dispatched fire-and-forget here — nothing else in
 		// this class awaits or catches their returned promise. A rejection
@@ -148,6 +216,8 @@ export class RpcClient {
 	}
 
 	private rejectAll(error: Error) {
+		if (this.closed) return;
+		this.closed = true;
 		for (const [, pending] of this.pending) pending.reject(error);
 		this.pending.clear();
 		for (const waiter of this.waiters) {
@@ -155,7 +225,11 @@ export class RpcClient {
 			waiter.reject(error);
 		}
 		this.waiters = [];
-		for (const listener of this.closeListeners) listener(error);
+		for (const listener of this.closeListeners) {
+			void Promise.resolve()
+				.then(() => listener(error))
+				.catch((err) => console.error("[codex-rpc] close listener failed:", err));
+		}
 	}
 }
 
@@ -180,10 +254,13 @@ export async function spawnServer(url: string): Promise<ChildProcess> {
 	const config = await loadSupervisorConfig();
 	const executable =
 		config.capabilities.executables?.codex?.resolvedPath || config.codexCommand || "codex";
-	return spawn(executable, ["app-server", "--listen", url], {
+	const child = spawn(executable, ["app-server", "--listen", url], {
 		stdio: ["ignore", "pipe", "pipe"],
-		env: process.env,
+		env: globalThis.process.env,
 	});
+	child.stdout?.resume();
+	child.stderr?.resume();
+	return child;
 }
 
 export async function waitForServer(url: string, attempts = 30, delayMs = 250): Promise<RpcClient> {

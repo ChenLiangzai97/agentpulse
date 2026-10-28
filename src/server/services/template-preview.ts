@@ -90,7 +90,8 @@ export function validateTemplateInput(input: SessionTemplateInput) {
 	const env = input.env ?? {};
 
 	if (!input.name) errors.push("Name is required.");
-	if (!isLaunchable(input.agentType)) errors.push("Agent type must be claude_code or codex_cli.");
+	if (!isLaunchable(input.agentType))
+		errors.push("Agent type must be claude_code, codex_cli or opencode.");
 	if (!input.cwd) errors.push("Working directory is required.");
 
 	if (input.name.length > 120) errors.push("Name must be 120 characters or fewer.");
@@ -169,7 +170,9 @@ export async function buildTemplatePreview(
 	},
 ): Promise<TemplatePreview> {
 	const normalizedTemplate = normalizeTemplateInput(input);
-	const requestedLaunchMode = options?.requestedLaunchMode ?? "interactive_terminal";
+	const requestedLaunchMode =
+		options?.requestedLaunchMode ??
+		(normalizedTemplate.agentType === "opencode" ? "managed_opencode" : "interactive_terminal");
 	const launchCorrelationId = crypto.randomUUID();
 	// normalizedTemplate.agentType is typed LaunchableAgentType, but
 	// normalizeTemplateInput deliberately passes an explicit non-launchable

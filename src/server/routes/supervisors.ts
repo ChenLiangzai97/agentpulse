@@ -18,6 +18,8 @@ import {
 	verifySupervisorCredential,
 } from "../auth/supervisor-auth.js";
 import { config } from "../config.js";
+import { getDb } from "../db/client.js";
+import { controlActions } from "../db/schema/index.js";
 import { logAdminAction } from "../services/audit-log.js";
 import {
 	AdminRequiredError,
@@ -28,7 +30,12 @@ import {
 	assertCanManageHost,
 	isHostTokenCreatorStillAllowed,
 } from "../services/authorization.js";
-import { claimNextControlAction, updateControlAction } from "../services/control-actions.js";
+import {
+	assertExecutionPermit,
+	claimNextControlAction,
+	getControlAction,
+	updateControlAction,
+} from "../services/control-actions.js";
 import { claimNextLaunchRequest, updateLaunchDispatchStatus } from "../services/launch-dispatch.js";
 import { associateObservedSession } from "../services/launch-dispatch.js";
 import { cleanMachineName } from "../services/machine-name.js";
@@ -38,6 +45,16 @@ import {
 	upsertManagedSessionState,
 } from "../services/managed-session-state.js";
 import { notifySessionEvents, notifySessionUpdated } from "../services/notifier.js";
+import {
+	SessionControlOriginError,
+	reserveOpenCodeInstance,
+} from "../services/opencode-control-provenance.js";
+import { type FinalizeForkInput, finalizeOpenCodeFork } from "../services/opencode-fork-service.js";
+import {
+	acceptOpenCodeSnapshot,
+	interruptOpenCodeInstance,
+	listOpenCodeForkChildren,
+} from "../services/opencode-managed.js";
 import { SessionOwnershipError } from "../services/session-ownership.js";
 import { getSession } from "../services/session-tracker.js";
 import { parseRegistrationShape } from "../services/supervisor-capabilities.js";
@@ -72,6 +89,22 @@ supervisorsAdminRouter.use("*", requireRolePolicy());
 supervisorsAdminRouter.get("/supervisors", async (c) => {
 	const supervisors = await listSupervisors();
 	return c.json({ supervisors, total: supervisors.length });
+});
+
+supervisorsAdminRouter.post("/supervisors/:id/opencode/health", async (c) => {
+	const supervisorId = c.req.param("id");
+	const refusal = await refuseUnlessMayManageHost(c, supervisorId);
+	if (refusal) return refusal;
+	const [action] = await getDb()
+		.insert(controlActions)
+		.values({
+			actionType: "opencode_health",
+			requestedBy: "user",
+			requestedByUserId: (await getRequestActor(c)).userId,
+			metadata: { targetSupervisorId: supervisorId },
+		})
+		.returning();
+	return c.json({ actionId: action.id }, 202);
 });
 
 supervisorsAdminRouter.get("/supervisors/:id", async (c) => {
@@ -333,11 +366,82 @@ supervisorsAgentRouter.post("/supervisors/:id/heartbeat", requireSupervisorAuth(
 });
 
 supervisorsAgentRouter.post(
+	"/supervisors/:id/opencode/:instanceId/snapshot",
+	requireSupervisorAuth(),
+	async (c) => {
+		try {
+			return c.json(
+				await acceptOpenCodeSnapshot(
+					c.req.param("id"),
+					c.req.param("instanceId"),
+					await c.req.json(),
+				),
+			);
+		} catch (error) {
+			if (error instanceof SessionControlOriginError)
+				return c.json({ error: error.code }, error.status);
+			throw error;
+		}
+	},
+);
+supervisorsAgentRouter.get(
+	"/supervisors/:id/opencode/:instanceId/children",
+	requireSupervisorAuth(),
+	async (c) => {
+		const generation = Number(c.req.query("generation"));
+		if (!Number.isInteger(generation) || generation <= 0)
+			return c.json({ error: "generation_required" }, 400);
+		try {
+			return c.json(
+				await listOpenCodeForkChildren(c.req.param("id"), c.req.param("instanceId"), generation),
+			);
+		} catch (error) {
+			if (error instanceof SessionControlOriginError)
+				return c.json({ error: error.code }, error.status);
+			throw error;
+		}
+	},
+);
+
+supervisorsAgentRouter.post(
+	"/supervisors/:id/opencode/:instanceId/closed",
+	requireSupervisorAuth(),
+	async (c) => {
+		const body = await c.req.json();
+		if (!["stopped", "interrupted"].includes(body.state))
+			return c.json({ error: "invalid_state" }, 400);
+		try {
+			await interruptOpenCodeInstance(
+				c.req.param("id"),
+				c.req.param("instanceId"),
+				body.generation,
+				body.state,
+			);
+			return c.json({ ok: true });
+		} catch (error) {
+			if (error instanceof SessionControlOriginError)
+				return c.json({ error: error.code }, error.status);
+			throw error;
+		}
+	},
+);
+
+supervisorsAgentRouter.post(
 	"/supervisors/:id/launches/claim",
 	requireSupervisorAuth(),
 	async (c) => {
 		const supervisorId = c.req.param("id") ?? "";
 		const launchRequest = await claimNextLaunchRequest(supervisorId);
+		if (launchRequest?.agentType === "opencode") {
+			const instance = await reserveOpenCodeInstance(supervisorId, launchRequest.id);
+			return c.json({
+				launchRequest: {
+					...launchRequest,
+					openCodeInstance: { id: instance.id, generation: instance.generation },
+				},
+				openCodeInstance: { id: instance.id, generation: instance.generation },
+			});
+		}
 		return c.json({ launchRequest: launchRequest ?? null });
 	},
 );
@@ -386,6 +490,7 @@ supervisorsAgentRouter.post(
 			notifySessionUpdated(freshResult.session);
 			return c.json(freshResult);
 		} catch (err) {
+			if (err instanceof SessionControlOriginError) return c.json({ error: err.code }, err.status);
 			if (err instanceof SessionOwnershipError) {
 				console.warn("[supervisors] session write rejected", {
 					supervisorId,
@@ -415,6 +520,7 @@ supervisorsAgentRouter.post(
 			}
 			return c.json({ events: inserted });
 		} catch (err) {
+			if (err instanceof SessionControlOriginError) return c.json({ error: err.code }, err.status);
 			if (err instanceof SessionOwnershipError) {
 				console.warn("[supervisors] session write rejected", {
 					supervisorId,
@@ -430,7 +536,10 @@ supervisorsAgentRouter.post(
 
 supervisorsAgentRouter.get("/supervisors/:id/provider-sync", requireSupervisorAuth(), async (c) => {
 	const supervisorId = c.req.param("id") ?? "";
-	const managedSessions = await listManagedSessionsNeedingSync(supervisorId);
+	const managedSessions = await listManagedSessionsNeedingSync(
+		supervisorId,
+		c.req.query("includeRecoverable") === "true",
+	);
 	return c.json({ managedSessions });
 });
 
@@ -445,6 +554,28 @@ supervisorsAgentRouter.post(
 );
 
 supervisorsAgentRouter.post(
+	"/supervisors/:id/control-actions/:actionId/permit",
+	requireSupervisorAuth(),
+	async (c) => {
+		const supervisorId = c.req.param("id") ?? "";
+		const actionId = c.req.param("actionId") ?? "";
+		const body = await c.req.json<{ claimToken?: string }>();
+		if (!body.claimToken) return c.json({ error: "permit_incomplete" }, 400);
+		try {
+			await assertExecutionPermit({
+				actionId,
+				supervisorId,
+				claimToken: body.claimToken,
+			});
+			return c.json({ ok: true });
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "permit_refused";
+			return c.json({ error: message }, message === "provider_binding_invalid" ? 403 : 409);
+		}
+	},
+);
+
+supervisorsAgentRouter.post(
 	"/supervisors/:id/control-actions/:actionId/status",
 	requireSupervisorAuth(),
 	async (c) => {
@@ -454,6 +585,7 @@ supervisorsAgentRouter.post(
 			status: "running" | "succeeded" | "failed";
 			error?: string | null;
 			metadata?: Record<string, unknown> | null;
+			claimToken?: string | null;
 		}>();
 		const action = await updateControlAction({
 			actionId,
@@ -461,9 +593,50 @@ supervisorsAgentRouter.post(
 			status: body.status,
 			error: body.error,
 			metadata: body.metadata ?? null,
+			claimToken: body.claimToken ?? null,
 		});
 		if (!action) return c.json({ error: "Control action not found" }, 404);
 		return c.json({ action });
+	},
+);
+
+supervisorsAgentRouter.post(
+	"/supervisors/:id/control-actions/:actionId/fork-result",
+	requireSupervisorAuth(),
+	async (c) => {
+		const supervisorId = c.req.param("id") ?? "";
+		const actionId = c.req.param("actionId") ?? "";
+		const body = await c.req.json<{
+			claimToken?: string;
+			childNativeSessionId?: string;
+			parentSnapshot?: unknown;
+			childMap?: unknown;
+		}>();
+		if (!body.claimToken || !body.childNativeSessionId)
+			return c.json({ error: "fork_result_incomplete" }, 400);
+		const action = await getControlAction(actionId);
+		if (!action) return c.json({ error: "control_action_not_found" }, 404);
+		// The supervisor captured this snapshot in the CONTROLLED WINDOW before
+		// the native fork; finalize verifies it against the binding. The action
+		// metadata mirror is deliberately NOT accepted as evidence.
+		const snapshot = (body as { parentSnapshot?: unknown }).parentSnapshot;
+		if (!snapshot || typeof snapshot !== "object")
+			return c.json({ error: "fork_snapshot_missing" }, 409);
+		try {
+			const result = await finalizeOpenCodeFork({
+				actionId,
+				supervisorId,
+				claimToken: body.claimToken,
+				childNativeSessionId: body.childNativeSessionId,
+				parentSnapshot: snapshot as FinalizeForkInput["parentSnapshot"],
+				childMap: (body.childMap ?? null) as Record<string, unknown> | null,
+			});
+			return c.json(result);
+		} catch (error) {
+			if (error instanceof SessionControlOriginError)
+				return c.json({ error: error.code }, error.status);
+			throw error;
+		}
 	},
 );
 
